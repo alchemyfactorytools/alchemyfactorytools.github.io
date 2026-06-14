@@ -115,13 +115,32 @@ function composeGraph(composed, db, cfg) {
   addNode({ id: `demand:${target}`, type: 'demand', label: `${target} (target)`, ratePerMin: composed.summary.ratePerMin, badges: [] });
   edges.push({ from: rootId, to: `demand:${target}`, item: target, ratePerMin: composed.summary.ratePerMin });
 
-  // Walk BOTH trunks before wiring: a trunk can contain consumers of the OTHER trunk (the fert
-  // carrier's Clay cauldron burns fuel; a fuel carrier could grow), so heatedNodes/nurseryNodes
-  // aren't complete until every tree is walked. Wire only after all collection is done.
-  const fuelRoot = composed.fuel ? walk(composed.fuel) : null;
-  const fertRoot = composed.fert ? walk(composed.fert) : null;
-  if (fuelRoot) for (const h of heatedNodes) edges.push({ from: fuelRoot, to: h.id, item: composed.summary.fuelItem, ratePerMin: h.fuelPerMin, heat: true });
-  if (fertRoot) for (const n of nurseryNodes) edges.push({ from: fertRoot, to: n.id, item: composed.summary.fertItem, ratePerMin: n.fertPerMin, nutrient: true });
+  // Each carrier trunk is now { item, rate, beltRate, prodRate, prodTile }: belt supplies up to its
+  // rate, the build PRODUCES the excess. Walk BOTH production sub-trunks BEFORE wiring (a sub-trunk
+  // can hold consumers of the other carrier — the fert carrier's Clay cauldron burns fuel), then wire
+  // each consumer's draw from the belt source and the production root in proportion to their share.
+  const trunkSources = (trunk, tag) => {
+    if (!trunk || !(trunk.rate > EPS)) return [];
+    const srcs = [];
+    if (trunk.beltRate > EPS) {
+      const id = `${trunk.item}#${tag}-belt`;
+      const lanes = beltSpeed > 0 && !liquid(trunk.item) ? Math.ceil(trunk.beltRate / beltSpeed - 1e-9) : null;
+      addNode({ id, type: 'external', kind: 'belt', item: trunk.item, label: `Main belt: ${trunk.item}`, ratePerMin: trunk.beltRate, copperPerMin: 0, beltLanes: lanes, beltSpeed, badges: [] });
+      srcs.push({ id, share: trunk.beltRate / trunk.rate });
+    }
+    if (trunk.prodTile) srcs.push({ id: trunk.prodTile._gid, share: trunk.prodRate / trunk.rate });
+    return srcs;
+  };
+  if (composed.fuel && composed.fuel.prodTile) composed.fuel.prodTile._gid = walk(composed.fuel.prodTile);
+  if (composed.fert && composed.fert.prodTile) composed.fert.prodTile._gid = walk(composed.fert.prodTile);
+  for (const s of trunkSources(composed.fuel, 'fuel')) for (const h of heatedNodes) {
+    const r = h.fuelPerMin * s.share;
+    if (r > EPS) edges.push({ from: s.id, to: h.id, item: composed.summary.fuelItem, ratePerMin: r, heat: true });
+  }
+  for (const s of trunkSources(composed.fert, 'fert')) for (const n of nurseryNodes) {
+    const r = n.fertPerMin * s.share;
+    if (r > EPS) edges.push({ from: s.id, to: n.id, item: composed.summary.fertItem, ratePerMin: r, nutrient: true });
+  }
 
   // main-belt money line: a single source feeding every buy/mint (incl. the trunks'). A minted
   // coin links here by the cash-provenance rule; the edge is labelled in copper/min. The line must
@@ -129,17 +148,23 @@ function composeGraph(composed, db, cfg) {
   // if no coins are belted, the copper is "minted" — an explicit ASSUMPTION (you bring real cash),
   // flagged so it never silently reads as free, mirroring the LP's mint valve.
   const COINS = new Set(['Copper Coin', 'Silver Coin', 'Gold Coin']);
-  const beltCoins = (cfg.belt || []).map((b) => (typeof b === 'string' ? b : b.item)).filter((n) => COINS.has(n));
+  const beltCoinEntries = (cfg.belt || []).map((b) => (typeof b === 'string' ? { item: b, rate: null } : { item: b.item, rate: b.rate == null ? null : Number(b.rate) })).filter((b) => COINS.has(b.item));
+  // belt cash capacity = Σ (coin rate × face value); a coin belted with no rate is unlimited.
+  const beltCopperCap = beltCoinEntries.reduce((s, b) => s + (b.rate == null ? Infinity : b.rate * (db.items[b.item].sellPrice || 0)), 0);
+  const warnings = [...(composed.summary.warnings || [])];
   const totalCopper = moneyDraws.reduce((s, d) => s + d.copperPerMin, 0);
   if (totalCopper > EPS) {
     const moneyId = 'money:belt';
-    const backed = beltCoins.length > 0;
+    const backed = beltCoinEntries.length > 0;
+    const shortCopper = backed && isFinite(beltCopperCap) ? Math.max(0, totalCopper - beltCopperCap) : 0;
+    if (shortCopper > EPS) warnings.push(`Belt coins supply ${Math.round(beltCopperCap)} c/min; this build spends ${Math.round(totalCopper)} c/min — minting the extra ${Math.round(shortCopper)} c/min (assumption).`);
+    const coinNames = beltCoinEntries.map((b) => b.item);
     addNode({
       id: moneyId, type: 'external', kind: backed ? 'belt' : 'cash',
-      item: backed ? beltCoins.join('+') : 'coins',
-      label: backed ? `Main belt: ${beltCoins.join(', ')}` : 'Coins (minted — assumption)',
+      item: backed ? coinNames.join('+') : 'coins',
+      label: backed ? `Main belt: ${coinNames.join(', ')}${shortCopper > EPS ? ' (+mint)' : ''}` : 'Coins (minted — assumption)',
       ratePerMin: totalCopper, copperPerMin: totalCopper, beltLanes: null, beltSpeed: null,
-      badges: backed ? [] : ['ASSUMPTION'],
+      badges: backed ? (shortCopper > EPS ? ['ASSUMPTION'] : []) : ['ASSUMPTION'],
     });
     for (const d of moneyDraws) edges.push({ from: moneyId, to: d.id, item: d.coinItem || 'copper', ratePerMin: d.copperPerMin, cash: true });
   }
@@ -164,6 +189,7 @@ function composeGraph(composed, db, cfg) {
     selfSustaining: composed.summary.copperPerMin < 1,
     fragileRoutes: 0,
     solver: 'composer',
+    warnings,
   };
 
   const graph = { nodes, edges, summary };

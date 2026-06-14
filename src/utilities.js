@@ -122,14 +122,11 @@ function canonicalCarriers(db, cfg) {
   const fertItem = top(
     Object.entries(db.items).filter(([n, it]) => it.nutrientValue > 0 && it.maxFertility > 0 && tierOk(n)),
     (n, it) => it.maxFertility);
-  // A user-supplied belt fuel/fert OVERRIDES the heuristic: if you put a fuel (or fertilizer) on the
-  // main belt, THAT is the carrier — the build draws it off the belt instead of composing a
-  // production trunk for it. (Belt items are free leaves in the DP, so the trunk collapses to a
-  // single belt node automatically.)
-  const beltList = (cfg.belt || []).map((b) => (typeof b === 'string' ? b : b.item));
-  const beltFuel = beltList.find((n) => db.items[n] && db.items[n].heat > 0);
-  const beltFert = beltList.find((n) => db.items[n] && db.items[n].nutrientValue > 0);
-  return { fuelItem: beltFuel || fuelItem, fertItem: beltFert || fertItem };
+  // ALWAYS best-for-tier (no per-build carrier selection). A user-supplied belt fuel/fert does NOT
+  // change the carrier — instead the composer treats belt supply of the chosen carrier as a rate CAP
+  // that offsets production (belt covers up to its rate, the build composes the rest). So belting a
+  // weaker fertilizer can't downgrade the carrier off the best-for-tier pick.
+  return { fuelItem, fertItem };
 }
 
 module.exports = { canonicalUtilities, canonicalCarriers };

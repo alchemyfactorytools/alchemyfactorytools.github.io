@@ -26,7 +26,7 @@ const db = require('./data/alchemy_db.v41.json');
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'composer-belt-supply-2026-06-14z';
+const SERVER_STAMP = 'composer-belt-ratecap-2026-06-14z';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -169,7 +169,7 @@ function composerSolve(item, rate, rateMode, cfg) {
     cgRounds: 0,                                    // not an LP — no column-generation rounds
     graph,
     explainText: composerExplain(composed, fuelItem, fertItem),
-    warnings: [],
+    warnings: graph.summary.warnings || [],         // belt rate-cap shortfalls (fuel/fert/coins)
   };
 }
 

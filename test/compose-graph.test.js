@@ -65,23 +65,34 @@ test('Phase 4: a minted coin links back to the main-belt money line (cash edge)'
   assert.equal(g.summary.mintedCoins['Copper Coin'], 20);
 });
 
-test('belt fuel/fert is drawn off the belt (no built trunk); belt coins back the money line', () => {
-  // Belt a fertilizer (Growth Potion) and a coin (Silver Coin). The fert carrier must become the
-  // belted item, its trunk collapses to a single belt node, and the money line is backed by the
-  // belt coin (no "minted — assumption" flag, no coins from thin air).
-  const beltCfg = resolveConfig({ maxTier: 6, cauldron: { enabled: true, inputPool: 'growables' }, belt: [{ item: 'Silver Coin' }, { item: 'Growth Potion', rate: 60 }], canonical: {} });
+test('always best-for-tier carrier; ample belt supply covers the whole trunk (no production)', () => {
+  // Carrier is ALWAYS best-for-tier (here Growth Potion @ t6), NOT overridden by what's belted. A
+  // belt rate that exceeds demand covers the whole fert trunk → all belt, no production sub-trunk.
   const { canonicalCarriers } = require('../src/utilities');
+  const beltCfg = resolveConfig({ maxTier: 6, cauldron: { enabled: true, inputPool: 'growables' }, belt: [{ item: 'Silver Coin' }, { item: 'Growth Potion', rate: 60 }], canonical: {} });
   const carriers = canonicalCarriers(db, beltCfg);
-  assert.equal(carriers.fertItem, 'Growth Potion', 'belted fertilizer overrides the heuristic carrier');
+  assert.equal(carriers.fertItem, 'Growth Potion', 'fert carrier is the best-for-tier item');
   beltCfg.canonical = carriers;
-  const c2 = makeComposer(db, beltCfg);
-  const composed = c2.compose('Clay', 30);
-  assert.equal(composed.fert.source, 'belt', 'fert trunk is a belt supply, not a built production tree');
+  const composed = makeComposer(db, beltCfg).compose('Clay', 30);
+  assert.ok(composed.fert.beltRate > 0 && composed.fert.prodRate < 1e-6 && !composed.fert.prodTile, 'belt covers the whole trunk');
   const g = composeGraph(composed, db, beltCfg);
   const money = g.nodes.find((n) => n.id === 'money:belt');
   assert.ok(money && money.kind === 'belt' && !money.badges.includes('ASSUMPTION'), 'belt coins back the money line');
   const fertEdge = g.edges.find((e) => e.nutrient);
   assert.ok(fertEdge && g.nodes.find((n) => n.id === fertEdge.from).kind === 'belt', 'nurseries draw fert from the belt node');
+});
+
+test('belt rate cap is enforced: belt supplies up to its rate, the build composes the rest', () => {
+  // Belt only 2/min Growth Potion against a fert-hungry demand. Belt covers 2/min, the composer
+  // builds a production sub-trunk for the excess, warns, and nurseries draw from BOTH sources.
+  const beltCfg = resolveConfig({ maxTier: 6, cauldron: { enabled: true, inputPool: 'growables' }, belt: [{ item: 'Growth Potion', rate: 2 }], canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } });
+  const composed = makeComposer(db, beltCfg).compose('Clay', 300);
+  assert.ok(composed.fert.beltRate <= 2 + 1e-6 && composed.fert.prodRate > 1, 'belt capped at 2/min, excess produced');
+  assert.ok(composed.summary.warnings.some((w) => /Belt Growth Potion supplies/.test(w)), 'shortfall is warned');
+  const g = composeGraph(composed, db, beltCfg);
+  const srcKinds = new Set(g.edges.filter((e) => e.nutrient).map((e) => g.nodes.find((n) => n.id === e.from).kind));
+  assert.ok(srcKinds.has('belt') && srcKinds.has('recipe'), 'fert flows from both the belt and the production trunk');
+  assert.equal(g.summary.validation.length, 0);
 });
 
 test('without belt coins the money line is an explicit minted assumption (not free)', () => {

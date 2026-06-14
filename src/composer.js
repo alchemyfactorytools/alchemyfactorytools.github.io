@@ -51,14 +51,20 @@ function makeComposer(db, cfg) {
   // (so the utility role is effectively free), but as a MATERIAL input the carrier costs its real
   // production (e.g. Coke Powder pays its buy-ore→refine chain), which kills the degeneracy where
   // free belt Coke Powder was a free cauldron filler.
-  const beltItems = new Set((cfg.belt || []).map((b) => (typeof b === 'string' ? b : b.item)));
-  // The fuel/fert carriers are tracked separately ONLY so composition can attach the utility
-  // draw later; they are not free-as-material here.
+  // Belt supply, with per-item rates (null = unlimited). The chosen fuel/fert CARRIERS are excluded
+  // from the free-material belt leaves: a belted carrier is supplied to its TRUNK as a rate cap (see
+  // compose()), not consumed as free bulk material — so its production route stays computable for
+  // the part of demand the belt can't cover. Non-carrier belt items (coins, etc.) remain free leaves.
+  const beltRate = new Map((cfg.belt || []).map((b) => (typeof b === 'string' ? [b, null] : [b.item, b.rate == null ? null : Number(b.rate)])));
   const utilityCarriers = new Set();
   if (cfg.canonical) {
     if (cfg.canonical.fuelItem) utilityCarriers.add(cfg.canonical.fuelItem);
     if (cfg.canonical.fertItem) utilityCarriers.add(cfg.canonical.fertItem);
   }
+  const beltItems = new Set([...beltRate.keys()].filter((n) => !utilityCarriers.has(n)));
+  // Belt rate cap for a carrier: Infinity if belted with no rate, the rate if belted-with-rate, or 0
+  // if not belted at all (→ the whole trunk is produced). null rate ⇒ unlimited belt.
+  const beltCapFor = (item) => (beltRate.has(item) ? (beltRate.get(item) == null ? Infinity : beltRate.get(item)) : 0);
 
   const buyable = (name) => db.items[name] && db.items[name].buyPrice !== undefined && cfg.buy !== false;
 
@@ -421,25 +427,42 @@ function makeComposer(db, cfg) {
     const uFuel = fuelHeatPerUnit > 0 ? trunkUnit(fuelItem) : null;
     const uFert = fertNutrientPerUnit > 0 ? trunkUnit(fertCarrier) : null;
 
-    // scalar fixpoint on (F, G) = fuel-units/min, fert-units/min the build must supply.
+    // Belt rate caps: belt supplies up to its rate (free utility), the build PRODUCES the rest.
+    // Only the PRODUCED part (Pf, Pg) burns fuel / draws fert (the belt supply doesn't), so just the
+    // produced part feeds back in the fixpoint. cap = Infinity (belted, no rate) ⇒ all belt, no
+    // feedback; cap = 0 (not belted) ⇒ all produced, full feedback.
+    const fuelCap = fuelItem ? beltCapFor(fuelItem) : 0;
+    const fertCap = fertCarrier ? beltCapFor(fertCarrier) : 0;
     let F = 0, G = 0;
     for (let i = 0; i < 24; i++) {
-      const totalHeat = heatMain + (uFuel ? F * uFuel.h : 0) + (uFert ? G * uFert.h : 0);
-      const totalNutrient = nutrientMain + (uFuel ? F * uFuel.n : 0) + (uFert ? G * uFert.n : 0);
+      const Pf = Math.max(0, F - fuelCap), Pg = Math.max(0, G - fertCap);
+      const totalHeat = heatMain + (uFuel ? Pf * uFuel.h : 0) + (uFert ? Pg * uFert.h : 0);
+      const totalNutrient = nutrientMain + (uFuel ? Pf * uFuel.n : 0) + (uFert ? Pg * uFert.n : 0);
       const nF = fuelHeatPerUnit > 0 ? totalHeat / fuelHeatPerUnit : 0;
       const nG = fertNutrientPerUnit > 0 ? totalNutrient / fertNutrientPerUnit : 0;
       if (Math.abs(nF - F) < 1e-9 && Math.abs(nG - G) < 1e-9) { F = nF; G = nG; break; }
       F = nF; G = nG;
     }
 
-    // build the final trunks at the resolved rates (their own buys/mints feed the money line too).
-    const fuel = F > 0 ? buildTree(fuelItem, F, `${fuelItem}#fuel`, new Set(), acc) : null;
-    const fert = G > 0 ? buildTree(fertCarrier, G, `${fertCarrier}#fert`, new Set(), acc) : null;
+    // Split each carrier into a belt-supplied portion (capped) and a produced sub-trunk (the excess).
+    const warnings = [];
+    const splitTrunk = (item, total, cap, tag) => {
+      if (!(total > 1e-9)) return null;
+      const beltRateUsed = Math.min(total, cap);
+      const prodRate = Math.max(0, total - cap);
+      const prodTile = prodRate > 1e-9 ? buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc) : null;
+      if (isFinite(cap) && cap > 0 && prodRate > 1e-9) {
+        warnings.push(`Belt ${item} supplies ${cap.toFixed(1)}/min; this build needs ${total.toFixed(1)}/min ${tag} — composing the extra ${prodRate.toFixed(1)}/min.`);
+      }
+      return { item, rate: total, beltRate: beltRateUsed, prodRate, prodTile };
+    };
+    const fuel = splitTrunk(fuelItem, F, fuelCap, 'fuel');
+    const fert = splitTrunk(fertCarrier, G, fertCap, 'fert');
 
     const machineTotals = {};
     tallyMachines(tree, machineTotals);
-    if (fuel) tallyMachines(fuel, machineTotals);
-    if (fert) tallyMachines(fert, machineTotals);
+    if (fuel && fuel.prodTile) tallyMachines(fuel.prodTile, machineTotals);
+    if (fert && fert.prodTile) tallyMachines(fert.prodTile, machineTotals);
 
     const totals = { heatPerMin: heatMain, nutrientPerMin: nutrientMain, fuelPerMin: F, fertPerMin: G, copperPerMin: acc.copperPerMin, mintedCoins: acc.mintedCoins };
     const summary = {
@@ -448,7 +471,9 @@ function makeComposer(db, cfg) {
       copperPerMin: acc.copperPerMin,                  // total copper drawn from the money line
       machineTotals,
       fuelItem, fertItem: fertCarrier,
+      fuelPerMin: F, fertPerMin: G,
       mintedCoins: acc.mintedCoins,                    // coins/min minted → must link to the belt money line
+      warnings,
     };
     return { tree, fuel, fert, totals, summary };
   }

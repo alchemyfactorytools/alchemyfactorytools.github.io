@@ -241,12 +241,18 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    composer (LP-free) when `solver==='composer'`, picking carriers via the new LP-free
    `canonicalCarriers(db, cfg)` (top heat/floor fuel, top maxFertility fert) and returning the same
    `{status, copperPerMin, copperPerItem, graph, explainText}` envelope. The LP path is untouched.
-8. **[DONE] Belt supplies wired into the trunks.** A user-supplied belt fuel/fert OVERRIDES the
-   heuristic carrier (`canonicalCarriers` in `utilities.js`): belt the item and the build draws it
-   off the belt — the trunk collapses to one belt node (belt items are free leaves in the DP). The
-   money line never conjures coins: belted coins back it (kind `belt`, `Main belt: <coins>`), and
-   with NO belted coins the copper is an explicit minted **ASSUMPTION** (kind `cash`, ASSUMPTION
-   badge) — mirrors the LP's mint valve. `compose-graph.js` reads `cfg.belt`.
+8. **[DONE] Belt supplies + rate-cap enforcement.** Carriers are **always best-for-tier**
+   (`canonicalCarriers`, no per-build/per-nursery selection). Belt supply of a carrier is a **rate
+   CAP that offsets production**, not a carrier override: the carrier is removed from the free-belt
+   leaves (so its production route stays computable), and `compose()` splits each trunk into a
+   belt-supplied portion (`min(demand, rate)`) and a produced sub-trunk for the excess. Only the
+   PRODUCED part feeds the fuel-for-fuel / fert-for-fert fixpoint (belt supply burns nothing); cap =
+   ∞ (belted, no rate) ⇒ all belt, cap = 0 (not belted) ⇒ all produced. A shortfall (finite belt
+   rate < demand) emits a warning and `compose-graph.js` wires consumers from BOTH the belt node and
+   the production root in proportion. The money line never conjures coins: belted coins back it
+   (`Main belt: <coins>`), and minted copper — whether no coins are belted or belt cash is
+   over-subscribed — is an explicit **ASSUMPTION** (badge + warning). `compose-graph.js` reads
+   `cfg.belt`; warnings surface in the server response (`out.warnings`).
 7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
 
 ## Decisions (resolved)
