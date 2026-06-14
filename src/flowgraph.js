@@ -234,6 +234,27 @@ function buildFlowGraph(result, model, demand, opts = {}) {
     }
   }
 
+  // --- trashed co-products: the waste the byproduct policy throws away ---
+  // In 'trash' mode a recipe's co-product is deleted from its column (normalize.js) but
+  // its per-run quantity is kept in flags.trashed. Surface it as a "→ trash" sink so a
+  // line's genuine waste is visible — EXCEPT main-line byproducts the user already belts
+  // (e.g. surplus Growth Potion), which have a real home and aren't waste to discard.
+  const beltItems = new Set((model.pt.config.belt || []).map((b) => (typeof b === 'string' ? b : b.item)));
+  for (const f of flows) {
+    const trashed = f.process.flags && f.process.flags.trashed;
+    if (!trashed || !nodeById.has(f.process.id)) continue;
+    for (const [item, qtyPerRun] of Object.entries(trashed)) {
+      if (beltItems.has(item)) continue; // main-line byproduct: has a belt home, not waste
+      const rate = qtyPerRun * f.rate;
+      if (rate < 0.05) continue; // sub-fractional scraps aren't worth a discard node
+      const itemLabel = stripVirtual(item);
+      const id = `trash:${item}`;
+      if (!nodeById.has(id)) addNode({ id, type: 'trash', label: `${itemLabel} → trash`, ratePerMin: 0, badges: [] });
+      nodeById.get(id).ratePerMin += rate;
+      edges.push({ from: f.process.id, to: id, item: itemLabel, ratePerMin: rate });
+    }
+  }
+
   // --- HEAT (furnace) / NUTRIENT pools, wired fuel → source → consumers ---
   // Heated machines attach to a Stone Furnace that burns fuel; this makes that
   // physical heat source explicit (with furnace count from slot occupancy) and
@@ -422,7 +443,7 @@ function toDot(graph) {
   for (const n of graph.nodes) {
     const extra = n.machineCount ? `\\n${n.machineCount}× ${n.machine}` : '';
     const badge = n.badges.length ? `\\n[${n.badges.join(', ')}]` : '';
-    const color = { external: 'lightblue', demand: 'gold', resource: 'lightcoral', surplus: 'lightgray', process: 'white' }[n.type] ?? 'white';
+    const color = { external: 'lightblue', demand: 'gold', resource: 'lightcoral', surplus: 'lightgray', trash: 'tomato', process: 'white' }[n.type] ?? 'white';
     lines.push(`  "${esc(n.id)}" [label="${esc(n.label)}${extra}${badge}", style=filled, fillcolor=${color}];`);
   }
   for (const e of graph.edges) {

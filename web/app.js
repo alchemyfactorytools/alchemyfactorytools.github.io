@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'tile-self-contained-replication-2026-06-14v';
+const BUILD_STAMP = 'trash-byproduct-display-2026-06-14w';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -625,6 +625,7 @@ function renderGraph(rawGraph) {
     else if (n.type === 'demand') subText = `${fmt(n.ratePerMin)}/min target`;
     else if (n.type === 'resource') subText = `${fmt(n.ratePerMin)}/min → ${n.consumerCount} machines`;
     else if (n.type === 'surplus') subText = `${fmt(n.ratePerMin)}/min`;
+    else if (n.type === 'trash') subText = `${fmt(n.ratePerMin)}/min wasted`;
     sub.textContent = clip(subText, 40);
     g.appendChild(sub);
     // heat/nutrient a machine draws from the pool — shown only on count-less

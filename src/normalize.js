@@ -83,8 +83,10 @@ function applyByproductPolicy(proc, cfg, warnings, byprodSell) {
     if (item === proc.primary) continue;
     const policy = perItem[item] ?? mode;
     if (policy === 'trash') {
+      // Remember the per-run quantity so the flow graph can surface a "→ trash" stub
+      // (waste you must discard), not just silently drop the co-product.
+      (proc.flags.trashed ??= {})[item] = proc.produces[item];
       delete proc.produces[item];
-      (proc.flags.trashed ??= []).push(item);
     } else if (policy === 'sell') {
       // Route the co-product to a virtual byproduct row. It can then be SOLD
       // (salebp column) or REUSED downstream (reusebp conversion back to the real

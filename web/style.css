@@ -12,6 +12,8 @@
   --demand: #6b5410;
   --resource: #5a2f2f;
   --surplus: #333;
+  --trash: #4a2420;
+  --trash-stroke: #d96b5a;
   --bad: #d96b5a;
   --warn: #d9b35a;
 }
@@ -124,6 +126,7 @@ svg#graph.hovering .edge.hl text { fill: var(--ink); }
 .node.demand rect { fill: var(--demand); }
 .node.resource rect { fill: var(--resource); }
 .node.surplus rect { fill: var(--surplus); stroke-dasharray: 3 3; }
+.node.trash rect { fill: var(--trash); stroke: var(--trash-stroke); stroke-dasharray: 3 3; }
 .node text { fill: var(--ink); font-size: 12px; }
 .node .sub { fill: var(--muted); font-size: 10.5px; }
 .node .count { fill: var(--accent); font-weight: 700; font-size: 12px; }
