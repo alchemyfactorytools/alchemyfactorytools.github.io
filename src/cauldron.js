@@ -223,6 +223,85 @@ function compileCauldron(db) {
   };
 }
 
+// Eligibility mask over the compiled triples for a given config — the SINGLE source of
+// truth shared by the LP normalizer (`normalize.js`) and the tile composer (`composer.js`).
+// Forbidding a cauldron output is a triple-mask operation, NOT a recipe-id denylist (the
+// triples are generated, not curated rows), so both callers must derive eligibility the
+// same way or they drift. Returns the mask plus, optionally, an output→eligible-triples
+// index the composer needs to enumerate cauldron producers of an item.
+//
+//   locked(name) → true if the item is above the active tier (caller supplies the rule).
+//   buildOutputIndex → also return `byOutput`: Map<targetName, tripleIdx[]> over eligible
+//     triples (the LP doesn't need it — it materializes columns lazily — so it's opt-in).
+function cauldronEligibility(db, cfg, { locked, compiled, buildOutputIndex = false } = {}) {
+  const c = compiled || compileCauldron(db);
+  const { inputs, targets, count, triA, triB, triC, outIdx, margin, flags } = c;
+
+  // input-pool allow mask
+  const poolAllowed = new Uint8Array(inputs.length).fill(1);
+  const pool = cfg.cauldron.inputPool;
+  // "growable" = an item you produce in a Nursery (the 9 Herbs: Flax, Sage,
+  // Chamomile, …). Seeds are a separate, BUYABLE category, so they count as
+  // buyables, not growables.
+  const NURSERY = new Set(['Nursery', 'World Tree Nursery']);
+  const growable = new Set();
+  for (const r of db.recipes) if (NURSERY.has(r.machine)) for (const o of Object.keys(r.outputs || {})) growable.add(o);
+  if (pool === 'buyables') {
+    inputs.forEach((it, i) => { poolAllowed[i] = it.buyPrice !== undefined ? 1 : 0; });
+  } else if (pool === 'growables') {
+    inputs.forEach((it, i) => { poolAllowed[i] = growable.has(it.name) ? 1 : 0; });
+  } else if (pool === 'buyables+growables') {
+    inputs.forEach((it, i) => { poolAllowed[i] = (it.buyPrice !== undefined || growable.has(it.name)) ? 1 : 0; });
+  } else if (pool === 'easy') {
+    // "easy" = buyable ∪ growable ∪ anything craftable in ONE recipe step from those
+    // (Sand ← buyable Rock Salt; Sage Powder ← grown Sage). Multi-step items (Linen
+    // Thread ← Flax Fiber ← Flax) stay out — only base + depth-1 crafts qualify. A
+    // recipe counts if ALL its item inputs are in the base set (one of its recipes
+    // is enough — you can make it the easy way).
+    const base = new Set();
+    for (const [n, it] of Object.entries(db.items)) if (it.buyPrice !== undefined || growable.has(n)) base.add(n);
+    const easy = new Set(base);
+    for (const r of db.recipes) {
+      const ins = Object.keys(r.inputs || {});
+      if (ins.length && ins.every((i) => base.has(i))) for (const o of Object.keys(r.outputs || {})) easy.add(o);
+    }
+    inputs.forEach((it, i) => { poolAllowed[i] = easy.has(it.name) ? 1 : 0; });
+  } else if (pool && typeof pool === 'object' && pool.allow) {
+    const allow = new Set(pool.allow);
+    inputs.forEach((it, i) => { poolAllowed[i] = allow.has(it.name) ? 1 : 0; });
+  } else if (pool && typeof pool === 'object' && pool.deny) {
+    const deny = new Set(pool.deny);
+    inputs.forEach((it, i) => { poolAllowed[i] = deny.has(it.name) ? 0 : 1; });
+  } else if (pool !== 'unrestricted') {
+    throw new Error(`unknown cauldron input pool: ${JSON.stringify(pool)}`);
+  }
+
+  const isLocked = locked || (() => false);
+  const forbidCauldron = new Set(cfg.cauldron.forbidFor);
+  const outputForbidden = targets.map((t) => forbidCauldron.has(t.name));
+  const inputLocked = inputs.map((it) => isLocked(it.name));
+  const outputLocked = targets.map((t) => isLocked(t.name));
+  const mask = new Uint8Array(count);
+  const byOutput = buildOutputIndex ? new Map() : null;
+  let eligibleCount = 0;
+  for (let t = 0; t < count; t++) {
+    if (!poolAllowed[triA[t]] || !poolAllowed[triB[t]] || !poolAllowed[triC[t]]) continue;
+    if (inputLocked[triA[t]] || inputLocked[triB[t]] || inputLocked[triC[t]] || outputLocked[outIdx[t]]) continue;
+    if (outputForbidden[outIdx[t]]) continue;
+    if (!cfg.cauldron.allowSelfConsuming && (flags[t] & 2)) continue;
+    if (cfg.cauldron.minMargin > 0 && margin[t] < cfg.cauldron.minMargin) continue;
+    mask[t] = 1;
+    eligibleCount++;
+    if (byOutput) {
+      const nm = targets[outIdx[t]].name;
+      let arr = byOutput.get(nm);
+      if (!arr) byOutput.set(nm, (arr = []));
+      arr.push(t);
+    }
+  }
+  return { compiled: c, poolAllowed, mask, eligibleCount, byOutput };
+}
+
 // Validate curated machine:"Cauldron" recipe rows in the DB against the formula
 // (DESIGN.md: the Ruby row is known to contradict it — quarantine, don't trust).
 function validateCuratedRows(db, compiled) {
@@ -256,4 +335,4 @@ function validateCuratedRows(db, compiled) {
   return results;
 }
 
-module.exports = { compileCauldron, resolveTriple, cauldronStats, validateCuratedRows, toScaled, scaled20ToNumber };
+module.exports = { compileCauldron, cauldronEligibility, resolveTriple, cauldronStats, validateCuratedRows, toScaled, scaled20ToNumber };

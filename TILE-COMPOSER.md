@@ -10,6 +10,61 @@ buy-raw, simplest-to-build, droppable, composable blueprints — and it retires 
 degeneracy whack-a-mole (free Gloom-Fungus loops, 2400/min Plank trash, minted coins) that
 comes from bending a cost-optimizer into a tile-builder.
 
+---
+
+## ⭐ IMPLEMENTED MODEL (as built — supersedes the exploratory metric prose below)
+
+`makeComposer(db, cfg)` → `{ tileCost, buildCost, opCost, canonicalPick, beltItems, utilityCarriers, buyable }`.
+Phases **1 (canonical-recipe DP) and 2 (cauldron triples) are done and unit-tested**
+(`test/composer.test.js`); not yet wired to the server. The picker is a **fixpoint relaxation**,
+not the recursive memo originally sketched here (the recipe DAG has cycles — cauldron outputs are
+also inputs — and a memo poisons across queries; positive weights mean optimal tiles are acyclic,
+so the least fixpoint computed by relaxation is correct, context-free, ~75ms).
+
+**The metric tracks TWO independent quantities per item, each per UNIT OF OUTPUT** — this replaced
+the original single `tileCost` once we found the single scalar conflated structure with cost (a
+Growth Potion's value blew up to ~165k because `Brine:80` × a depth stage; its real per-potion
+copper is ~584):
+
+- **`build`** — structural "how hard to lay out": `DEPTH_W` per stage + `WIDTH_W` per extra
+  distinct input belt, summed down the chain. **Quantity-INDEPENDENT** (fan-out is free — needing
+  6 Sand doesn't make Glass 6× harder to build; you replicate the Sand tile).
+- **`op`** — operating cost: copper consumed per unit of output, propagated by stoichiometry
+  (`qty/prim`). This is the per-minute drain ÷ rate. `opCost(item) × rate` = copper/min (Phase 3).
+
+`score = build + OP_W·op + CO_W·coWaste` is minimised to pick the canonical recipe. Weights
+(`composer.js`, all overridable via `cfg.composer.{depthW,widthW,opW,coW}`): `DEPTH_W 1500,
+WIDTH_W 250, BUY_LEAF 40, OP_W 2, CO_W 30`.
+
+Leaves & special handling:
+- **Buyable**: `build = BUY_LEAF`, `op = buyPrice`.
+- **Currency** (Copper/Silver/Gold Coin): minted at copper-equivalent — `build = BUY_LEAF`,
+  `op = sellPrice` (1 / 1000 / 100k). The free zero-input `Bank Portal` mint is excluded from
+  producers, so coins aren't free. (Copper is genuinely ~1c, so it can still be a cheap cauldron
+  input — that's correct, not the old free-mint degeneracy.)
+- **Belt fuel/fert are NOT free material.** A belt carrier is a *utility* supply (fuel/fert only,
+  the LP's `BELT::X` rule: "a fuel belt shouldn't feed bulk inputs"); as a recipe/cauldron material
+  input it costs its real production (e.g. Coke Powder pays its buy-ore→refine chain). They live in
+  `utilityCarriers`, not `beltItems`.
+- **Nursery fertilizer is charged on the op axis.** A nursery recipe pays
+  `(nutrientCost/prim)·fertOpPerNutrient`, where `fertOpPerNutrient = op(fertCarrier)/nutrientValue`
+  is computed once from a fert-free pass-1 (Growth Potion ≈ 0.056c/nutrient) — a two-pass solve, so
+  the fert-from-a-grown-crop circularity stays finite. The residual fert-to-grow-fert term (~few %)
+  is ignored.
+- **Cauldron triples** are pulled from the shared `cauldronEligibility(db, cfg)` mask in
+  `cauldron.js` (same mask the LP uses — single source of truth, no drift). A cauldron is a 3-in/1-out
+  recipe (qty 1, no co-product): `build` sums DISTINCT inputs (fan-out free), `op` sums by multiplicity.
+
+Verified picks (`maxTier 6`, Coke Powder fuel / Growth Potion fert): Sand → Grinder{Stone}; Salt →
+Stone Crusher{Rock Salt} (dumps only cheap Sand); Glass → Kiln{Sand} (op = 6×Sand); Brick →
+Kiln{Clay}; Plank → Table Saw{Logs}; **Clay → Cauldron{Redcurrant×3}** — a self-contained grown
+cauldron, chosen by correct economics (cheap grown op, no purchase drain), not by depth-hacking.
+
+Open: Phase 3 (composition → sized tile tree, per-min op) not started. `OP_W` is now safe to raise
+(op is clean copper), should we want operating cost to weigh harder in picks.
+
+---
+
 ## Why a separate solver (not another LP objective)
 
 The LP finds a *globally optimal* flow vector for a scalar objective. Every "simplicity"
@@ -131,16 +186,16 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
 
 ## Phased build plan
 
-1. **Canonical-recipe DP** (`tileCost` / `canonicalRecipe`) over the recipe DAG, with
-   build-cost + farm-penalty + buy-raw-leaf + belt-input leaves. Unit-test the picks (Sand →
-   Buy Limestone → grind; Coke Powder → buy-ore refine; Clay → whichever non-cauldron route
-   exists, else cauldron).
-2. **Composition** (`compose`) → tile tree with rates + machine counts. Bottom out at
-   buy/belt. Handle nurseries (plots) for the rare farmed tile.
-3. **Graph emit** → `{nodes, edges, summary}`; wire the renderer.
-4. **Full-belt tiling** per tile (reuse `blueprint`).
-5. **Mode switch** in the server/UI (Simplest → composer).
-6. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
+1. **[DONE] Canonical-recipe DP** — now a build/op two-axis fixpoint relaxation (see IMPLEMENTED
+   MODEL at top). Unit-tested in `test/composer.test.js`.
+2. **[DONE] Cauldron triples → DP** — via shared `cauldronEligibility` mask. Clay resolves to a
+   grown cauldron.
+3. **Composition** (`compose`) → tile tree with rates + machine counts; per-min op = `opCost·rate`.
+   Bottom out at buy/belt/mint. Handle nurseries (plots) for farmed tiles.
+4. **Graph emit** → `{nodes, edges, summary}`; wire the renderer.
+5. **Full-belt tiling** per tile (reuse `blueprint`).
+6. **Mode switch** in the server/UI (Simplest → composer).
+7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
 
 ## Decisions (resolved)
 

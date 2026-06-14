@@ -2,8 +2,10 @@
 
 Working notes for picking this back up. The **active work** is a new **tile-composer**
 (`TILE-COMPOSER.md` + `src/composer.js`) — a deterministic "Simplest" solver meant to
-replace bending the LP into a tile-builder. Phase 1 (recipe DP) is done and **not yet
-wired in**; the LP is still the only live solver.
+replace bending the LP into a tile-builder. **Phases 1 (recipe DP) and 2 (cauldron triples)
+are done + unit-tested** (`test/composer.test.js`), and the metric was redesigned into a
+**build/op two-axis fixpoint** (see below). Still **not wired in** — the LP is the only live
+solver. Next: **Phase 3 (composition)** — expand a canonical pick into a sized tile tree.
 
 ## What this is
 A production-line optimizer + interactive web visualization for the Steam game
@@ -17,8 +19,8 @@ with per-line grouping, full-belt tiling blueprints, and 2D nested layout.
 - **Datamined ground truth:** `raw/starfi5h/*`, `raw/joejoes/*`, `raw/moldy530/*` — community
   reverse-engineered calculators; more authoritative than web sources. `src/cauldron.js`
   matches starfi5h exactly.
-- **Current stamp:** `build-cost-simplest-farm-penalty-2026-06-14z`. Recent commits:
-  `29e5f8b` (composer Phase 1), `649485d` (build-cost Simplest + farm penalty).
+- **Current stamp:** `composer-phase2-build-op-split-2026-06-14z`. Recent commits:
+  `f4ce328` (HANDOFF rewrite), `29e5f8b` (composer Phase 1).
 
 ## ⚠️ Server / asset discipline (read FIRST — caused real confusion)
 - **Claude owns the running server.** After ANY change to `server.js` or `src/*.js` used by
@@ -55,53 +57,52 @@ Resolved decisions:
   pairs with future cross-tile byproduct recycling (Rock-Salt Sand co-product feeding tiles).
 - **Co-product avoidance in v1** (DP penalizes dead co-products; leftovers shown as trash).
 - **Solver toggle** (composer ⟷ LP), like the layout-engine toggle — not side-by-side.
-- **Metric = depth + width + input cost (+ co-product waste).** Deliberately **no machine
-  build-cost or farm penalty** for now (user: a 3-nursery Cauldron tile is fine; don't
-  over-penalize). Add machine weighting later only if a case demands it.
+- **Metric = `build + OP_W·op + CO_W·waste`, build & op tracked SEPARATELY** (see below). The
+  original single-scalar metric was replaced this session — see TILE-COMPOSER.md "IMPLEMENTED MODEL".
 
-### Phase 1 — DONE — `src/composer.js`
-`makeComposer(db, cfg)` → `{ tileCost, canonicalPick, ... }`. A memoized shortest-build-path
-DP picking ONE canonical recipe per item:
-```
-tileCost(item) = min over options of:
-  belt input (canonical fuel/fert, user belt item) : 0
-  buyable raw                                       : BUY_LEAF + MAT_W·buyPrice
-  recipe R producing item                          : DEPTH_W                       // per stage
-                                                   + WIDTH_W·(#inputs − 1)         // fan-in width
-                                                   + Σ tileCost(inputs)            // recursion = depth
-                                                   + CO_W·Σ_co (coQty/primQty)·floor(co)  // dead co-product
-```
-Weights (`composer.js` top): `DEPTH_W 1500, WIDTH_W 250, BUY_LEAF 40, MAT_W 0.15, CO_W 10`.
-Cycle-guarded (`onPath`), tier-gated.
+### Phases 1 + 2 — DONE — `src/composer.js`, `test/composer.test.js`
+`makeComposer(db, cfg)` → `{ tileCost, buildCost, opCost, canonicalPick, beltItems, utilityCarriers,
+buyable }`. A **fixpoint relaxation** (NOT the recursive memo originally planned — the recipe DAG is
+cyclic; positive weights ⇒ optimal tiles acyclic ⇒ least fixpoint is correct, context-free, ~75ms).
 
-**Verified picks** (`maxTier 6`, Coke Powder/Growth Potion as canonical belt fuel/fert):
-Sand → Grinder(Stone) → Stone Crusher(Limestone) ✓ (the "insane Rock Salt for Sand" case is
-fixed by the co-product penalty); Stone → buy Limestone; Salt → Stone Crusher(Rock Salt) ✓
-(cheap Sand co-product doesn't deter); Glass → Kiln(Sand); Brick → Kiln(Clay); Plank → Table
-Saw(Logs) (cheap Logs not Rotten Log); Coke Powder → belt.
+**Two-axis metric, each per unit of output:**
+- **`build`** = `DEPTH_W·stages + WIDTH_W·(distinct−1)`, summed down the chain. **Qty-INDEPENDENT**
+  (fan-out free).
+- **`op`** = copper/unit, propagated by `qty/prim`. `opCost·rate` = copper/min.
+- `score = build + OP_W·op + CO_W·Σ_co (coQty/prim)·floor(co)`. Weights (`composer.js`, all
+  overridable via `cfg.composer.{depthW,widthW,opW,coW}`): `DEPTH_W 1500, WIDTH_W 250, BUY_LEAF 40,
+  OP_W 2, CO_W 30`.
 
-### Phase 1 — KNOWN GAP (do next)
-**Cauldron recipes are LP-generated triples, not in `db.recipes`**, so the composer can't see
-them → **Clay falls back to `Assembler(Charcoal Powder + Sand)`** instead of the user's
-preferred 3-nursery cauldron. Fix: pull canonical cauldron triples into `producersOf`.
-- `src/cauldron.js` `compileCauldron(db)` returns parallel arrays over ~419k triples:
-  `triA/triB/triC` (input indices), **`outIdx`** (target item index), `margin`, `flags`.
-  Scan `outIdx` for a target's index; among triples producing it, pick the simplest-input one
-  (lowest Σ tileCost of the 3 inputs). A cauldron craft is **3 inputs → 1 output**; craft time
-  from `cauldronStats(target)` (piecewise `[3,6,12,24,60]s`). Respect `cfg.cauldron` pool +
-  `forbidFor`/`forceFor` + tier gating (mirror `normalize.js` cauldron eligibility).
+**Key model rules (this session):**
+- **Currency = copper-equivalent**: minted coins cost `sellPrice` (Copper 1, Silver 1000, Gold 100k),
+  build `BUY_LEAF`; free zero-input `Bank Portal` mint excluded from producers.
+- **Belt fuel/fert ≠ free material**: utility-only (`utilityCarriers`, not `beltItems`); as a
+  material input the carrier costs real production (Coke Powder pays buy-ore→refine). LP's `BELT::X`
+  rule.
+- **Nursery fertilizer on the op axis**: `(nutrientCost/prim)·fertOpPerNutrient`,
+  `fertOpPerNutrient = op(fertCarrier)/nutrientValue` from a fert-free pass-1 (two-pass solve; breaks
+  the fert-from-grown-crop circularity). Growth Potion ≈ 0.056c/nutrient.
+- **Cauldron triples**: via shared `cauldronEligibility(db,cfg)` in `cauldron.js` (same mask the LP
+  uses — `normalize.js` migrated onto it, no drift). 3-in/1-out; build sums distinct inputs, op by
+  multiplicity.
+
+**Verified picks** (`maxTier 6`, Coke Powder fuel / Growth Potion fert): Sand → Grinder{Stone};
+Salt → Stone Crusher{Rock Salt} (dumps only cheap Sand); Glass → Kiln{Sand} (op = 6×Sand); Brick →
+Kiln{Clay}; Plank → Table Saw{Logs}; **Clay → Cauldron{Redcurrant×3}** — the self-contained grown
+cauldron, chosen by correct economics (grown op is cheap, no purchase drain), not depth-hacking.
+98/146 items makeable.
 
 ### Remaining phases (not started)
-2. **Cauldron triples → DP** (above) — unblocks Clay.
-3. **Composition** — `compose(target, rate)`: expand the canonical pick top-down into a tile
-   tree, multiplying rates, computing machineCount (or nursery plots) per tile, bottoming out
-   at buy/belt. Replicated by default (private tile per consumer). Co-products → trash/surplus.
-4. **Graph emit** — convert the tile tree to the `{nodes, edges, summary}` shape
-   `buildFlowGraph` returns, so the existing renderer + full-belt `blueprint()` are reused.
-   Each tile is already a labelled tileable box → "Sand tile above Glass tile" falls out.
-5. **Solver toggle** — composer vs LP in the UI (toolbar toggle like layout/util-edge). Server
-   routes "Simplest" → composer, others → LP.
+3. **Composition** — `compose(target, rate)`: expand the canonical pick top-down into a tile tree,
+   multiplying rates, computing machineCount (or nursery plots) per tile, per-min op = `opCost·rate`,
+   bottoming out at buy/belt/mint. Replicated by default. Co-products → trash/surplus.
+4. **Graph emit** — convert the tile tree to the `{nodes, edges, summary}` shape `buildFlowGraph`
+   returns, so the existing renderer + full-belt `blueprint()` are reused.
+5. **Solver toggle** — composer vs LP in the UI; server routes "Simplest" → composer, others → LP.
 6. **v2** — cross-tile co-product feeds in `reuse` mode (+ share/compose mode).
+
+Open tuning: `OP_W` is now safe to raise (op is clean copper) if operating cost should weigh harder
+in picks; Clay picks single-herb `Redcurrant×3` (simpler than a 3-herb mix — confirm if desired).
 
 ---
 

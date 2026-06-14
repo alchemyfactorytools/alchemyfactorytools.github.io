@@ -15,7 +15,7 @@
 
 'use strict';
 
-const { compileCauldron } = require('./cauldron');
+const { cauldronEligibility } = require('./cauldron');
 const { skillParams } = require('./config');
 const { tiers } = require('./tiers');
 
@@ -447,62 +447,10 @@ function buildProcessTable(db, cfg) {
     warnings.push(`cauldron locked at tier ${maxTier} (unlocks at tier ${T.cauldronTier})`);
   }
   if (cfg.cauldron.enabled && cauldronUnlocked) {
-    const compiled = compileCauldron(db);
-    const { inputs, targets, count, triA, triB, triC, outIdx, margin, flags } = compiled;
-
-    // input-pool allow mask
-    const poolAllowed = new Uint8Array(inputs.length).fill(1);
-    const pool = cfg.cauldron.inputPool;
-    // "growable" = an item you produce in a Nursery (the 9 Herbs: Flax, Sage,
-    // Chamomile, …). Seeds are a separate, BUYABLE category, so they count as
-    // buyables, not growables.
-    const NURSERY = new Set(['Nursery', 'World Tree Nursery']);
-    const growable = new Set();
-    for (const r of db.recipes) if (NURSERY.has(r.machine)) for (const o of Object.keys(r.outputs || {})) growable.add(o);
-    if (pool === 'buyables') {
-      inputs.forEach((it, i) => { poolAllowed[i] = it.buyPrice !== undefined ? 1 : 0; });
-    } else if (pool === 'growables') {
-      inputs.forEach((it, i) => { poolAllowed[i] = growable.has(it.name) ? 1 : 0; });
-    } else if (pool === 'buyables+growables') {
-      inputs.forEach((it, i) => { poolAllowed[i] = (it.buyPrice !== undefined || growable.has(it.name)) ? 1 : 0; });
-    } else if (pool === 'easy') {
-      // "easy" = buyable ∪ growable ∪ anything craftable in ONE recipe step from those
-      // (Sand ← buyable Rock Salt; Sage Powder ← grown Sage). Multi-step items (Linen
-      // Thread ← Flax Fiber ← Flax) stay out — only base + depth-1 crafts qualify. A
-      // recipe counts if ALL its item inputs are in the base set (one of its recipes
-      // is enough — you can make it the easy way).
-      const base = new Set();
-      for (const [n, it] of Object.entries(items)) if (it.buyPrice !== undefined || growable.has(n)) base.add(n);
-      const easy = new Set(base);
-      for (const r of db.recipes) {
-        const ins = Object.keys(r.inputs || {});
-        if (ins.length && ins.every((i) => base.has(i))) for (const o of Object.keys(r.outputs || {})) easy.add(o);
-      }
-      inputs.forEach((it, i) => { poolAllowed[i] = easy.has(it.name) ? 1 : 0; });
-    } else if (pool && typeof pool === 'object' && pool.allow) {
-      const allow = new Set(pool.allow);
-      inputs.forEach((it, i) => { poolAllowed[i] = allow.has(it.name) ? 1 : 0; });
-    } else if (pool && typeof pool === 'object' && pool.deny) {
-      const deny = new Set(pool.deny);
-      inputs.forEach((it, i) => { poolAllowed[i] = deny.has(it.name) ? 0 : 1; });
-    } else if (pool !== 'unrestricted') {
-      throw new Error(`unknown cauldron input pool: ${JSON.stringify(pool)}`);
-    }
-
-    const outputForbidden = targets.map((t) => forbidCauldron.has(t.name));
-    const inputLocked = inputs.map((it) => locked(it.name));
-    const outputLocked = targets.map((t) => locked(t.name));
-    const mask = new Uint8Array(count);
-    let eligibleCount = 0;
-    for (let t = 0; t < count; t++) {
-      if (!poolAllowed[triA[t]] || !poolAllowed[triB[t]] || !poolAllowed[triC[t]]) continue;
-      if (inputLocked[triA[t]] || inputLocked[triB[t]] || inputLocked[triC[t]] || outputLocked[outIdx[t]]) continue;
-      if (outputForbidden[outIdx[t]]) continue;
-      if (!cfg.cauldron.allowSelfConsuming && (flags[t] & 2)) continue;
-      if (cfg.cauldron.minMargin > 0 && margin[t] < cfg.cauldron.minMargin) continue;
-      mask[t] = 1;
-      eligibleCount++;
-    }
+    // Eligibility (input pool, tier locks, forbidFor, self-consuming, minMargin) is derived
+    // by the shared helper so the composer and the LP can never drift on the rules.
+    const { compiled, mask, eligibleCount } = cauldronEligibility(db, cfg, { locked });
+    const { inputs, targets, triA, triB, triC, outIdx, margin, flags } = compiled;
 
     const materialize = (t) => {
       const consumes = {};
