@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'liquid-uncapped-2026-06-14r';
+const BUILD_STAMP = 'fullbelt-tiles-2026-06-14s';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -473,8 +473,9 @@ function renderGraph(rawGraph) {
     t.textContent = c.belt ? c.label : `${COLLAPSE_ENABLED ? '▾ ' : ''}${c.label} line`;
     if (bp) {
       const cellShort = bp.cell.map((x) => `${x.count}× ${x.machine}`).join(' + ');
-      // each tile makes the line's output / K — shown so a tile reads as a self-contained unit.
-      const perTile = c.outRate && bp.K ? c.outRate / bp.K : null;
+      // each tile is sized to output one full belt (or the whole line if it's sub-belt) —
+      // shown as the tile's capacity, even though backpressure may run it below that.
+      const perTile = bp.perTileOut != null ? bp.perTileOut : (c.outRate && bp.K ? c.outRate / bp.K : null);
       const rateStr = perTile ? ` · ${fmt(perTile)}${c.outItem ? ' ' + c.outItem : ''}/min per tile` : '';
       const t2 = document.createElementNS(SVGNS, 'text');
       t2.setAttribute('x', c.x + 10); t2.setAttribute('y', c.y + 30); t2.setAttribute('class', 'clustersub'); t2.setAttribute('style', `fill:${col}`);

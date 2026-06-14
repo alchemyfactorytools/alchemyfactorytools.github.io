@@ -328,53 +328,40 @@
     return { clusterOf, clusters };
   }
 
-  // Tileable blueprint for a line: the integer-machine cell you stamp out, and how
-  // many copies. With backpressure (machines idle when downstream buffers fill),
-  // inputs/fuel/fert are still drawn only at the demand rate, so we can freely round
-  // machine counts UP into a clean cell — the extra machines just idle (build cost,
-  // not input cost). We pick the K (copies) giving the FINEST reusable cell whose
-  // over-build ("idle") stays low; cell_p = round(load_p / K), where load is the
-  // continuous machine demand (node.tileLoad). NURSERIES are folded in too (tileLoad =
-  // fractional plot count), so each tile is self-contained and K is driven by the most-
-  // constrained producer — including the nursery (a fractional plot rounds up to a whole
-  // plot per tile, which is physically honest). A tile's OUTPUT is also capped at one
-  // transport line (belt for solids, pipe for liquids): a tile producing more than
-  // transportCap/min can't be drained (backpressure throttles it), so K has a floor of
-  // ceil(outRate / transportCap) — better two 150/min tiles than one 300/min tile a 240
-  // belt can't empty. Always returns a cell.
+  // Tileable blueprint for a line: the integer-machine cell you stamp out, and how many
+  // copies. A tile is a REUSABLE MODULE that outputs one FULL BELT (transportCap/min) — we
+  // size each tile to saturate a belt even if THIS build needs less, because the surplus
+  // just backpressures (machines idle when buffers fill — build cost only, no extra input/
+  // fuel) and another build may want the full belt. So K = belts needed to cover demand =
+  // ceil(outRate / transportCap), and each machine count = ceil(load · transportCap /
+  // outRate) (the line scaled down to one belt's share). We do NOT minimise idle by
+  // over-tiling: 3 tiles of 240/min (720 capacity, backpressure to 600) beats 33 tiles of
+  // 18/min. Liquids are piped/uncapped (transportCap 0) → the whole line is ONE tile.
+  // NURSERIES fold in via tileLoad (fractional plot count) like any other machine.
   function blueprint(members, nodeById, outRate, transportCap) {
-    // timed machines keep the (per-copy-rounded) machineCount × utilization load so
-    // existing tiles are unchanged; nurseries (utilization == null) use the continuous
-    // tileLoad (fractional plot count) so they fold in without disturbing the rest.
+    // timed machines use machineCount × utilization; nurseries (utilization == null) use
+    // the continuous tileLoad (fractional plot count) so they fold in too.
     const loadOf = (n) => (n.machineCount && n.utilization != null ? n.machineCount * n.utilization
       : (n.tileLoad != null ? n.tileLoad : null));
     const loads = members.map((m) => nodeById.get(m))
       .filter((n) => n && n.machine && loadOf(n) != null)
       .map((n) => ({ label: n.label, machine: n.machine, load: loadOf(n) }));
     if (loads.length < 2) return null;
-    // transport floor: each tile's output must fit on one belt/pipe (one drain). Raises K
-    // even when the machine loads alone would prefer a single coarse tile.
-    const kCap = transportCap > 0 && outRate > 0 ? Math.ceil(outRate / transportCap - 1e-6) : 1;
-    const maxK = Math.min(200, Math.max(1, Math.round(Math.max(...loads.map((l) => l.load))), kCap));
-    const cands = [];
-    for (let K = 1; K <= maxK; K++) {
-      let over = 0, total = 0, ok = true;
-      const cell = loads.map((l) => {
-        const count = Math.max(1, Math.round(l.load / K));
-        const have = K * count;
-        if (have < l.load - 1e-6) ok = false; // under-provisioned → would throttle output
-        over += have - l.load; total += have;
-        return { label: l.label, machine: l.machine, count };
-      });
-      if (!ok || !total) continue;
-      cands.push({ K, cell, idle: over / total, total });
-    }
-    if (!cands.length) return null;
-    // honour the transport floor when any candidate satisfies it; otherwise fall back.
-    const capOk = cands.filter((c) => c.K >= kCap);
-    const pool = capOk.length ? capOk : cands;
-    const clean = pool.filter((c) => c.idle <= 0.15);
-    return clean.length ? clean.sort((a, b) => b.K - a.K)[0] : pool.sort((a, b) => a.idle - b.idle)[0];
+    // belt-tiled only when the line outputs MORE than one belt; otherwise the whole line is
+    // a single tile (sub-belt lines and uncapped liquids both land here).
+    const beltTiles = transportCap > 0 && outRate > transportCap + 1e-6;
+    const K = beltTiles ? Math.min(200, Math.ceil(outRate / transportCap - 1e-6)) : 1;
+    const f = beltTiles ? transportCap / outRate : 1; // share of the whole line one tile is
+    let over = 0, total = 0;
+    const cell = loads.map((l) => {
+      const count = Math.max(1, Math.ceil(l.load * f - 1e-6));
+      const have = K * count;
+      over += have - l.load; total += have;
+      return { label: l.label, machine: l.machine, count };
+    });
+    // per-tile output: one belt for a multi-belt line, else the whole line's output.
+    const perTileOut = beltTiles ? transportCap : outRate;
+    return { K, cell, idle: total ? over / total : 0, total, perTileOut };
   }
 
   function layout(graph, opts) {
