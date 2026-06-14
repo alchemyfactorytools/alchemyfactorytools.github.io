@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'explain-real-copper-cost-2026-06-14u';
+const BUILD_STAMP = 'tile-self-contained-replication-2026-06-14v';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -310,119 +310,128 @@ function applyCollapse(graph) {
   return { nodes: graph.nodes.filter((n) => !removed.has(n.id)).concat(groupNodes), edges: [...em.values()], summary: graph.summary };
 }
 
-// Split shared, purely use-proportional "base good" producers (nurseries, smelters,
-// crushers, saws — any single-step-from-raw maker) into per-line dedicated copies. A
-// nursery's nutrient draw scales with USED output (backpressure idles the rest), so one
-// shared 24× Flax nursery feeding three lines costs the same nutrient + same total
-// buildings as three dedicated nurseries (8/10/6) — it just rakes crop edges across the
-// whole graph. The SAME holds for a furnace's fuel: it comes off the main belt just like
-// fertilizer, so a buy-ore→smelter→ingot chain is a base good too (Iron Ore + Iron
-// Smelter, Limestone + Stone Crusher, Logs + Wood Saw, …). Splitting makes each line
-// self-contained and tileable, at no ongoing cost beyond per-line machine rounding.
-//   base good   = a process whose every ITEM input comes from a raw node (Buy/input/
-//                 resource), or that has none at all (grown in a Nursery). Fuel/heat is
-//                 a belt resource (like fertilizer), so it does NOT disqualify it.
-//   shared only = must feed ≥2 distinct production lines (else nothing to untangle).
+// Replicate EVERY shared material producer into per-line dedicated copies, so each
+// product line is a fully self-contained tile: it takes only main-belt inputs (cash /
+// fuel / fertilizer) and produces one full belt of output, with nothing exiting
+// mid-tile. The mental model is "I need Brick, so I drop a Brick blueprint" — that
+// blueprint must carry its OWN Sand sub-chain, not siphon Sand off the Glass line.
+//
+// A node is REPLICATED when its (transitive) material output reaches ≥2 distinct lines
+// (Sand → Salt + Brick + Glass). Its entire upstream cone replicates with it — each
+// line gets a private copy of Limestone → Stone → Sand. Copies are sized by lineFrac:
+// the fraction of the node's output that actually serves each line (Sand splits
+// 224 / 600 / 3600, NOT evenly), so per-line machine counts and tile loads stay honest.
+// Backpressure means a replicated nursery/crusher costs the same total buildings + fuel
+// as the one shared producer it replaces — it just stops raking edges across the canvas.
+//
+// Fuel / fertilizer UTILITY lines are NOT replicated: their heat/nutrient output trunks
+// to every consumer (that's a main-belt input, not a mid-tile material exit). Only
+// item edges drive replication; belt taps are physical (tapped per consumer) so they
+// replicate too, keyed off the lines their fuel/fert/cash ultimately serves.
 function splitBaseGoods(graph) {
   const cl = AlchLayout.assignClusters(graph);
-  const lineOf = (id) => cl.clusterOf.get(id) ?? '·loose';
+  const homeLine = (id) => cl.clusterOf.get(id) ?? '·loose';
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-  const RAW = new Set(['external', 'input', 'resource']);
   const isItemEdge = (e) => !e.heat && !e.nutrient && !e.cash;
-  const itemIn = new Map(graph.nodes.map((n) => [n.id, []]));
-  for (const e of graph.edges) if (isItemEdge(e) && itemIn.has(e.to)) itemIn.get(e.to).push(e);
-  const isBaseGood = (n) => n.type === 'process'
-    && itemIn.get(n.id).every((e) => RAW.has((byId.get(e.from) || {}).type));
-  // A main-belt supply tap is splittable too: a conveyor is physically tapped at many
-  // points, so showing it as one box per consumer cluster (each fed by a short edge)
-  // is realistic, not a fudge — and untangles the coin/fert rake across the canvas.
-  const isBelt = (n) => n.type === 'external' && n.kind === 'belt';
-  // A purchase (Buy X) is just a coin draw + purchasing portal — in-game you'd place one
-  // per consuming line, not a single shared buy stranded between two lines. So split it
-  // per-line too, keeping each Buy tightly coupled to the machine it feeds.
-  const isPurchase = (n) => n.type === 'external' && n.kind === 'purchase';
-  const splittable = (n) => isBelt(n) || isBaseGood(n) || isPurchase(n);
-  // Resolve a consumer to the PRODUCT line(s) it serves. A split base good (nursery)
-  // resolves to ITS OWN output lines — so a fert/coin tap feeding a nursery is grouped
-  // by the cauldron the nursery ultimately feeds, not by each co-located nursery
-  // sub-line (which is what spawned the redundant "two Growth boxes, same region").
-  // Recurse through splittable chains: a purchase→smelter→ingot stack resolves to the
-  // PRODUCT lines the ingot ultimately feeds, so every link in the chain (Buy Ore, the
-  // coin tap funding it, the smelter) splits on the SAME line keys — otherwise the cash
-  // edge from a split coin tap to a split Buy lands on mismatched keys (dangling edge).
-  // `seen` is the current DFS PATH (cycle guard), not a global visited set — it must
-  // be cloned per recursion and never mutated in place. A shared mutable `seen` lets one
-  // sibling branch's additions truncate the next sibling, so groupLines(X) under-resolves
-  // X's line set vs. computing it per-consumer. That mismatch makes a split source get
-  // fewer per-line copies than a downstream consumer references → dangling edges (and a
-  // layout crash). Cloning keeps each branch independent while still breaking cycles.
-  const groupLines = (id, seen) => {
-    seen = seen || new Set();
-    if (seen.has(id)) return [lineOf(id)];
-    const n = byId.get(id);
-    if (n && (isBaseGood(n) || isPurchase(n))) {
-      const childSeen = new Set(seen).add(id);
-      const outs = [...new Set(graph.edges.filter((e) => e.from === id && isItemEdge(e)).flatMap((e) => groupLines(e.to, childSeen)))];
-      if (outs.length) return outs;
-    }
-    return [lineOf(id)];
+  const isBelt = (n) => n && n.type === 'external' && n.kind === 'belt';
+  const outEdges = new Map(graph.nodes.map((n) => [n.id, []]));
+  for (const e of graph.edges) if (e.from !== e.to && outEdges.has(e.from)) outEdges.get(e.from).push(e);
+  // Edges that decide a node's line membership: a normal producer is keyed by where its
+  // MATERIAL (item) output goes; a belt tap by where its fuel/fert/cash ultimately lands
+  // (heat/nutrient/cash), since a belt has no item output of its own.
+  const relevantOut = (id) => {
+    const es = outEdges.get(id) || [];
+    return isBelt(byId.get(id)) ? es : es.filter(isItemEdge);
   };
-  const split = graph.nodes.filter((n) => {
-    if (!splittable(n)) return false;
-    const lines = new Set();
-    for (const e of graph.edges) if (e.from === n.id) for (const L of groupLines(e.to)) lines.add(L);
-    return lines.size >= 2;
-  });
+
+  // linesOf(id): the set of distinct product/util lines this node's output ultimately
+  // serves. A consumer that is itself replicated passes its whole line-set through; a
+  // single-line consumer anchors to its home cluster. Memoized; a cycle contributes
+  // nothing (a self-consuming loop never widens the served set). REPLICATED ⇔ ≥2 lines.
+  const linesMemo = new Map(), onPath = new Set();
+  const linesOf = (id) => {
+    if (linesMemo.has(id)) return linesMemo.get(id);
+    if (onPath.has(id)) return new Set();
+    onPath.add(id);
+    const outs = relevantOut(id);
+    let res;
+    if (!outs.length) res = new Set([homeLine(id)]);
+    else {
+      res = new Set();
+      for (const e of outs) {
+        const sub = linesOf(e.to);
+        if (sub.size >= 2) for (const L of sub) res.add(L);
+        else res.add(homeLine(e.to));
+      }
+    }
+    onPath.delete(id);
+    linesMemo.set(id, res);
+    return res;
+  };
+  const replicated = (id) => linesOf(id).size >= 2;
+
+  // lineFrac(id): fraction of this node's output that serves each line — the rate weight
+  // for its per-line copy. Propagates downstream weights (Sand's 224/600/3600 split flows
+  // up to size the Stone and Limestone copies feeding it). Sums to ~1 over linesOf(id).
+  const fracMemo = new Map(), onPath2 = new Set();
+  const lineFrac = (id) => {
+    if (fracMemo.has(id)) return fracMemo.get(id);
+    if (onPath2.has(id)) return new Map();
+    onPath2.add(id);
+    const outs = relevantOut(id);
+    const total = outs.reduce((s, e) => s + (e.ratePerMin || 0), 0);
+    const res = new Map();
+    if (!total) { const L = [...linesOf(id)][0] ?? homeLine(id); res.set(L, 1); }
+    else for (const e of outs) {
+      const w = (e.ratePerMin || 0) / total;
+      if (replicated(e.to)) { for (const [L, fr] of lineFrac(e.to)) res.set(L, (res.get(L) || 0) + w * fr); }
+      else { const L = homeLine(e.to); res.set(L, (res.get(L) || 0) + w); }
+    }
+    onPath2.delete(id);
+    fracMemo.set(id, res);
+    return res;
+  };
+
+  const split = graph.nodes.filter((n) => replicated(n.id));
   if (!split.length) return graph;
   const splitSet = new Set(split.map((n) => n.id));
   const copyId = (id, line) => `${id}@@${line}`;
-  // rate each product line draws from each split node — fan each out-edge across the
-  // product line(s) its consumer serves.
-  const rateByLine = new Map(); // nodeId -> Map(line -> rate)
-  for (const e of graph.edges) {
-    if (!splitSet.has(e.from)) continue;
-    const ls = groupLines(e.to);
-    const m = rateByLine.get(e.from) || rateByLine.set(e.from, new Map()).get(e.from);
-    for (const L of ls) m.set(L, (m.get(L) || 0) + (e.ratePerMin || 0) / ls.length);
-  }
+
   const nodes = graph.nodes.filter((n) => !splitSet.has(n.id));
   for (const n of split) {
-    const lines = rateByLine.get(n.id) || new Map();
-    const total = [...lines.values()].reduce((a, b) => a + b, 0) || 1;
-    for (const [line, rate] of lines) {
-      const f = rate / total;
+    for (const [line, f] of lineFrac(n.id)) {
       nodes.push({
-        ...n, id: copyId(n.id, line), ratePerMin: rate,
+        ...n, id: copyId(n.id, line), ratePerMin: (n.ratePerMin || 0) * f,
         machineCount: n.machineCount ? Math.max(1, Math.ceil(n.machineCount * f)) : n.machineCount,
         tileLoad: n.tileLoad != null ? n.tileLoad * f : n.tileLoad, // continuous load follows the line's share
         nutrientPerMin: (n.nutrientPerMin || 0) * f, fertPerMin: (n.fertPerMin || 0) * f,
         heatPerMin: (n.heatPerMin || 0) * f, fuelPerMin: (n.fuelPerMin || 0) * f, // fuel scales with the line's share
-        copperPerMin: (n.copperPerMin || 0) * f, // each per-line Buy carries its share of the spend
+        copperPerMin: (n.copperPerMin || 0) * f, // each per-line copy carries its share of the spend
         beltLanes: n.beltLanes ? Math.max(1, Math.ceil(n.beltLanes * f)) : n.beltLanes,
       });
     }
   }
+
   const edges = [];
   for (const e of graph.edges) {
     const fromSplit = splitSet.has(e.from), toSplit = splitSet.has(e.to);
     if (!fromSplit && !toSplit) { edges.push(e); continue; }
-    if (toSplit) { // consumer is split: fan to its per-line copies (by each copy's
-      // output fraction). If the source is ALSO split it shares the product-line key,
-      // so route from the source copy serving that same line — no dangling endpoint.
-      const lines = rateByLine.get(e.to) || new Map();
-      const total = [...lines.values()].reduce((a, b) => a + b, 0) || 1;
-      for (const [line, rate] of lines) {
+    if (toSplit) {
+      // consumer is replicated → fan this edge to each consumer copy by its line share.
+      // A replicated source shares the same line keys, so route from the matching copy.
+      for (const [line, f] of lineFrac(e.to)) {
         const from = fromSplit ? copyId(e.from, line) : e.from;
-        edges.push({ ...e, from, to: copyId(e.to, line), ratePerMin: (e.ratePerMin || 0) * (rate / total) });
+        edges.push({ ...e, from, to: copyId(e.to, line), ratePerMin: (e.ratePerMin || 0) * f });
       }
-    } else { // only the source is split → route to the copy serving the consumer's line(s)
-      const ls = groupLines(e.to);
-      for (const L of ls) edges.push({ ...e, from: copyId(e.from, L), ratePerMin: (e.ratePerMin || 0) / ls.length });
+    } else {
+      // only the source is replicated → route to the copy(ies) serving the consumer.
+      const fr = replicated(e.to) ? lineFrac(e.to) : new Map([[homeLine(e.to), 1]]);
+      for (const [line, f] of fr) edges.push({ ...e, from: copyId(e.from, line), ratePerMin: (e.ratePerMin || 0) * f });
     }
   }
-  // Safety net: the per-line keying above can, in rare chained-split cases, reference a
-  // source/target copy that wasn't created. Drop any such dangling edge rather than let
-  // it reach the layout (an edge endpoint with no node crashes the spanning-tree walk).
+  // Safety net: the per-line keying can, in rare chained/cyclic cases, reference a copy
+  // that wasn't created. Drop any such dangling edge rather than let it reach the layout
+  // (an edge endpoint with no node crashes the spanning-tree walk).
   const liveIds = new Set(nodes.map((n) => n.id));
   const liveEdges = edges.filter((e) => liveIds.has(e.from) && liveIds.has(e.to));
   return { nodes, edges: liveEdges, summary: graph.summary };
