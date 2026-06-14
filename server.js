@@ -17,13 +17,14 @@ const { resolveConfig } = require('./src/config');
 const { buildProcessTable } = require('./src/normalize');
 const { Model, optimize, optimizeWithinTolerance, probeInfeasibility } = require('./src/model');
 const { buildFlowGraph, toDot, toMermaid } = require('./src/flowgraph');
+const { canonicalUtilities } = require('./src/utilities');
 const { assignClusters } = require('./src/layout');
 const { explain } = require('./src/explain');
 const db = require('./data/alchemy_db.v41.json');
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'trash-byproduct-display-2026-06-14w';
+const SERVER_STAMP = 'canonical-fuel-fert-tiles-2026-06-14x';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -48,6 +49,14 @@ async function solveRequest(body) {
   if (!(rate > 0)) throw Object.assign(new Error('rate must be > 0'), { status: 400 });
   const cfg = resolveConfig(config);
   cfg.buildability = 0; // scaled below, relative to THIS build's own cost (see the probe)
+  // Canonical fuel/fert tiles: pre-pick the carrier (Coke Powder, Growth Potion @ t6) and
+  // its simplest clean chain, then lock the build to it (default on; canonicalUtilities=false
+  // to disable). Done before the main table so the lock is baked into the columns.
+  if (config.canonicalUtilities !== false) {
+    const canon = await canonicalUtilities(db, cfg, { buildProcessTable, Model, optimizeWithinTolerance });
+    // exemptItem: never let the lock forbid producing the very item we're solving for
+    if (canon) cfg.canonical = { ...canon, exemptItem: item };
+  }
   const pt = buildProcessTable(db, cfg);
   const model = new Model(pt, db);
 

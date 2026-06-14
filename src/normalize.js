@@ -189,6 +189,12 @@ function buildProcessTable(db, cfg) {
     };
 
     const pushRecipeColumn = (idSuffix, consumes, produces, extraFlags) => {
+      // Canonical-utility lock: drop non-canonical producers of a utility-exclusive item
+      // (fuel/fert chain), so the build uses the pre-solved clean tile, not a wasteful alt.
+      // Never forbid producing the DEMANDED item itself (e.g. when the target IS a
+      // fertilizer) — that would make the requested build infeasible.
+      if (cfg.canonical && cfg.canonical.forbidRecipeIds && cfg.canonical.forbidRecipeIds.has(`recipe:${recipe.id}${idSuffix}`)
+        && !(cfg.canonical.exemptItem && produces[cfg.canonical.exemptItem])) return;
       netSameItems(consumes, produces);
       const baseTime = recipe.baseTime ?? 0;
       let heat = -machineHeatPerRun(machine, machines, baseTime, params.speedMult);
@@ -273,9 +279,14 @@ function buildProcessTable(db, cfg) {
   // Crafted/bought fuel & fertilizer. Belt-supplied fuel/fert is handled in the
   // belt section below (it converts a belt:: row, not the real item, so a fuel belt
   // can't also satisfy material demand for that item).
+  // Canonical-utility lock: when set, only the chosen carrier may be burned/fertilized
+  // for self-supply — so every build's fuel is the same canonical item (belt-supplied
+  // fuel/fert is separate, handled below, and is never restricted here).
+  const canonFuel = cfg.canonical && cfg.canonical.fuelItem;
+  const canonFert = cfg.canonical && cfg.canonical.fertItem;
   for (const [name, item] of Object.entries(items)) {
     const buyable = item.buyPrice !== undefined;
-    if (item.heat !== undefined && item.heat > 0 && (cfg.selfFuel || buyable)) {
+    if (item.heat !== undefined && item.heat > 0 && (cfg.selfFuel || buyable) && (!canonFuel || name === canonFuel)) {
       processes.push({
         id: `burn:${name}`, kind: 'burn', timeSec: 0,
         consumes: { [name]: 1 }, produces: {},
@@ -283,7 +294,7 @@ function buildProcessTable(db, cfg) {
         copperCost: 0, copperRevenue: 0, flags: {},
       });
     }
-    if (item.nutrientValue !== undefined && item.nutrientValue > 0 && (cfg.selfFert || buyable)) {
+    if (item.nutrientValue !== undefined && item.nutrientValue > 0 && (cfg.selfFert || buyable) && (!canonFert || name === canonFert)) {
       processes.push({
         id: `fert:${name}`, kind: 'fertilize', timeSec: 0,
         consumes: { [name]: 1 }, produces: {},
