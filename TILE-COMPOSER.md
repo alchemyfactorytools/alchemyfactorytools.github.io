@@ -220,8 +220,15 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    op = `opCost·rate`. Bottoms out at buy/belt/mint; nurseries sized as plots; shared fuel/fert/money
    trunks (fuel/fert via a coupled scalar fixpoint). Minted coins link to the belt money line.
    Unit-tested in `test/composer.test.js`.
-4. **Graph emit** → `{nodes, edges, summary}`; wire the renderer. Must wire each mint leaf to the
-   main-belt money line (`summary.mintedCoins`).
+4. **[DONE] Graph emit** (`src/compose-graph.js` `composeGraph(composed, db, cfg)`) →
+   `{nodes, edges, summary}` in the buildFlowGraph shape, so the existing layout/svg/dot/mermaid
+   render it unchanged. Walks the replicated tree (one node per tile, material edge per input),
+   then wires the three shared trunks as resource/cash edges: fuel root → every heated machine
+   (`heat`), fert root → every nursery (`nutrient`), and a single `money:belt` line → every buy/mint
+   (`cash`) — so each minted coin links back to the money line. Both trunks are walked BEFORE wiring
+   (a trunk can hold consumers of the other — the fert carrier's Clay cauldron burns fuel). Verified:
+   0 validation issues across every makeable item; renders through `renderSvg`. Unit-tested in
+   `test/compose-graph.test.js`. `summary.solver === 'composer'`.
 5. **Full-belt tiling** per tile (reuse `blueprint`).
 6. **Mode switch** in the server/UI (Simplest → composer).
 7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
