@@ -69,12 +69,13 @@ function renderSvg(graph, { title = '', orientation = 'LR' } = {}) {
     const isFuel = e.heat || e.item === 'HEAT';
     const isFert = e.nutrient || e.item === 'NUTRIENT';
     const isCash = e.cash;
-    const isRecycle = recycle && recycle.has(e.from + '\t' + e.to);
+    const isCoproduct = e.coproduct; // a reused co-product feeding another tile (cross-tile recycle)
+    const isRecycle = (recycle && recycle.has(e.from + '\t' + e.to)) || isCoproduct;
     const stroke = isFuel ? COLORS.heat : isFert ? COLORS.fert : isCash ? COLORS.cash : (isRecycle ? COLORS.recycle : COLORS.flow);
     const dash = isCash ? ' stroke-dasharray="5 3"' : isRecycle ? ' stroke-dasharray="4 3"' : '';
     out.push(`<path d="${edgePath(eo, orientation)}" fill="none" stroke="${stroke}" stroke-width="1.4"${dash} marker-end="url(#a)" opacity="${isRecycle ? 0.6 : 0.95}"/>`);
     const m = edgeMid(eo);
-    const label = `${e.item} ${fmt(e.ratePerMin)}`;
+    const label = `${isCoproduct ? '♻ ' : ''}${e.item} ${fmt(e.ratePerMin)}`;
     out.push(`<text x="${m.x}" y="${m.y - 3}" text-anchor="middle" font-size="10" fill="${COLORS.bg}" stroke="${COLORS.bg}" stroke-width="3" paint-order="stroke">${esc(label)}</text>`);
     out.push(`<text x="${m.x}" y="${m.y - 3}" text-anchor="middle" font-size="10" fill="${isRecycle ? COLORS.recycle : COLORS.muted}">${esc(label)}</text>`);
   }

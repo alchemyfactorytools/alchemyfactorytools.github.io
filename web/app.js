@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-belt-supply-display-2026-06-14z';
+const BUILD_STAMP = 'composer-coproduct-feed-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -334,7 +334,10 @@ function splitBaseGoods(graph) {
   const cl = AlchLayout.assignClusters(graph);
   const homeLine = (id) => cl.clusterOf.get(id) ?? '·loose';
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-  const isItemEdge = (e) => !e.heat && !e.nutrient && !e.cash;
+  // A co-product feed is a cross-tile reuse edge (Salt tile's Sand → the Glass line), not part of a
+  // node's primary material spine — it renders as a dashed recycle link but must NOT drag its source
+  // into the consumer's replication cone, or the Salt tile would clone onto the Glass line.
+  const isItemEdge = (e) => !e.heat && !e.nutrient && !e.cash && !e.coproduct;
   const isBelt = (n) => n && n.type === 'external' && n.kind === 'belt';
   const outEdges = new Map(graph.nodes.map((n) => [n.id, []]));
   for (const e of graph.edges) if (e.from !== e.to && outEdges.has(e.from)) outEdges.get(e.from).push(e);
@@ -529,7 +532,8 @@ function renderGraph(rawGraph) {
       if (utilEdgeMode === 'off') continue; // bands carry the info
       if (utilEdgeMode === 'trunk' && trunkedEdges && trunkedEdges.has(e.from + '\t' + e.to)) continue; // drawn as a trunk
     }
-    const isRecycle = recycle && recycle.has(e.from + '\t' + e.to);
+    // co-product feed (reuse mode): a reused co-product crossing tiles — styled like a recycle link
+    const isRecycle = (recycle && recycle.has(e.from + '\t' + e.to)) || e.coproduct;
     const g = document.createElementNS(SVGNS, 'g');
     g.setAttribute('class', 'edge' + (fuelEdge ? ' heat' : fertEdge ? ' nutrient' : cashEdge ? ' cash' : (isRecycle ? ' recycle' : '')));
     edgeGroups.push({ g, from: e.from, to: e.to, feedback: fuelEdge || fertEdge });
@@ -538,7 +542,7 @@ function renderGraph(rawGraph) {
     path.setAttribute('marker-end', 'url(#arrow)');
     g.appendChild(path);
     const m = ENGINE.edgeMid(eo);
-    const label = `${e.item} ${fmt(e.ratePerMin)}`;
+    const label = `${e.coproduct ? '♻ ' : ''}${e.item} ${fmt(e.ratePerMin)}`;
     for (const cls of ['bg', '']) {
       const t = document.createElementNS(SVGNS, 'text');
       t.setAttribute('x', m.x); t.setAttribute('y', m.y - 3);

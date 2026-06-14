@@ -191,3 +191,20 @@ test('nursery fertilizer is charged on the op axis (free fert → grown herb op 
   const noFert = makeComposer(db, resolveConfig({ maxTier: 6, canonical: { fuelItem: 'Coke Powder' } }));
   assert.equal(noFert.opCost('Redcurrant'), 0);
 });
+
+test('Phase 7: reuse mode feeds a co-product into matching demand (Saturn Sand → fewer farms)', () => {
+  // Saturn = Shaper{Salt, Brick, Glass}. Its Salt comes from Stone Crusher{Rock Salt} → 100 Salt +
+  // 100 Sand co-product, and its Glass needs Sand. Reuse routes that Sand into the Glass demand, so
+  // dedicated Sand farms (Grinders) shrink; trash mode builds them all and dumps the co-product.
+  const reuse = composer({ byproducts: { mode: 'reuse' } }).compose('Saturn', 1);
+  const trash = composer({ byproducts: { mode: 'trash' } }).compose('Saturn', 1);
+  assert.ok(reuse.summary.machineTotals.Grinder < trash.summary.machineTotals.Grinder,
+    'reuse builds fewer Sand grinders than trash');
+  const fed = reuse.summary.coproductFeeds.find((f) => f.item === 'Sand');
+  assert.ok(fed && fed.rate > 1, 'Sand is fed across tiles in reuse mode');
+  assert.equal(trash.summary.coproductFeeds.length, 0, 'trash mode feeds nothing');
+  // Money line drops too: 600/min of Sand no longer needs its bought Stone.
+  assert.ok(reuse.summary.copperPerMin < trash.summary.copperPerMin, 'reuse spends less (free co-product)');
+  // The co-fed amount never exceeds the gross co-product supply (Stone Crusher makes 600 Sand here).
+  assert.ok(fed.rate <= 600 + 1e-6, 'feed bounded by genuine co-production');
+});

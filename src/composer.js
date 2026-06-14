@@ -327,7 +327,15 @@ function makeComposer(db, cfg) {
   // Build the sized subtree for `item` at `rate` items/min, accumulating utility/money draws into
   // `acc`. Replicated: each call returns a fresh subtree. `path` makes node ids unique across
   // replicas; `seen` guards the (provably-acyclic, but defensively bounded) recursion.
-  function buildTree(item, rate, path, seen, acc) {
+  //
+  // Cross-tile co-product feeds (Phase 7 / reuse mode): `coBudget` is a SHARED, mutable Map of
+  // item → unclaimed co-product supply (a global pool, drained greedily in walk order). Before
+  // building dedicated production of an input, a consumer DRAWS from this pool — `min(avail, need)`
+  // — so a co-product (e.g. the Sand thrown off by Rock-Salt → Salt) offsets the demand it would
+  // otherwise build a private farm for (the Sand for Glass). The claimed draw is pushed to `coFeeds`
+  // (`{ item, rate, consumerId }`) so compose-graph can wire the source tile → this consumer. Pass
+  // coBudget = null to disable feeds (trash mode, and the unit/trunk probes, which don't participate).
+  function buildTree(item, rate, path, seen, acc, coBudget = null, coFeeds = null) {
     const id = path;
     if (beltItems.has(item)) return { id, item, source: 'belt', ratePerMin: rate, inputs: [] };
     const pick = solve().pick.get(item);
@@ -383,7 +391,20 @@ function makeComposer(db, cfg) {
     const inputs = [];
     for (const [inItem, qty] of Object.entries(r.inputs || {})) {
       if (seen2.has(inItem)) continue; // defensive: optimal picks are acyclic, but never loop
-      inputs.push(buildTree(inItem, qty * runsPerMin, `${path}>${inItem}`, seen2, acc));
+      let needRate = qty * runsPerMin;
+      // Reuse mode: cover part of this input from the shared co-product pool before building it.
+      // Only for items genuinely co-produced elsewhere (in coBudget) and not free belt leaves
+      // (a belt arrival is already free, so co-feeding it saves nothing).
+      if (coBudget && !beltItems.has(inItem)) {
+        const avail = coBudget.get(inItem) || 0;
+        if (avail > 1e-9) {
+          const take = Math.min(avail, needRate);
+          coBudget.set(inItem, avail - take);
+          needRate -= take;
+          if (coFeeds && take > 1e-9) coFeeds.push({ item: inItem, rate: take, consumerId: id });
+        }
+      }
+      if (needRate > 1e-9) inputs.push(buildTree(inItem, needRate, `${path}>${inItem}`, seen2, acc, coBudget, coFeeds));
     }
     const byproducts = {}; // co-products other than the primary → trash/surplus (v1: no cross-tile feed)
     for (const [out, q] of Object.entries(r.outputs || {})) {
@@ -397,6 +418,26 @@ function makeComposer(db, cfg) {
       byproducts, inputs,
     };
   }
+
+  // Gross co-product supply per item across a tree (the pool available to feed cross-tile demand).
+  // Gross = the byproduct a tile makes regardless of whether it's later claimed — claiming offsets
+  // the CONSUMER's dedicated production, never the source's output, so this stays the true supply.
+  function measureCoSupply(tile, into) {
+    for (const [b, r] of Object.entries(tile.byproducts || {})) into.set(b, (into.get(b) || 0) + r);
+    for (const c of tile.inputs || []) measureCoSupply(c, into);
+    return into;
+  }
+  const freshAcc = () => ({ heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {} });
+  const aggregateFeeds = (coFeeds) => {
+    const m = new Map();
+    for (const f of coFeeds) m.set(f.item, (m.get(f.item) || 0) + f.rate);
+    return [...m].map(([item, rate]) => ({ item, rate }));
+  };
+  const mapsClose = (a, b) => {
+    if (a.size !== b.size) return false;
+    for (const [k, v] of a) if (Math.abs((b.get(k) || 0) - v) > 1e-6) return false;
+    return true;
+  };
 
   // Sum machine counts across a tree (for the summary / total buildables).
   function tallyMachines(tile, into) {
@@ -413,8 +454,29 @@ function makeComposer(db, cfg) {
   // resolved rates. Money has no such feedback (buying doesn't cost heat), so it's a plain sum.
   function compose(target, rate) {
     solve();
-    const acc = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {} };
-    const tree = buildTree(target, rate, target, new Set(), acc);
+
+    // Phase 7 — cross-tile co-product feeds (reuse mode). A co-product offsets dedicated production
+    // of the same item elsewhere in the build (the Sand thrown off making Saturn's Salt covers part
+    // of the Sand for its Glass → fewer Sand farms). Because offsetting a consumer's production can
+    // in turn shrink a co-product's OWN source, the supply pool is the fixpoint of "build with this
+    // budget → measure the resulting gross co-supply"; it only ever decreases, so it converges in a
+    // few passes. Trash mode (or 'sell' left to the LP) builds with no pool. Trunks excluded in v1.
+    const mode = (cfg.byproducts && cfg.byproducts.mode) || 'reuse';
+    const reuse = mode !== 'trash';
+    let coBudget = new Map();
+    if (reuse) {
+      let prev = null;
+      for (let i = 0; i < 8; i++) {
+        const probe = buildTree(target, rate, target, new Set(), freshAcc(), new Map(coBudget), null);
+        const measured = measureCoSupply(probe, new Map());
+        if (prev && mapsClose(measured, prev)) break;
+        prev = measured; coBudget = measured;
+      }
+    }
+
+    const acc = freshAcc();
+    const coFeeds = []; // { item, rate, consumerId } — claimed cross-tile co-product draws (graph wiring)
+    const tree = buildTree(target, rate, target, new Set(), acc, reuse ? new Map(coBudget) : null, coFeeds);
     const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
 
     // unit draws: build each trunk at 1 carrier/min to read how much heat/nutrient it itself needs.
@@ -473,9 +535,10 @@ function makeComposer(db, cfg) {
       fuelItem, fertItem: fertCarrier,
       fuelPerMin: F, fertPerMin: G,
       mintedCoins: acc.mintedCoins,                    // coins/min minted → must link to the belt money line
+      coproductFeeds: aggregateFeeds(coFeeds),         // [{ item, rate }] co-product reused across tiles
       warnings,
     };
-    return { tree, fuel, fert, totals, summary };
+    return { tree, fuel, fert, totals, coFeeds, summary };
   }
 
   return {

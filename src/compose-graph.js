@@ -53,6 +53,7 @@ function composeGraph(composed, db, cfg) {
   const heatedNodes = [];   // { id, fuelPerMin } — wired to the fuel trunk root
   const nurseryNodes = [];  // { id, fertPerMin } — wired to the fert trunk root
   const moneyDraws = [];    // { id, copperPerMin, coinItem } — wired to the money line
+  const coSources = [];     // { id, item, rate } — every tile's gross co-product (Phase 7)
 
   // Walk a tile tree, emitting nodes + material/byproduct edges. Returns the root node id.
   function walk(tile) {
@@ -108,12 +109,11 @@ function composeGraph(composed, db, cfg) {
       const childId = walk(child);
       edges.push({ from: childId, to: tile.id, item: child.item, ratePerMin: child.ratePerMin });
     }
-    // co-products → trash sinks (v1: no cross-tile feed)
+    // co-products: collected as supply sources, matched to consumers (reuse) or trashed (the
+    // unclaimed remainder) in one pass AFTER the whole graph is walked — see co-product wiring below.
     for (const [item, rate] of Object.entries(tile.byproducts || {})) {
       if (rate <= 0.05) continue;
-      const tid = `trash:${tile.id}:${item}`;
-      addNode({ id: tid, type: 'surplus', label: `${item} → trash`, ratePerMin: rate, badges: [] });
-      edges.push({ from: tile.id, to: tid, item, ratePerMin: rate });
+      coSources.push({ id: tile.id, item, rate });
     }
     return tile.id;
   }
@@ -149,6 +149,39 @@ function composeGraph(composed, db, cfg) {
   for (const s of trunkSources(composed.fert, 'fert')) for (const n of nurseryNodes) {
     const r = n.fertPerMin * s.share;
     if (r > EPS) edges.push({ from: s.id, to: n.id, item: composed.summary.fertItem, ratePerMin: r, nutrient: true });
+  }
+
+  // Phase 7 — cross-tile co-product feeds. compose() recorded each consumer's claimed draw in
+  // `coFeeds`; the gross supply is `coSources`. Per item, distribute the claim across sources by
+  // each source's share of total supply (so a consumer draws proportionally from every producer of
+  // that co-product), then trash each source's UNCLAIMED remainder. Σ wired = Σ claimed ≤ Σ supplied,
+  // so material is conserved. In trash mode coFeeds is empty → every source trashes its whole output.
+  const claimsByItem = new Map();
+  for (const f of composed.coFeeds || []) {
+    if (!claimsByItem.has(f.item)) claimsByItem.set(f.item, []);
+    claimsByItem.get(f.item).push(f);
+  }
+  const srcByItem = new Map();
+  for (const s of coSources) {
+    if (!srcByItem.has(s.item)) srcByItem.set(s.item, []);
+    srcByItem.get(s.item).push(s);
+  }
+  for (const [item, srcs] of srcByItem) {
+    const supply = srcs.reduce((a, s) => a + s.rate, 0);
+    const claims = claimsByItem.get(item) || [];
+    const claimed = claims.reduce((a, c) => a + c.rate, 0);
+    for (const s of srcs) {
+      for (const c of claims) {
+        const r = supply > EPS ? (s.rate * c.rate) / supply : 0;
+        if (r > 0.05) edges.push({ from: s.id, to: c.consumerId, item, ratePerMin: r, coproduct: true });
+      }
+      const trashRate = supply > EPS ? s.rate * (1 - claimed / supply) : s.rate;
+      if (trashRate > 0.05) {
+        const tid = `trash:${s.id}:${item}`;
+        addNode({ id: tid, type: 'surplus', label: `${item} → trash`, ratePerMin: trashRate, badges: [] });
+        edges.push({ from: s.id, to: tid, item, ratePerMin: trashRate });
+      }
+    }
   }
 
   // main-belt money line: a single source feeding every buy/mint (incl. the trunks'). A minted
@@ -193,6 +226,7 @@ function composeGraph(composed, db, cfg) {
     externals,
     machineTotals: composed.summary.machineTotals,
     mintedCoins: composed.summary.mintedCoins,
+    coproductFeeds: composed.summary.coproductFeeds || [],
     cgRounds: null,
     binding: [],
     selfSustaining: composed.summary.copperPerMin < 1,

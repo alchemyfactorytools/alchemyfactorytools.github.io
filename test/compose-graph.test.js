@@ -109,3 +109,32 @@ test('Phase 4: co-products render as trash sinks, not dangling outputs', () => {
   if (trash.length) for (const t of trash) assert.ok(g.edges.some((e) => e.to === t.id), 'trash sink has an incoming edge');
   assert.equal(g.summary.validation.length, 0);
 });
+
+test('Phase 7: co-product feed wires source → consumer and conserves material', () => {
+  const reuseCfg = resolveConfig({ maxTier: 6, byproducts: { mode: 'reuse' }, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } });
+  const g = composeGraph(makeComposer(db, reuseCfg).compose('Saturn', 1), db, reuseCfg);
+  assert.equal(g.summary.validation.length, 0);
+  const coEdges = g.edges.filter((e) => e.coproduct && e.item === 'Sand');
+  assert.ok(coEdges.length >= 1, 'a Sand co-product edge is wired to a consumer');
+  for (const e of coEdges) {
+    assert.ok(new Set(g.nodes.map((n) => n.id)).has(e.to), 'co-feed target is a real node');
+  }
+  // The consumer (Glass tile) gets its full Sand: dedicated production + co-feed = recipe demand.
+  const glass = g.nodes.find((n) => n.id === 'Saturn>Glass');
+  const sandIn = g.edges.filter((e) => e.to === glass.id && e.item === 'Sand').reduce((a, e) => a + e.ratePerMin, 0);
+  assert.ok(Math.abs(sandIn - 3600) < 1, `Glass receives all 3600 Sand (got ${sandIn})`);
+  // Conservation: every co-fed unit traces to a real co-product. Sources can over-produce (the fert
+  // trunk's Brine→Salt also throws off Sand), in which case the genuine surplus is trashed — but the
+  // total fed never exceeds the total co-product routed off all sources (fed + trashed).
+  const sandFed = g.edges.filter((e) => e.item === 'Sand' && e.coproduct).reduce((a, e) => a + e.ratePerMin, 0);
+  const sandRouted = g.edges.filter((e) => e.item === 'Sand' && (e.coproduct || /^trash:/.test(e.to))).reduce((a, e) => a + e.ratePerMin, 0);
+  assert.ok(sandFed <= sandRouted + 1e-6, 'co-fed Sand never exceeds the co-product supply');
+});
+
+test('Phase 7: trash mode keeps co-products as trash sinks (no feed edges)', () => {
+  const trashCfg = resolveConfig({ maxTier: 6, byproducts: { mode: 'trash' }, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } });
+  const g = composeGraph(makeComposer(db, trashCfg).compose('Saturn', 1), db, trashCfg);
+  assert.equal(g.edges.filter((e) => e.coproduct).length, 0, 'no co-feed edges in trash mode');
+  assert.ok(g.nodes.some((n) => n.type === 'surplus' && /Sand/.test(n.label)), 'Sand is trashed');
+  assert.equal(g.summary.validation.length, 0);
+});

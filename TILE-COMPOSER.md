@@ -253,7 +253,20 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    (`Main belt: <coins>`), and minted copper — whether no coins are belted or belt cash is
    over-subscribed — is an explicit **ASSUMPTION** (badge + warning). `compose-graph.js` reads
    `cfg.belt`; warnings surface in the server response (`out.warnings`).
-7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
+7. **[DONE] Cross-tile co-product feeds** (reuse mode). When `cfg.byproducts.mode !== 'trash'`, a
+   co-product offsets dedicated production of the SAME item elsewhere in the build — the Sand thrown
+   off making Saturn's Salt (Stone Crusher `1 Rock Salt → 100 Salt + 100 Sand`) covers part of the
+   Sand its Glass needs, so the dedicated Sand farms shrink (Saturn @1/min: **303 → 255 Grinders**,
+   600 Sand reused, money line −2.4k c/min). Model: a co-product is an internal supply that offsets
+   demand exactly like a belt rate cap. `compose()` measures the gross co-product pool, then greedily
+   draws it before building dedicated production (recording each consumer's claim in `coFeeds`); the
+   supply pool is taken to a monotone-decreasing fixpoint since offsetting a consumer can shrink a
+   co-product's own source. `compose-graph.js` wires each source → claiming consumer proportionally
+   (`coproduct: true`, rendered as a dashed ♻ recycle edge) and trashes only the UNCLAIMED remainder,
+   so Σ fed ≤ Σ produced (conserved). Trunks (fuel/fert) are co-product sources but don't themselves
+   claim in v1. `summary.coproductFeeds = [{item, rate}]`. Unit-tested in both composer suites.
+   Open (v3): trunk tiles claiming co-product; the share-mode toggle (Q1) that DEDUPES rather than
+   replicates, which pairs naturally with cross-tile feeds.
 
 ## Decisions (resolved)
 
@@ -262,7 +275,8 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
   especially valuable once **cross-tile byproduct recycling** is on (the Rock-Salt Sand
   co-product replacing some Sand farm tiles).
 - **Q2 — Avoid + show leftovers.** The DP prefers recipes with no dead co-product; leftovers
-  render as trash/surplus. Cross-tile co-product feeds are v2 (and pair with the share mode).
+  render as trash/surplus. **Cross-tile co-product feeds are now live (Phase 7, reuse mode):** a
+  co-product is routed into matching demand before the leftover (if any) is trashed.
 - **Q3 — Solver toggle.** A composer⟷LP toggle like the layout-engine toggle: a build is
   *either* tile-composed *or* LP-optimized, the user picks. Not side-by-side.
 - **Q4 — Keep the penalty knob, and weigh DEPTH+WIDTH (not just build cost).** A Cauldron is

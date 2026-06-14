@@ -26,7 +26,7 @@ const db = require('./data/alchemy_db.v41.json');
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'composer-belt-supply-display-2026-06-14z';
+const SERVER_STAMP = 'composer-coproduct-feed-2026-06-14z';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -183,6 +183,9 @@ function composerExplain(composed, fuelItem, fertItem) {
   ];
   if (Object.keys(s.mintedCoins).length) {
     lines.push(`Minted coins → belt money line: ${Object.entries(s.mintedCoins).map(([c, r]) => `${r}/min ${c}`).join(', ')}.`);
+  }
+  if (s.coproductFeeds && s.coproductFeeds.length) {
+    lines.push(`Reused co-products (fewer dedicated tiles): ${s.coproductFeeds.map((f) => `${Math.round(f.rate)}/min ${f.item}`).join(', ')}.`);
   }
   return lines.join('\n');
 }
