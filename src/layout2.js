@@ -303,7 +303,10 @@
     // Each line's DOMINANT product leaving the box (per minute) and one belt's carry rate
     // — blueprint() caps a tile's output at one belt, and the header divides by K to show
     // each tile's rate. Must match the leaving-item logic used to render the header.
-    const beltSpeed = (graph.summary && graph.summary.beltSpeed) || 0;
+    const summary = graph.summary || {};
+    const beltSpeed = summary.beltSpeed || 0;
+    const pipeSpeed = summary.pipeSpeed || 0;
+    const liquidSet = new Set(summary.liquidItems || []);
     const lineOutput = (members) => {
       const mset = new Set(members);
       const byItem = new Map();
@@ -319,7 +322,9 @@
       const out = lineOutput(c.members);
       c.outItem = out ? out.item : null;
       c.outRate = out ? out.rate : null;
-      c.tile = blueprint(c.members, nodeById, c.outRate, beltSpeed);
+      // liquids are piped (much higher throughput), everything else rides a belt.
+      const cap = c.outItem && liquidSet.has(c.outItem) ? pipeSpeed : beltSpeed;
+      c.tile = blueprint(c.members, nodeById, c.outRate, cap);
     }
     return { clusterOf, clusters };
   }
@@ -334,10 +339,11 @@
   // fractional plot count), so each tile is self-contained and K is driven by the most-
   // constrained producer — including the nursery (a fractional plot rounds up to a whole
   // plot per tile, which is physically honest). A tile's OUTPUT is also capped at one
-  // belt: a tile producing more than beltSpeed/min can't be drained (backpressure
-  // throttles it), so K has a floor of ceil(outRate / beltSpeed) — better two 150/min
-  // tiles than one 300/min tile a 240 belt can't empty. Always returns a cell.
-  function blueprint(members, nodeById, outRate, beltSpeed) {
+  // transport line (belt for solids, pipe for liquids): a tile producing more than
+  // transportCap/min can't be drained (backpressure throttles it), so K has a floor of
+  // ceil(outRate / transportCap) — better two 150/min tiles than one 300/min tile a 240
+  // belt can't empty. Always returns a cell.
+  function blueprint(members, nodeById, outRate, transportCap) {
     // timed machines keep the (per-copy-rounded) machineCount × utilization load so
     // existing tiles are unchanged; nurseries (utilization == null) use the continuous
     // tileLoad (fractional plot count) so they fold in without disturbing the rest.
@@ -347,10 +353,10 @@
       .filter((n) => n && n.machine && loadOf(n) != null)
       .map((n) => ({ label: n.label, machine: n.machine, load: loadOf(n) }));
     if (loads.length < 2) return null;
-    // belt floor: each tile's output must fit on one belt (one drain). Raises K even when
-    // the machine loads alone would prefer a single coarse tile.
-    const kBelt = beltSpeed > 0 && outRate > 0 ? Math.ceil(outRate / beltSpeed - 1e-6) : 1;
-    const maxK = Math.min(200, Math.max(1, Math.round(Math.max(...loads.map((l) => l.load))), kBelt));
+    // transport floor: each tile's output must fit on one belt/pipe (one drain). Raises K
+    // even when the machine loads alone would prefer a single coarse tile.
+    const kCap = transportCap > 0 && outRate > 0 ? Math.ceil(outRate / transportCap - 1e-6) : 1;
+    const maxK = Math.min(200, Math.max(1, Math.round(Math.max(...loads.map((l) => l.load))), kCap));
     const cands = [];
     for (let K = 1; K <= maxK; K++) {
       let over = 0, total = 0, ok = true;
@@ -365,9 +371,9 @@
       cands.push({ K, cell, idle: over / total, total });
     }
     if (!cands.length) return null;
-    // honour the belt floor when any candidate satisfies it; otherwise fall back to all.
-    const beltOk = cands.filter((c) => c.K >= kBelt);
-    const pool = beltOk.length ? beltOk : cands;
+    // honour the transport floor when any candidate satisfies it; otherwise fall back.
+    const capOk = cands.filter((c) => c.K >= kCap);
+    const pool = capOk.length ? capOk : cands;
     const clean = pool.filter((c) => c.idle <= 0.15);
     return clean.length ? clean.sort((a, b) => b.K - a.K)[0] : pool.sort((a, b) => a.idle - b.idle)[0];
   }

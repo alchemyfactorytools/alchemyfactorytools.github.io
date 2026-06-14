@@ -54,6 +54,14 @@ function badges(p) {
 // rather than wired — which keeps deep builds legible.
 const NURSERIES = new Set(['Nursery', 'World Tree Nursery']);
 
+// Liquids (Linseed Oil, etc.) travel in PIPES, not belts — both datamined calculators
+// exempt them from the belt cap (joejoes: isLiquid skip; starfi5h: category !== 'Liquid').
+// joejoes' changelog documents a hard pipe throughput of 6000 items/min (100/s) "matching
+// the game's actual pipe throughput limits"; their live constant is set ~infinite because
+// the exact post-2026-01-13 value is unconfirmed. We use 6000 so liquid lines still tile
+// to a drainable size. Tile blueprints cap per-tile output at beltSpeed (solids) or this.
+const PIPE_SPEED = 6000;
+
 // Virtual LP rows (byprod::Y, belt::X) are internal fences — display the real item.
 // copper::cash is the money row; show it as "copper".
 const COPPER = 'copper::cash';
@@ -393,6 +401,8 @@ function buildFlowGraph(result, model, demand, opts = {}) {
     copperPerMin: result.objective,
     capitalPerMin,
     beltSpeed, // items/min one belt carries — tile blueprints cap per-tile output at this
+    pipeSpeed: PIPE_SPEED, // liquids are piped, not belted — their per-tile cap
+    liquidItems: Object.keys(model.db.items).filter((k) => model.db.items[k].liquid), // belt-exempt
 
     materialPerMin: result.objective - capitalPerMin,
     externals,
