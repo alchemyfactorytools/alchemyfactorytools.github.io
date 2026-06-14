@@ -124,15 +124,16 @@
             <option value="0" selected>Cheapest — pure min copper</option>
             <option value="1">Balanced — waste up to 1× per-item cost</option>
             <option value="5">Lean — waste up to 5× per-item cost</option>
-            <option value="1000">Simplest — fewest routes, cost barely matters</option>
+            <option value="1000">Simplest — easiest to build, cost barely matters</option>
           </select>
         </label>
         <p class="hint">How much copper <b>per item</b> you'll waste for a simpler factory.
-          It finds the cheapest build, then within that budget picks the one with the
-          <b>fewest distinct production lines</b> — always a single clean route per item,
-          never a split. Budget scales to the build's own cheapest per-item cost (same for a
-          2g 80s Mars or a 1c nail). "Simplest" ignores cost entirely and takes the globally
-          fewest-line build (e.g. buy ore → smelter over a sprawling free-herb cauldron chain).</p>
+          It finds the cheapest build, then within that budget picks the one that's
+          <b>easiest to build</b> — lowest total machine build cost (a bank of cheap Stone
+          Crushers beats a few Bronze-Bar Cauldrons), with fewer parallel lines as a
+          tie-break. Budget scales to the build's own cheapest per-item cost. "Simplest"
+          ignores running cost and takes the globally easiest-to-build factory (e.g. buy ore
+          → grind over a sprawling free-herb cauldron + fertilizer chain).</p>
         <label>Override: ignore cost gaps under <small>(absolute copper per item — wins over the dropdown)</small>
           <input type="number" id="costTolerance" value="0" min="0" step="any" placeholder="0 = use dropdown">
         </label>
@@ -148,6 +149,19 @@
           a low-quality fertilizer implies), so the planner won't pick a thousand-nursery
           sprawl just because the materials are cheap. Use <b>Optimize for</b> above to trade
           factory size against running cost.</p>
+        <label>Farm penalty <small>(extra build cost on Nurseries + Cauldrons)</small>
+          <select id="farmPenalty">
+            <option value="0">None — farm freely</option>
+            <option value="1">Light (2×)</option>
+            <option value="3" selected>Default (4×) — prefer bought-raw</option>
+            <option value="8">Heavy (9×) — avoid the farm</option>
+          </select>
+        </label>
+        <p class="hint">Free-grown herbs + a cheap Cauldron are the lowest-<i>copper</i> way to
+          make most materials, so the planner farms herbs and drags in a whole fertilizer line
+          to dodge buying ore. This marks up Nursery + Cauldron build cost so bought-raw refine
+          chains (Buy Limestone → grind → Sand) win for materials, while the Cauldron stays
+          available where it's genuinely needed.</p>
       </section>
 
       <section>

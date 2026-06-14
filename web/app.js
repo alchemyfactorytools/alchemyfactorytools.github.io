@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'fuel-tile-buyore-nofert-2026-06-14y';
+const BUILD_STAMP = 'build-cost-simplest-farm-penalty-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -146,6 +146,7 @@ function buildConfig() {
   cfg.buildabilityFraction = Number($('buildability').value) || 0; // × item value → per-machine penalty (server)
   cfg.cauldronChainFraction = Number($('cauldronChain').value) || 0; // weight per cauldron→cauldron input (server)
   cfg.costTolerance = Number($('costTolerance').value) || 0; // copper/item: below this, prefer fewest machines (server)
+  cfg.farmWeight = Number($('farmPenalty').value) || 0; // ×(1+w) build-cost markup on Nursery+Cauldron (server)
   const tier = $('maxTier').value;
   cfg.maxTier = tier === '' ? null : Number(tier);
   for (const s of ['factory', 'logistics', 'alchemy', 'fuel', 'fertilizer']) {

@@ -58,6 +58,22 @@ class Model {
     // discourage cauldron→cauldron chains. 0 = no penalty; server scales it to the
     // build's own cost via the buildability probe, like buildabilityWeight.
     this.cauldronChainWeight = (processTable.config.cauldron && processTable.config.cauldron.chainWeight) || 0;
+    // Waste weight: copper-value-per-unit → route-equivalent penalty for surplus + trashed
+    // co-products in the "Simplest" route MIP. Without it, the fewest-route pass will gladly
+    // over-produce one co-product to harvest another (e.g. run 6× the Rock Salt crusher for
+    // its Sand and dump the Salt) because surplus is free disposal and the cost cap is slack.
+    // Pricing the dumped value at ~1e-4 of its copper floor makes gross over-production cost
+    // more route-equivalents than it saves, while leaving small honest leftovers untouched.
+    this.wasteWeight = processTable.config.wasteWeight != null ? processTable.config.wasteWeight : 1e-4;
+    // Farm weight: build-cost markup on the two "farm" machines — Nursery and Cauldron.
+    // Free-grown herbs + a cheap cauldron are the lowest-COPPER way to make most materials
+    // (Stone, Clay, Salt), so the optimizer farms herbs and drags in a fert line instead of
+    // buying ore and grinding it. Marking up nursery+cauldron build cost (×(1+farmWeight))
+    // makes those farm routes pay for the sprawl they create, so bought-raw refine chains win
+    // for materials while the cauldron stays available where it's genuinely needed (fert).
+    this.farmWeight = processTable.config.farmWeight != null ? processTable.config.farmWeight : 0;
+    this.farmMachines = new Set(['Nursery', 'Cauldron']);
+    this._itemFloor = null;
     this.buildCopper = {};
     if (this.capitalWeight > 0) {
       const floor = makeItemCopperFloor(db);
@@ -84,7 +100,8 @@ class Model {
     // buildability/per-machine penalty those plots carry, so fertilizer QUALITY matters.
     if (p.kind === 'fertilize' && p.nutrient > 0 && p.maxFertility > 0) {
       const plots = p.nutrient / (60 * p.maxFertility);
-      const nurseryBuild = (this.buildCopper.Nursery || 0) * this.capitalWeight; // 0 if capital off
+      // Nursery is a farm machine — mark its build cost up so farmed herbs aren't ~free.
+      const nurseryBuild = (this.buildCopper.Nursery || 0) * this.capitalWeight * (1 + this.farmWeight);
       return plots * (this.buildabilityWeight + nurseryBuild); // per-plot machine + build cost
     }
     if (!p.machine || !(p.timeSec > 0)) return 0;
@@ -92,8 +109,25 @@ class Model {
     let v = this.buildabilityWeight * perMachine;
     if (this.cauldronChainWeight && p.chainInputs) v += this.cauldronChainWeight * p.chainInputs * perMachine;
     if (!this.capitalWeight) return v;
-    const bg = this.buildCopper[p.machine] || 0;
+    let bg = this.buildCopper[p.machine] || 0;
+    if (this.farmMachines.has(p.machine)) bg *= (1 + this.farmWeight); // farm sprawl pays its way
     return v + perMachine * bg * this.capitalWeight;
+  }
+
+  // Copper-value of the net REAL-item surplus a column dumps (produced − consumed, real
+  // items only) plus anything it trashes. Telescopes across a chain: an intermediate's
+  // producer (+) and consumer (−) cancel, so only genuine surplus and the demanded item
+  // survive the column-wise sum — exactly the disposal we want to discourage. Virtual rows
+  // (belt::/byprod::/copper) are excluded; burning/fertilizing credits its real-item intake
+  // so crafted fuel nets to zero, not waste.
+  wasteValue(p) {
+    if (!this._itemFloor) this._itemFloor = makeItemCopperFloor(this.db);
+    const val = (it) => { const f = this._itemFloor(it); return isFinite(f) ? f : 0; };
+    let w = 0;
+    for (const [item, qty] of Object.entries(p.produces || {})) if (this.db.items[item]) w += qty * val(item);
+    for (const [item, qty] of Object.entries(p.consumes || {})) if (this.db.items[item]) w -= qty * val(item);
+    if (p.flags && p.flags.trashed) for (const [item, qty] of Object.entries(p.flags.trashed)) w += qty * val(item);
+    return w;
   }
 
   machineCapacity(machine) {
@@ -400,9 +434,39 @@ function buildRouteMip({ model, columns, demand, costCap, objMode, routeCap }) {
     links.push(` k${ci}: x${ci} - ${M} ${y} <= 0`);
   });
   const routeExpr = bins.map((y) => `+ 1 ${y}`).join(' ') || '0 x0';
-  const obj = objMode === 'cost' ? costExpr : routeExpr;
+  // "Simplest" = how hard the factory is to BUILD, not how few recipe types it uses. Two
+  // parts:
+  //   • BUILD COST (primary) — Σ capitalPerRun·x. A bank of cheap Stone Crushers (build
+  //     cost 12) beats a few Bronze-Bar Cauldrons (2880), so this kills the free-herb
+  //     cauldron+fert-line sprawl that fewest-routes used to pick.
+  //   • ROUTE WIDTH (secondary) — Σy_p, weighted small. Among equally-buildable plans,
+  //     prefer fewer parallel production lines (one clean route per item, no split).
+  // (Route depth and main-belt branch count are further "simplicity" dimensions to layer
+  // on later; build cost + width already captures the cauldron-vs-crusher case.)
+  const buildTerms = [];
+  columns.forEach((p, ci) => {
+    const c = model.capitalPerRun(p);
+    if (Math.abs(c) > 1e-12) buildTerms.push(`${c > 0 ? '+' : '-'} ${Math.abs(c)} x${ci}`);
+  });
+  const ROUTE_W = model.routeWidthWeight != null ? model.routeWidthWeight : 0.5;
+  const widthExpr = bins.length ? bins.map((y) => `+ ${ROUTE_W} ${y}`).join(' ') : '';
+  // Waste penalty: price surplus/trashed disposal so the pass won't over-produce a
+  // co-product to harvest another (copper-value × wasteWeight).
+  const wasteTerms = [];
+  if (model.wasteWeight > 0) columns.forEach((p, ci) => {
+    const w = model.wasteValue(p) * model.wasteWeight;
+    if (Math.abs(w) > 1e-9) wasteTerms.push(`${w > 0 ? '+' : '-'} ${Math.abs(w)} x${ci}`);
+  });
+  const wasteExpr = wasteTerms.join(' ');
+  const simplestExpr = [buildTerms.join(' '), widthExpr, wasteExpr].filter(Boolean).join(' ') || '0 x0';
+  const obj = objMode === 'cost' ? (costExpr + (wasteExpr ? ' ' + wasteExpr : '')) : simplestExpr;
   const extraRows = [...links];
-  if (objMode === 'cost' && routeCap != null) extraRows.push(` rcap: ${routeExpr} <= ${routeCap}`);
+  // 2nd pass caps the build+width score (so the cheapest-material build among the simplest
+  // ones is chosen, not a no-simpler costlier one).
+  if (objMode === 'cost' && routeCap != null) {
+    const capExpr = [buildTerms.join(' '), widthExpr].filter(Boolean).join(' ') || '0 x0';
+    extraRows.push(` scap: ${capExpr} <= ${routeCap}`);
+  }
   const body = [
     'Minimize', ` obj: ${obj}`,
     'Subject To', ...constraintRows, ...extraRows,
@@ -432,15 +496,15 @@ async function optimizeWithinTolerance(model, opts = {}) {
   const tol = tolerancePerItem > 0 ? tolerancePerItem : toleranceFraction * perItemMin;
   if (!(tol > 0)) return base;
   const costCap = base.objective + tol * totalDemand;
-  // Phase 2a — fewest distinct routes within the copper budget.
+  // Phase 2a — simplest-to-BUILD plan (min build cost + route width) within the copper budget.
   const a = buildRouteMip({ model, columns: base.columns, demand, costCap, objMode: 'routes' });
   if (a.infeasibleRow) return base;
   const solA = await solveLp(a.lp);
   if (solA.Status !== 'Optimal') return base; // tolerance pass failed → keep the min-cost build
-  // Phase 2b — cheapest build among those fewest-route ones (so we don't burn budget for a
-  // build no simpler than a cheaper one). Round the route target up by 0.5 for MIP slack.
-  const routeCap = Math.round(solA.ObjectiveValue) + 0.5;
-  const b = buildRouteMip({ model, columns: base.columns, demand, costCap, objMode: 'cost', routeCap });
+  // Phase 2b — cheapest-material build among the simplest ones (so we don't burn budget for a
+  // build no simpler than a cheaper one). Allow 0.1% slack on the build score for MIP wiggle.
+  const buildCap = solA.ObjectiveValue * 1.001 + 1e-6;
+  const b = buildRouteMip({ model, columns: base.columns, demand, costCap, objMode: 'cost', routeCap: buildCap });
   const solB = await solveLp(b.lp);
   const sol = solB.Status === 'Optimal' ? solB : solA;
   // repackage flows; report TRUE cost. Drop negligible flows (numerical residue) relative
