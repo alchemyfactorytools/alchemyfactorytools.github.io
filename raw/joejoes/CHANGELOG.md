@@ -1,0 +1,443 @@
+# Alchemy Factory Calculator Change Log
+
+## v105 - Rich Interactions & Machine Mode (2026-01-17)
+*   **Feature:** **Machine Count Mode.**
+    *   Added a toggle to switch the main input target between **"Belt Load"** (Fill x% of a belt) and **"Machine Count"** (Feed exactly N machines).
+    *   **Logic:** When in Machine Mode, the input field accepts specific machine counts (e.g., "5.5 Alembics") and reverse-calculates the required Item Rate.
+*   **UI:** **Rich Tooltips.**
+    *   **Production Chain:** Hovering over any item now displays a detailed lookup card (Category, Heat Value, Nutrient Value, Buy/Sell Prices).
+    *   **Machine Stats:** Hovering over the machine count (green text) reveals exact stats: Cycle Time, Throughput, Speed Multipliers, and Recipe IO.
+    *   **Interactivity:** Action buttons (Copy Code, Link, Import, External Toggle) now explain their specific function on hover.
+*   **Feature:** **Icon Integration.**
+    *   **Everywhere:** Item icons are now displayed in the Production Tree, Construction List, Summary Box, External Input List, and Recipe Selection Modal.
+*   **Feature:** **Coin Stacks:** Logic differentiates between single coins (for inputs) and "Stacks of 50" (for outputs) 
+    to correctly match the updated recipe logic. This allows coin usage to be more inline with the calculator's logic.
+*   **Refinement:** **Recipe Selection Modal.**
+    *   **Header:** Now displays the icon and name of the item being modified.
+    *   **List:** Recipe choices show icons for all input/output ingredients.
+    *   **Usability:** You can now click the dark background overlay to close the modal (consistent with other popups).
+*   **Fix:** **Layout & Data.**
+    *   **Recipe Database:** Fixed several recipes that were missing details (e.g., missing buy/sell prices, missing heat value, missing nutrient value). Added new coin recipes. Fixed some typos.
+    *   **Layout:** Fixed a critical bug where the main layout could collapse into a single column due to a malformed div tag.
+    *   **Dynamic Headers:** Primary Production headers now auto-hide redundant info (e.g., "(120/m)") when the section is expanded, reducing visual noise.
+
+## v104 - Infinite Guards & Visual Polish (2026-01-15)
+*   **Critical Fix:** **Infinite Loop Handling.**
+    *   Implemented a recursion depth guard and fail-safe wrapper for recipe toggling.
+    *   Prevents app crashes when activating "loops" (e.g., Coin -> Ingot -> Coin) by forcibly blocking the action and alerting the user.
+*   **Feature:** **Target Item Selector.**
+    *   **UI:** Replaced the legacy dropdown with a **Rich Modal Interface**.
+    *   **Grid Layout:** Items are displayed in a responsive grid with color-coded category tags.
+    *   **Search:** Dedicated full-width search bar with instant filtering.
+    *   **Categories:** Added filter buttons for effortless navigation.
+*   **Database:** **Category Overhaul.**
+    *   **Multi-Category Support:** Items can now belong to multiple categories (e.g., "Logs" are both `Raw Materials` and `Fuel`). This ensures they appear in all relevant filter lists.
+    *   **Goods:** Added a "Goods" category to all items with a `sellPrice` (Components, Gems, Potions, Relics), grouping tradeable items together.
+    *   **Visuals:** Defined unique colors for every category (Gem=Pink, Relic=Red, Catalyst=Cyan, etc.) for better readability.
+*   **Refinement:** **Store Mechanics.**
+    *   **Cash Register:** Capped at **1 Max** (Global Unique Building) since players only run a single shop.
+    *   **Coin Stacks:** Coin recipes now output stacks of **50** (was 1), reflecting true storage density and reducing machine count bloat.
+    *   **Goods Filtering:** The "Goods" filter now correctly captures everything you can sell.
+
+## v103 - Recursive Stability & UI Flow (2026-01-13)
+* **Critical Fix:** **Recursive Loop Stability.**
+    *   Replaced the "Binary Average" solver with a **Proportional Feedback (Heavy Damping)** system.
+    *   **Impact:** Solves the instability in high-gain self-feeding loops (like **Pure Gold Dust recycle cycles**), causing them to converge rapidly to the mathematically correct efficiency point instead of oscillating wildly.
+* **Fix:** **Self-Pruning Logic.**
+    *   Fixed a "Cold Start" bug where the calculator would delete machines (0 count) if recycling theoretically covered 100% of demand, preventing the chain from ever starting.
+    *   The Logic now ensures machines remain visible during the simulation phase so they can generate the initial byproduct pulse needed to sustain the loop.
+* **UI:** **Layout Optimization.**
+    *   Moved the **Requirements Area** (External Inputs & Byproducts) to be **above** the Construction List in the 3rd column.
+    *   **Goal:** This places the "Inputs & Outputs" summary in a more logical visual flow before the final "Build Verification" list.
+* **Feature:** **Recycle All.**
+    *   Added a **"Recycle All"** button to the top of the Byproducts list (appears when 2+ items are present).
+    *   **Logic:** One-click toggle to enable recycling for all visible byproducts. If any are off, it turns all ON. If all are on, it turns all OFF.
+* **Optimization:** **Export Sanitization.**
+    *   The "Copy Code" function now intelligently **filters out Ghost States**.
+    *   **Benefit:** If you have recycling enabled for an item that is no longer being produced in your current chain, it is excluded from the generated code, keeping sharing links clean and precise.
+
+## v102 - Physics, Limits & Stability (2026-01-11)
+* **Critical Fix:** **Restored Application State.**
+    *   Recovered `alchemy_ui.js` from a severe truncation error that was preventing the application from initializing.
+    *   Restored core functionality including the Item Selector and Summary Box.
+*   **Logic:** **Nursery Physics Refactor.**
+    * Completely rewrote Nursery math. Cycle time is now dynamic based on **Nutrient Cost** (Power) rather than a static time.
+    * This fixes complex recipes like **Gentian** (which produces both Herb + Nectar) and properly scales production with Fertility multipliers.
+    * **Seeds:** Seeds are no longer a repeating input. They are now tracked as a **One-Time Construction Cost** (1 Seed per Machine).
+*   **UI:** **Construction Seeds.** The Construction List now displays the required number of seeds to build the planned nurseries (e.g., "Sage Seed: 9").
+*   **Feature:** **Universal Pipe Cap.**
+    * Implemented a hard **Simulated Flow Limit** of **6000 items/min** (100/sec) for all liquid-outputting machines (Extractors, Alembics, etc.), matching the game's actual pipe throughput limits.
+    * **Impact:** If your speed upgrades would theoretically produce >6000/m per machine, the calculator now clamps the output and forces you to build more machines to meet the demand.
+*   **Feature:** **Belt Usage Logic.**
+    *   The "Belt Usage (Net)" stat now correctly displays **N/A** for liquid and gas items (which travel in pipes), reducing confusion.
+*   **UI:** **Smart Warning System.**
+    * Added a "Constraint Warning" icon (⚠️) that appears next to machine counts when a limit is hit.
+    * **Smart Logic:** The icon *only* appears if the cap forces you to build **more machines** than you would otherwise need. (If you need 2 machines for volume anyway, it stays hidden).
+    * **Tooltip:** Hovering the icon tells you exactly what is bottling the line (e.g., "Capped by Pipe Output Limit" or "Capped by Belt Limit").
+*   **Tool:** **Code Inspector Integration.**
+    * The **"Chain Code"** inspector is now fully integrated into the main app (new Tab in header).
+    * Includes "Import Current" button to instantly debug your active build without manual copying/pasting.
+*   **Note:** The "Show Machine Max Cap" toggle is present in the UI but currently non-functional as its logic was lost during the recovery.
+
+## v101 - Robust Sharing & Optimization (2026-01-10)
+* **Feature:** **Robust Sharing Links.**
+    * **UI:** Added code generation to the Production Tree that allows users to generate a shareable link for their current build, with a more compact code that contains more data than using the verbose format.
+    * **URL-Safe Encoding:** Production chain codes now use URL-safe characters (`-`, `_`) to eliminate link corruption issues common on Reddit and Discord.
+    * **Resilient Parsing:** The calculator now automatically cleans up HTML-encoded entities (like `&amp;`) when pasting links from formatted web pages, ensuring your shared builds load correctly every time.
+* **Optimization:** **Extreme Code Compression.**
+    * **ID-Based Format:** Replaced verbose text strings with a highly efficient numerical ID system.
+    * **Result:** Share codes are now **~70% shorter** (e.g., reducing a 500-char link to ~150 chars), making them much cleaner to paste and share.
+    * **Aliasing:** Internal data keys are now packed into single letters (`target` -> `t`) to further save space.
+    * **Compatibility:** Fully backward compatible. The calculator can still import older "verbose" codes from previous versions.
+    * **Database:** The database has been updated to support the new ID-based format of the codes.
+* **Refinement:** **External Logic Cleanup.**
+    * **Cascading Toggles:** Toggling a parent row to "External" now automatically clears any overrides on its children. This prevents "phantom" inputs and ensures the generated code only tracks the top-level external source.
+    * **Ghost Byproducts:** Fixed an issue where byproducts from an externalized sub-chain would still persist in the Recycle list. These are now correctly zeroed out.
+* **Dev Tools:** **Debug Tool 2.0.**
+    * The `debug_code.html` tool has been upgraded to support the new ID-based format. it now features a **Split-Screen View** comparing the Raw Compact JSON vs the Translated Verbose JSON for easy verification.
+* **UI:** **Share Box Tooltips.**
+    * Added helpful hover text to the `Copy Code`, `Link`, and `Import` buttons to explain exactly what they do.
+
+
+## v100 - Layout Perfection & Deep Logic (2026-01-07)
+* **Feature:** **External Input Toggles.**
+    * Added `[Ext]` buttons to every specific item row in the Production Tree.
+    * **Logic:** Toggling a node as "External" instantly stops recursion for that branch. The item is removed from the tree and added to the "External Inputs" list as a raw material demand.
+    * **State:** External states are specific to the current chain path (e.g., you can import "Iron Ingot" for one component but build it locally for another).
+* **Layout:** **External Inputs Overhaul.**
+    * Refactored to a **2-Column Grid** (Value | Item) for cleaner readability.
+    * Moved "Fuel" and "Fertilizer" context notes to **Subtitles** under the item name.
+    * Capped the Value column width (~35%) with text wrapping to prevent squashing other columns when costs are high.
+    * Removed redundant "External Input" labels for user-toggled sources.
+* **Refinement:** **Gap Elimination.** Fixed persistent left-side gaps in External Inputs and Byproducts panels.
+* **Refinement:** **Primary Chain Alignment.** Aligned the Production Chain content perfectly with the "P" in the Header.
+* **UI:** **Icon Polish.**
+    * Standardized all icons to **16px borderless SVGs** for a cleaner, flatter look.
+* **Feature:** **Recycle in Byproducts.**
+    * Added a "Recycle" button to the Byproducts panel that allows users to toggle recycling for specific items.
+    * **Logic:** Toggling a node as "Recycle" instantly stops recursion for that branch. The item is removed from the tree and added to the "Byproducts" list as a raw material demand.
+    * **State:** Recycle states are specific to the current chain path (e.g., you can import "Iron Ingot" for one component but build it locally for another).
+* **Fix:** **Nursery and Herbs.**
+    * Fixed a bug where the nursery and herbs were not being calculated correctly.
+    * Changed herbs to use Nursery machine and updated logic to align with calculation method for other items, and handle byproduct generation correctly.
+* **Fix:** **Max Cap Display.**
+    * Fixed the "Show Machine Max Cap" toggle which was failing to render the theoretical maximum output in the production tree due to a variable scope issue.
+* **Fix:** **Machine Tooltips.**
+    * Restored the missing mouse-over tooltips for Production Machines, which correctly display Recipe input/output, Cycle Time, and Throughput stats.
+
+
+
+## v99 - UI Polish & Mini-Modes
+* **UI:** **Collapsible Mini-Modes.** The "Production Goal" and "Logistics" panels now condense into a specialized "mini-mode" when collapsed. Instead of hiding completely, they display title and key inputs side-by-side, saving vertical space while keeping core controls accessible.
+* **Feature:** **State Persistence.** All collapsible sections (Construction List, Logistics, Factory Inputs, etc.) now remember their open/closed state across browser reloads.
+* **Layout:** **Logistics Consolidation.** Moved "External Inputs" and "Byproducts" to Column 3 (below Construction List) to group all logistical requirements in one area.
+* **UI:** **Summary Readability.** Increased font size for "Net Output" (1.5x) and "Profit/Cost" (1.35x) to make key metrics pop.
+* **Refinement:** **Numeric Formatting.** Updated Summary Box and Load stats to always show 2 decimal places (e.g., `120.00`). Large values now use standard abbreviations (`15.2k`, `1.5m`).
+* **UI:** **Currency Display.** Costs now display in Gold/Silver/Copper (e.g., `5g 20s`).
+* **Default:** **Construction List.** Defaults to a collapsed state on load to declutter the initial view.
+
+## v98 - Robust Recycling Logic
+* **Fix:** **Mars Athanor Count.** Fixed a "Self-Eating Paradox" where the calculator would delete machines (Athanors) because it falsely assumed their own future output was available for free. The Render Phase now strictly adheres to the Recycling Decision Map generated during the Simulation Phase, ensuring correct machine counts (e.g., 2 Athanors for Mars instead of 1).
+* **Fix:** **Double Counting.** Fixed a bug where the available byproduct count was doubled (e.g., 480 instead of 240) due to redundant initialization in the final measurement pass. The live inventory now initializes correctly as empty before the Render Phase.
+* **Fix:** **Negative Byproducts.** Resolved an issue where recycling could result in negative numbers (e.g., -72 Planks). This was caused by double-deducting the recycled amount—once during the simulation snapshot and again during the render replay. The system now trusts the net result from the simulation.
+* **Refinement:** **Fuel Recycling.** The "External Inputs" section now correctly identifies and deducts recycled fuel (e.g., Planks for Advanced Fertilizer) from the import demand list.
+
+## v97 - Unified Loop Architecture
+* **Core Logic:** **Simulate First, Render Last.** Completely rewrote the calculation engine to use a strict 4-phase architecture:
+    1.  **Discovery:** Unconditionally simulates the factory loop to measure gross byproduct generation (ignoring recycling limits).
+    2.  **Stabilization:** Iteratively solves for the equilibrium point of Fuel/Fertilizer demand.
+    3.  **Reset:** Clears all global counters and pre-fills the recycling pool with the stable byproduct state.
+    4.  **Render:** Draws the final tree and accumulates the *actual* Heat/Nutrient/Cost totals as they occur.
+* **Fix:** **Summary Alignment.** The "Gross/Use" stats in the Summary Box now perfectly match the Production Tree values because they are summed directly from the final render pass, eliminating "phantom heat" from mismatched simulation steps.
+* **Fix:** **Recycle Visibility.** Fixed a bug where the Recycle Button would disappear if Self-Fuel was OFF. The byproduct pool is now correctly initialized in all modes, ensuring recycling options remain visible and togglable.
+* **UI:** **Precision Formatting.** Increased the decimal precision of the Summary Box "Gross" and "Use" fields from 1 to 2 places (e.g., `64.32`) to better expose small rounding variances.
+
+## v96 - UI Polish & Code Cleanup (2025-12-24 19:24 EST)
+* **Feature:** **Visual Database Editor.** A complete overhaul of the data entry system. Replaced the raw text editor with a rich UI containing forms, dynamic lists, and toggle switches. Users can now safely edit Items, Recipes, and Machines without risking JSON syntax errors. (Includes a "Raw Source" fallback for advanced users).
+* **Refactor:** **Hybrid File Structure.** Cleaned up `index.html` to serve as a layout skeleton, moving all dynamic content logic, version control, and event handling into `alchemy_ui.js` to centralize configuration.
+* **UI:** **Ghost Tiers.** Fixed a visual bug in the Database Editor list where machines without a specific tier rendered as empty parentheses `()`. They now display as `(Tier: ?)` or `(Tier: 1)`.
+* **Fix:** **Editor Refresh.** The "Apply Changes" button in the Database Editor now immediately refreshes the sidebar list to reflect your edits without needing a page reload.
+* **Architecture:** **Single Source of Truth.** Moved the App Version definition to `alchemy_ui.js`. The HTML header now updates automatically based on the code constant.
+* **Architecture:** **Changelog Link.** Removed the in-app modal. The version link now opens this `CHANGELOG.md` file directly, supporting both Main and Beta folder structures.
+* **Layout:** **Header Reorder.** Swapped the position of the Version display and the GitHub link for better readability.
+
+## v95 - Stability & Math Overhaul
+* **Furnace Aggregation:** Completely rewrote Stone Furnace calculation. It now aggregates total slot demand from all machines (including internal modules) and divides by capacity, rather than summing per-node requirements.
+* **Summary Box Logic:** Fixed the "Gross vs Net" calculation. "Gross" now correctly equals "Net Output + Internal Use".
+* **Global Load Tracking:** Fixed a bug where Internal Modules (Heat/Nutrient loops) were being excluded from the Global Heat and Fuel Demand totals.
+* **UI UX:** Selecting a new Target Item now immediately clamps the input rate to the current Belt Slider setting, preventing massive calculation spikes.
+* **Construction List:** split logic into "Max" (Physical Node Sum) and "Min" (Item Throughput Sum) for better planning accuracy.
+
+## v94 - Calculation & Data Overhaul
+* **Critical Fix:** Fixed Stone Furnace calculation at higher upgrade levels. Furnace self-heat (overhead) now properly scales with Factory Speed, preventing artificial drops in fuel machine counts.
+* **Logic Overhaul:** Rewrote Construction List aggregation logic.
+* 	**Minimum:** Calculates based on total throughput for a specific item type (assumes merging identical production lines).
+* 	**Maximum:** Sums up the ceiling of every physical node shown in the tree (assumes separate production lines).
+* **New Content:** Added "Enhanced Grinder" alternate recipes for all items that use a Grinder. These recipes have 50% `baseTime` to simulate 2x speed.
+* **UI:** Fixed CSS for the "Swap Recipe" button to perfectly center the icon.
+
+## v93 - Slider Alignment & Visuals
+* **UI Fix:** **Perfect Alignment.** Corrected the slider tick math (`+2px` offset) to ensure the tick marks line up perfectly with the slider handle's visual center.
+* **UI:** **Diamond Handle.** Replaced the standard round slider thumb with a custom CSS "Diamond/Triangle" pointer for better precision.
+* **UI:** **Vertical Fractions.** Converted slider labels (e.g., 1/32) to a compact vertical stack format to prevent horizontal crowding.
+
+## v92 - Smart Feedback & Fine Tuning
+* **UI:** **Smart Label.** The Rate label now dynamically displays context based on the current value (e.g., `~1/6 Belt, 16.6%`).
+* **Feature:** **Micro-Adjustments.** Updated the Rate input spinner to include `+/- 0.1` buttons, allowing for precise bottleneck tuning (e.g., adjusting 119.9 to 120.0).
+
+## v91 - Precision Slider
+* **UI:** **Slider Control.** Replaced the static "Belt Load" dropdown with a granular range slider.
+* **Logic:** **Factory Math.** The slider now snaps to factory-relevant fractions (1/64, 1/16, 5/6, etc.) rather than arbitrary percentages.
+
+## v89-v90 - Accumulation Logic Repair
+* **Fix:** **Accumulation Guard.** Fixed a variable naming error (`isGhost` vs `effectiveGhost`) in the accumulation logic that prevented Internal Modules from reporting their needs during the stabilization loop.
+* **Fix:** **Missing Modules.** The Main Production Chain now correctly registers its Heat/Nutrient demands during the Render Pass, while Internal Modules are prevented from double-counting during their final draw. This ensures modules activate correctly and totals are accurate.
+
+## v87-v88 - Double Count Logic Fixes
+* **Fix:** **Double Counting.** Fixed the issue where Heat and Nutrient demand were being summed twice (once in the stabilization loop and once in the render pass), leading to inflated values in the Summary Box. Global accumulation is now disabled during the final render pass.
+* **Logic:** **Internal Sizing.** Corrected the sizing of internal modules to prevent double-taxing the efficiency calculation.
+
+## v85-v86 - Stabilization & Display Fixes
+* **Bug Fix:** **Runaway Accumulator.** Fixed the "Runaway Accumulator" bug in the Summary Box where totals were 10x higher than reality.
+* **Bug Fix:** **Ghost Pass.** The Stabilization Loop now runs in Pass 1 (Ghost Mode) as well. This ensures internal module byproducts are registered correctly so they can be recycled in the main chain.
+
+## v81-v84 - Deep Logic Repair
+* **Fix:** **Ghost Recursion.** Fixed a critical bug where the "Stabilization Loop" stopped calculating at the first recipe layer. It now correctly recurses down to base ingredients to find hidden demands (e.g., a Crucible inside a Fertilizer module needing Heat).
+* **Fix:** **Cross-Coupling.** Internal Modules (Fuel/Fertilizer) now correctly report their heat/nutrient needs to the global system. This ensures the Fuel Module turns on even if the only thing demanding heat is the Fertilizer Module.
+* **Refactor:** Simplified the Stabilization Loop to reset global counters every iteration, ensuring 100% mathematical accuracy for circular supply chains.
+
+## v80 - Math Precision
+* **Math:** **Floating Point Snap.** Fixed a JavaScript precision error where division (e.g., 75 / 25) resulted in microscopic decimals (e.g., `3.0000004`), causing `Math.ceil` to calculate 4 machines instead of 3.
+* **UI:** **Raw Input Formatting.** Raw inputs now use `k`/`m` notation (e.g., `0.60k` instead of `0.6`) to prevent confusion when demanding large batch quantities.
+
+## v74-v79 - The Stabilization Update
+* **Logic:** **Iterative Solver.** Implemented a "Stabilization Loop" that simulates the factory calculation up to 10 times to resolve **Bi-Directional Dependencies** (e.g., Fuel needs Fertilizer <-> Fertilizer needs Heat).
+* **Logic:** **Ghost Mode.** Created a simulation pass to calculate Byproduct availability and Module demands before the final Render pass.
+
+## v72-v73 - Recycling & Closed Loops
+* **Feature:** **Byproduct Recycling.** Rows with available byproducts now show a "Recycle" toggle (♻️) on the far right.
+* **Logic:** **Net-Rate Math.** Machine counts and Raw Material costs are now calculated based on **Net Demand** (Gross Demand minus Recycled Amount).
+* **Impact:** This allows for accurate planning of "Closed Loop" systems (e.g., "Money Printers") where outputs are fed back into the chain to purchase inputs, correctly showing 0 raw cost if the loop is self-sustaining.
+
+## v64 - Tooltips & Insight
+* **UI:** **Hover Tooltips.** Hovering over machine counts (e.g., "24 Grinders") now displays a detailed tooltip showing the Recipe, Base Time, Speed Multiplier, and actual Items/Min throughput per machine.
+* **UX:** Provides instant verification of *why* a certain number of machines is required without leaving the main view.
+
+## v63 - Ranges & Exploration
+* **Construction:** **Min/Max Logic.** The Construction List now displays a range (e.g., "Min 4, Max 5").
+    * *Min:* Optimal layout (sharing capacity across lines).
+    * *Max:* Siloed layout (building separate machines for every sub-chain).
+    * *Cost:* Total Materials are calculated based on the *Minimum* (Optimal) count.
+* **Navigation:** **Drill-Down.** Clicking an item name in the production tree now opens a **New Window** focused specifically on that item, preserving the original plan in the previous tab.
+* **Analysis:** **Machine Capacity.** Added a "Show Machine Max Cap" toggle to the Logistics panel. When enabled, displays the theoretical max throughput of the built machines next to the count (e.g., `Cap: 15.0/m`).
+
+## v62 - Precision Counting
+* **Logic:** **Round-then-Sum.** Changed the Construction List logic to round up machine counts *per production step* before summing them.
+* **Fix:** Resolves discrepancies where the Construction List (previously using "Sum-then-Round") would show fewer machines than visually depicted in the tree.
+* **Accuracy:** The "Total Material Cost" now accurately reflects the cost of building every machine shown in the visual plan.
+
+## v61 - Batch Logic
+* **Logic:** **Deterministic Batches.** Completely replaced the "Probability/Failure" engine with **Batch Cycles** to match the game's actual mechanics.
+    * *Example:* Coke is no longer "50% chance"; it is now "12 Powder -> 1 Coke + 2 Charcoal".
+* **Database:** Updated to **v17**. Removed `probability` fields and converted uncertain recipes to fixed Batch inputs/outputs.
+* **Byproducts:** Secondary outputs (e.g., Planks from Gloom Fungus, Charcoal from Coke) are now automatically detected and listed in the "Byproducts" section of the tree.
+* **Refinement:** Fixed an issue where fuel ingredients (like Charcoal Powder for Coke) were hidden if they matched the global fuel source.
+
+## v60 - Layout & Auto-Update
+* **Layout:** Moved the **"Byproducts (Waste)"** section from the Construction List to the Main Tree (Column 2) for better visibility.
+* **Data Safety:** Implemented **Auto-Update Logic.** The app now detects if the `alchemy_db.js` file version is newer than the browser cache and automatically upgrades the database.
+* **Fix:** Restored missing modal functions that caused the Recipe Swap button to fail in v57-v59.
+* **UX:** Smart Search arrow now transforms into a "Clear" (`✖`) button when text is entered.
+
+## v59 - Byproducts & UX
+* **Relocation:** Moved the **"Byproducts (Waste)"** section from the Construction List to the Main Tree (Column 2), directly below "External Inputs," for better visibility of the complete production flow.
+* **UX:** **Smart Search Clear.** The search box arrow (`▼`) now transforms into a Clear button (`✖`) when text is entered, allowing for instant resetting of the search field.
+* **Data Safety:** Implemented **Auto-Update Logic.** The calculator now detects if the `alchemy_db.js` file is newer than the cached browser data and automatically refreshes the database, preventing "No build data" errors after updates.
+
+## v58 - Layout & Construction
+* **UI Layout:** Transitioned to a compact **4-Column Layout** (Inputs | Tree | Construction | Upgrades).
+* **Scale:** Reduced global UI scale (font size 13px) to support comfortable 100% zoom usage on standard 1080p monitors.
+* **Construction List:**
+    * **Grouping:** Machines are now grouped by type (e.g., "Assembler (8)").
+    * **Expansion:** Clicking a machine group expands it to show the specific build costs (e.g., "16 Iron Ingot").
+    * **Grand Total:** Added a **"Total Material Cost"** summary at the bottom, summing up every resource needed to build the entire factory plan.
+
+## v57 - Smart Search
+* **UI Upgrade:** Replaced the "Target Item" dropdown with a **Smart Combobox**.
+    * **Features:** Ghost Text Autofill, Hybrid Sorting (Starts-With priority), and Keyboard Navigation.
+* **Option:** Added **1/3 Belt (~33%)** to the Belt Load preset dropdown.
+* **Code:** Removed ~50 lines of redundant HTML generation logic, resulting in a cleaner, faster file despite the new features.
+
+## v56 - Liquid Logic Fix
+* **Fix:** **Liquid Flow.** Fluid outputs (e.g., Linseed Oil, Water) are no longer restricted by the Belt Speed cap.
+* **Math:** High-volume fluid recipes now correctly calculate machine counts based on production speed alone, rather than artificially inflating the count due to belt bottlenecks.
+
+## v55 - Belt Cap Logic
+* **Logic:** **Belt Bottleneck.** Standard machines producing solid items now respect the current Belt Speed limit.
+* **Math:** If a machine's theoretical output exceeds the belt speed (e.g., 540/m output on a 90/m belt), the calculator now caps the per-machine output at the belt limit and increases the required machine count accordingly.
+
+## v54 - Logic Repair
+* **Fix:** **Tree Pruning Logic.** Disabled the "Stop Recursion" rule when a node is handled by Self-Fuel/Self-Fert. 
+    * *Impact:* Ingredient sub-chains (e.g., Sage for Basic Fertilizer) are now fully calculated and visible, ensuring the "Internal Module" at the bottom receives the correct demand load.
+
+## v53 - Lean Architecture
+* **Refactor:** Removed the massive embedded database string from `index.html`.
+* **Logic:** The calculator now relies exclusively on the external `alchemy_db.js` file or Local Storage.
+* **Editor:** The Database Editor tab now gracefully handles local file restrictions by showing a helpful message instead of crashing.
+
+## v50-v52 - Data Integrity
+* **Fix:** Restored missing HTML input elements that caused load crashes.
+* **Fix:** Restored missing Alternate Recipes (Sand, Salt, etc.) to the offline database source.
+
+## v49 - Database Overhaul (v14)
+* **Crash Fix:** Removed `Mors_Alt` (Vitality Essence -> Oblivion Essence) to prevent infinite recursion loops.
+* **Crash Fix:** Removed all "Ingot -> Powder" recycling recipes that caused "Maximum Stack Size" errors.
+* **Correction:** `Oblivion Essence` is now correctly defined as a manufactured item (Sage Seeds -> Paradox Crucible), not a raw material.
+* **Cleanup:** Organized database items into distinct categories (Herbs, Fuels, Relics, etc.) for easier maintenance.
+* **Database:** **Complete Rewrite.** Replaced the entire database with validated data from the `faultyd3v` repository.
+    * Updated all prices, crafting times, and yields.
+    * Added `probability` (Failure Rate) and `failures` (Byproduct) data to recipes like Coke, Steel, and Silver/Gold Powders.
+* **Logic:** **Average Cost Calculation.** The planner now scales input requirements based on recipe success probability (e.g., a 50% success rate requires 2x inputs).
+* **Logic:** **Byproduct Tracking.** A new sidebar section lists "Waste" products generated by failures (e.g., Charcoal from failed Coke attempts).
+* **UI:** **Split-Button Logistics.** Replaced the old checkbox/dropdown rows with a cleaner Split-Button layout (Toggle On/Off | Make Default).
+* **UI:** Renamed "Self-Feed" to **"Self-Fuel"**.
+* **UI:** Renamed "Bio" summary label to **"Nutr"** and updated units to **V/s** (Value per Second).
+* **Cleanup:** Removed the redundant "Defaults" panel from the right column.
+
+## v48 - Better Recipe Swap
+* **UX:** The Recipe Swap modal now displays the **Input Ingredients** for each option, not just the machine name. (e.g., distinguishing "Sand from Stone" vs "Sand from Rock Salt").
+
+## v47 - Offline Restoration
+* **Code:** Restored the full 500+ line embedded database source string.
+* **Fix:** Ensures the "Database Editor" tab functions correctly even when running the HTML file locally/offline (where browser security blocks reading external files).
+
+## v46 - Internal Logic Prototype
+* **Internal:** Initial implementation of Probability and Byproduct math (superseded by v49 UI updates).
+
+## v45 - Source Editor
+* **Feature:** **Raw Source Editing.** The Database Editor now attempts to load the raw `alchemy_db.js` text file to preserve comments and formatting (Notepad++ style).
+* **Fallback:** If loading the file fails (local security), it falls back to the embedded v47+ source string.
+* **Style:** Changed Editor font to Consolas/Monospace for better readability.
+
+## v43 - GitHub Integration
+* **UI:** Added a "GitHub Repo" link to the header.
+* **UI:** The "View Changelog" link now directs to the full `CHANGELOG.md` history on GitHub.
+
+## v41/42 - Logic & Format
+* **Fix:** Fixed a critical logical bug where the Heat Module calculation ran before the Fertilizer Module.
+* **Logic:** Fertilizer Module now calculates *first* so that its heat demand is correctly registered by the Heat Module.
+* **Math:** Internal modules now correctly contribute to global summary statistics.
+
+## v42 - Format Restoration
+* **Code:** Restored fully expanded CSS formatting to ensure code readability and correct line counts.
+* **Verification:** Re-verified module execution order to ensure complex recipes (e.g., Healing Potion) trigger fuel demands correctly.
+
+## v41 - Module Ordering Fix
+* **Fix:** Fixed a critical logical bug where the Heat Module calculation ran before the Fertilizer Module.
+* **Logic:** Fertilizer Module now calculates *first* so that its heat demand is correctly registered by the Heat Module.
+* **Math:** Internal modules now correctly contribute to global summary statistics.
+
+## v40 - UI Cleanup
+* **UI:** Removed the "Show External Chain" toggles and checkboxes.
+* **Logic:** The "External Inputs" section now displays automatically whenever a resource is not set to Self-Feed/Fertilize.
+
+## v39 - Recursion & Visual Fixes
+* **Fix:** Fixed a bug where the production tree disappeared if the Target Item was the same as the Fuel/Fertilizer source.
+* **UI:** Changed the color of "Gold Cost" in the summary to Yellow (matching the tree) instead of Red.
+* **UI:** Restored "Gross vs Net" deduction text in the summary box.
+
+## v38 - Tree Pruning (Blueprint Mode)
+* **Feature:** **Tree Pruning.** The Main Production Tree now hides fuel/fertilizer sub-chains if "Self-Feed" is active, reducing visual clutter.
+* **Logic:** The "Internal Modules" section at the bottom now renders the *full* gross production chain for fuel/fertilizer (including the recursive cost).
+* **Code:** Restored readable CSS formatting.
+
+## v37 - Blueprint Layout Pivot
+* **Layout:** **Blueprint View.** Split the display into three distinct sections:
+    1.  **Primary Chain:** The main product and its direct ingredients.
+    2.  **Internal Modules:** Consolidated production chains for self-feeding Fuel and Fertilizer.
+    3.  **External Inputs:** A "Shopping List" of raw resources, gold, and imported fuel/fertilizer.
+* **Summary:** Added "Internal Load" vs "External Load" to the summary box.
+
+## v36 - Unified Tagging
+* **Feature:** **Smart Tags.** Replaced old text tags with standardized data.
+    * *Consumption:* `Heat: 26.0 P/s, Needs 32.5/m Charcoal Powder`.
+    * *Production:* `Output: 288.00 V/s` (Only appears on active Fuel/Fertilizer items).
+* **Feature:** **Number Abbreviation.** Large numbers now auto-format (e.g., `17.28k`, `1.25m`).
+
+## v35 - Visual Overhaul & Sorting
+* **UI:** **Row Numbers.** Added blue sequential row identifiers (e.g., `1)`, `2)`) to the far left of the tree.
+* **Logic:** **Smart Sorting.** Ingredients are now always rendered *above* support/fuel nodes in the tree hierarchy.
+* **UI:** Renamed "Stone Furnace" in the sidebar to "Stone Furnace (Minimum)" to clarify it represents total heat capacity.
+
+## v34 - Visual Prototype
+* **Internal:** Initial implementation of Row IDs and Tagging (superseded by v35/v36 logic).
+
+## v33 - Externalized History
+* **Maintenance:** Moved full changelog history to `CHANGELOG.md` to reduce HTML file size and prevent code truncation errors.
+* **UI:** Updated in-app modal to show only the most recent changes and link to this file.
+
+## v32 - Restored Features
+* **Fix:** Restored the detailed Belt Load presets that were accidentally dropped in v30/v31.
+* **Options:** Users can now select 1/32, 1/16, 1/8, 1/4, 1/2, 2/3, and Full Belt loads again.
+
+## v31 - Critical Stability Fixes
+* **Fix:** Fixed a "Calculation Error: targetItemDef is not defined" crash that occurred when calculating profit.
+* **Fix:** Fixed "Cannot read property 'checked' of null" error by restoring missing IDs to the "Show External Chain" checkboxes.
+* **Code:** Added null-checks to document.getElementById calls to prevent future crashes if UI elements are modified.
+
+## v30 - Logic Rebuild
+* **Refactor:** Rolled back core calculation logic to the stable v24 base to eliminate "GrossRate" errors.
+* **Feature:** Re-integrated the "Recipe Swapping" logic and "Chunky Spinners" on top of the stable base.
+* **Safety:** Added order-of-operation sanitization to ensure variables are defined before use.
+
+## v29 - UI Hotfix
+* **Fix:** Restored missing HTML elements for external chain toggles that caused immediate crashes on load in v27/v28.
+
+## v28 - Code Restoration
+* **Fix:** Addressed an issue where the code generator truncated ~150 lines of code, breaking the recursive calculation engine.
+* **Fix:** Manually merged v26 features with v27 safety checks.
+
+## v27 - Safe Mode & Auto-Repair
+* **Feature:** Added "Auto-Repair" logic on startup. If the app detects old save data (missing IDs from v24/v25), it attempts to migrate settings rather than crashing.
+* **UX:** Added `try/catch` blocks around the main calculator to show helpful alert messages instead of a blank screen on error.
+
+## v26 - UX Overhaul & Alternate Recipes
+* **Feature:** **Recipe Swapping.** Added a cycle icon (🔄) next to items in the tree. Clicking it opens a modal to select alternate recipes (e.g., making Sand from Stone vs. Salt).
+* **Feature:** **Chunky Spinners.** Replaced standard browser input arrows with large, touch-friendly `[ - ]` and `[ + ]` buttons spanning the full height of input boxes.
+* **Database:** Updated logic to handle preferred recipe IDs in local storage.
+
+## v25 - GitHub Polish
+* **UI:** Cleaned up "Export to File" button text.
+* **UI:** Made the version number in the header clickable to open the internal Changelog modal.
+* **Data:** Verified fertilizer and fuel values against the game Codex.
+
+## v24 - Persistence
+* **Feature:** **Local Storage.** The app now automatically saves your upgrade levels, default settings, and preferences to the browser.
+* **Feature:** Added "Factory Reset" button to wipe local data and reload defaults from `alchemy_db.js`.
+
+## v23 - Default Logistics
+* **Feature:** Added a "Defaults" panel in the right column.
+* **Logic:** Users can set a Global Default Fuel and Fertilizer that auto-populates the logistics dropdowns on page load.
+
+## v22 - Layout & Tiers
+* **UI:** Moved to a **3-Column Layout** (Inputs | Tree | Upgrades) for better use of screen real estate.
+* **Logic:** Implemented tiered upgrade logic (diminishing returns or step-functions) for Belt Speed and Factory Efficiency.
+* **Logic:** Added specific machine boosts (e.g., Alchemy Skill affecting Alembics/Extractors specifically).
+
+## v21 - Belt Presets
+* **Feature:** Added a "Belt Load" dropdown.
+* **Logic:** Users can select a percentage of a max belt (based on current belt level) rather than typing items/min manually.
+
+## v20 - Rendering Fixes
+* **Fix:** Resolved a recursion display bug where internal support nodes (injecting into the main tree) were not rendering visible children.
+
+## v19 - Net Logistics
+* **Math:** Implemented "Net Energy" and "Net Nutrient" math.
+* **Logic:** The calculator now accounts for the fuel consumed by the fuel production chain itself (the "Self-Feeding Tax").
+
+## v18 - In-Line Injection
+* **UI:** Support chains (Fuel/Fertilizer) now inject directly into the main tree hierarchy under the specific machines consuming them, rather than only appearing as separate isolated trees.
+
+## v17 - Construction List
+* **Feature:** Added a "Construction List" sidebar.
+* **Logic:** Sums total machine counts across all active chains and calculates required parent furnaces.

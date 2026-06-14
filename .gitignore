@@ -1,0 +1,7 @@
+# dependencies (restored from package-lock.json)
+node_modules/
+
+# scratch / temp harness scripts and logs
+*.tmp.js
+_split.tmp.js
+*.log

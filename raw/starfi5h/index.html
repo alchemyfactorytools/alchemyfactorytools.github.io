@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Alchemy Factory Calculator — 炼金工厂计算器，自动计算生产链、机器数量、传送带需求与资源消耗。">
+    <title>Alchemy Factory Calculator 炼金工厂计算器</title>
+    <script src="alchemy_db.js"></script> 
+    <script src="alchemy_calc_engine.js"></script>
+    <script src="alchemy_constants.js"></script> 
+    <script src="alchemy_i18n.js"></script>
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+    <div id="update-banner">
+        <span>
+        🚀 <span id="ui-update-msg">New database version available</span> (<span id="new-version-id">v0</span>)! 
+            <span id="ui-update-local-msg">Current local version:</span> <span id="old-version-id">v0</span>
+        </span>
+        <div class="update-btns">
+            <button id="ui-btn-update" class="update-btn" onclick="performUpdate()">Update Now</button>
+            <button id="ui-btn-later" class="update-btn secondary" onclick="closeUpdateBanner()">Skip Update</button>
+        </div>
+    </div>
+
+    <header>
+        <div style="display:flex; align-items:baseline;">
+            <h1>Alchemy Factory Calculator</h1>
+            <span style="margin-left: 10px;">
+                <span id="ui-lang-toggle" style="cursor:pointer; margin-right: 10px;" onclick="toggleLanguage()" title="EN/中文">🌐EN/中文</span>
+                <a href="https://github.com/starfi5h/AlchemyFactoryCalculator" target="_blank" class="repo-link">GitHub Repo</a>
+                <span id="last-updated-time-text">2026.06.09</span>
+            </span>
+        </div>
+        <div class="tabs">
+            <div class="tab-btn active" onclick="switchTab('calc')">Calculator</div>
+            <div class="tab-btn" onclick="switchTab('cauldron')">Cauldron</div>
+            <!-- <div class="tab-btn" onclick="switchTab('recipes')">Recipes</div> -->
+            <div class="tab-btn" onclick="switchTab('db')">Database Editor</div>
+        </div>
+    </header>
+
+    <main>
+        <div id="recipe-modal" class="modal-overlay" onclick="closeModal('recipe-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2 id="recipe-modal-title">Select Recipe</h2>
+                    <button class="close-modal" onclick="closeModal('recipe-modal')">&times;</button>
+                </div>
+                <div id="recipe-list"></div>
+            </div>
+        </div>
+
+        <!-- Cauldron Recipe Modal -->
+        <div id="cauldron-recipe-modal" class="modal-overlay" onclick="closeModal('cauldron-recipe-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()" style="min-width:320px; max-width:640px;">
+                <div class="modal-header">
+                    <h2 id="cauldron-recipe-modal-title" style="font-size:1em; margin:0;">煉金鍋配方</h2>
+                    <button class="close-modal" onclick="closeModal('cauldron-recipe-modal')">&times;</button>
+                </div>
+                <div id="cauldron-recipe-modal-body">
+                    <!-- 由 JS 動態渲染 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Scale Modal -->
+        <div id="scale-modal" class="modal-overlay" onclick="closeModal('scale-modal')">
+            <div class="modal-content scale-modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2 style="margin:0; font-size:1em; display:flex; align-items:middle; gap:8px;">
+                        <span id="scale-modal-title"></span>
+                    </h2>
+                    <button class="close-modal" onclick="closeModal('scale-modal')">&times;</button>
+                </div>
+
+                <div class="scale-modal-path-row">
+                    <span id="scale-modal-path" class="scale-path-text"></span>
+                </div>
+
+                <!-- 產量 -->
+                <div class="scale-row">
+                    <span class="scale-row-label">Output Rate (/min)</span></span>
+                    <div class="scale-cols">
+                        <span class="scale-old-val" id="scale-old-rate"></span>
+                        <span class="scale-arrow">→</span>
+                        <input class="scale-new-input" id="scale-new-rate" type="number" min="0" step="any"
+                               onchange="onScaleInputChange('rate')" oninput="onScaleInputChange('rate')">
+                    </div>
+                </div>
+
+                <!-- 傳送帶數 -->
+                <div class="scale-row">
+                    <span class="scale-row-label">Belt Count</span>
+                    <div class="scale-cols">
+                        <span class="scale-old-val" id="scale-old-belt"></span>
+                        <span class="scale-arrow">→</span>
+                        <input class="scale-new-input" id="scale-new-belt" type="number" min="0" step="any"
+                               onchange="onScaleInputChange('belt')" oninput="onScaleInputChange('belt')">
+                    </div>
+                </div>
+
+                <!-- 機器數（有機器時才顯示） -->
+                <div class="scale-row" id="scale-machine-row">
+                    <span class="scale-row-label">Machine Count</span>
+                    <div class="scale-cols">
+                        <span class="scale-old-val" id="scale-old-machine"></span>
+                        <span class="scale-arrow">→</span>
+                        <input class="scale-new-input" id="scale-new-machine" type="number" min="0" step="any"
+                               onchange="onScaleInputChange('machine')" oninput="onScaleInputChange('machine')">
+                    </div>
+                </div>
+
+                <!-- 縮放比 + Apply -->
+                <div class="scale-footer">
+                    <span class="scale-row-label">Scaling Ratio</span>
+                    <span><strong id="scale-ratio-display" class="scale-ratio-value">1.0000</strong> x</span>
+                    <button class="scale-apply-btn" onclick="applyScaleModal()">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Item Picker Modal -->
+        <div id="picker-modal" class="modal-overlay" onclick="closeModal('picker-modal')">
+            <div class="modal-content picker-modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2 id="ui-picker-title" style="margin:0;">Select Target Item</h2>
+                    <button class="close-modal" onclick="closeModal('picker-modal')">&times;</button>
+                </div>
+
+                <!-- 1. 最上方分類過濾列 -->
+                <div id="picker-category-bar" class="picker-filter-bar">
+                    <!-- 分類按鈕會由 JS 動態生成 -->
+                </div>
+
+                <!-- 2. 輸入框 -->
+                <div class="picker-search-container">
+                    <input type="text" id="itemPickerSearch" placeholder="Search items..." autocomplete="off" oninput="renderItemPicker()">
+                </div>
+
+                <!-- 3. 兩排物品列表區域 -->
+                <div id="picker-body" class="picker-scroll-area">
+                    <div id="picker-items-grid" class="picker-grid-two-column">
+                        <!-- 物品卡片會由 JS 生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-calc" class="view active">
+            <div class="app-grid">
+                <div>
+                    <div class="panel">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <h3 style="margin:0; border:none;">Production Goal</h3>
+                            <!-- 模式切換 Toggle -->
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <label id="ui-mode-label" style="font-size:0.8em; color:#aaa; font-weight:bold;">MULTI</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="modeToggle" onchange="toggleCalcMode()">
+                                    <span class="slider-switch"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 單產物 UI (保持不變，但在切換時會被隱藏) -->
+                        <div id="single-target-ui">
+                            <div class="input-group">
+                                <label>Target Item</label>
+                                <div class="combobox-container" id="targetCombobox">
+                                    <div class="input-wrapper" onclick="toggleCombobox()">
+                                        <div id="ghost-text" class="ghost-input"></div>
+                                        <input type="text" id="targetItemInput" class="real-input" placeholder="Select or Type..." autocomplete="off" oninput="filterCombobox(); updateComboIcon();" onkeydown="handleComboKey(event)" onblur="closeComboboxDelayed()">
+                                        <div class="combo-arrow" onclick="openItemPicker()" title="Browse Items">☰</div>
+                                        <div id="combo-btn" class="combo-arrow" onclick="handleComboIconClick(event)">▼</div>
+                                    </div>
+                                    <div id="combobox-list" class="combobox-list"></div>
+                                </div>
+                            </div>
+                            <!-- 傳送帶/機器模式切換開關 -->
+                            <div class="checkbox-row" style="margin-bottom: 5px;">
+                                <input type="checkbox" id="machineModeToggle" onchange="toggleControlMode(true)">
+                                <label for="machineModeToggle" style="display:inline; margin:0; cursor:pointer; font-weight:bold; color:var(--accent);">
+                                    Set by Machine Count
+                                </label>
+                            </div>                            
+                            <!-- 機器數量輸入 -->
+                            <div class="input-group" style="opacity:0.5" id="group-machine" disabled>
+                                <label id="machineLabel">Machine Count</label> <label id="active-machine-name">(None)</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustMachine(-1)">-1</button>
+                                    <button class="spinner-btn left" onclick="adjustMachine(-0.1)">-0.1</button>
+                                    <input type="number" id="targetMachine" value="1" oninput="calculate()" disabled>
+                                    <button class="spinner-btn right" onclick="adjustMachine(0.1)">+0.1</button>
+                                    <button class="spinner-btn right last" onclick="adjustMachine(1)">+1</button>
+                                </div>
+                            </div>
+                            <!-- 速率輸入 -->
+                            <div class="input-group" id="group-rate">
+                                <label>Rate (Items/Min)</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustRate(-1)">-1</button>
+                                    <button class="spinner-btn left" onclick="adjustRate(-0.1)">-0.1</button>
+                                    <input type="number" id="targetRate" value="60" oninput="calculate()">
+                                    <button class="spinner-btn right" onclick="adjustRate(0.1)">+0.1</button>
+                                    <button class="spinner-btn right last" onclick="adjustRate(1)">+1</button>
+                                </div>
+                            </div>
+                            <div class="input-group" style="margin-bottom:20px;">
+                                <label>Belt Load Fraction</label> <label id="rateLabel">100%</label>
+                                <div class="slider-container">
+                                    <input type="range" id="beltSlider" min="0" max="100" step="1" oninput="updateFromSlider()">
+                                    <div id="sliderTicks" class="slider-ticks"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 多產物 UI (預設隱藏) -->
+                        <div id="multi-target-ui" style="display:none;">
+                            <div id="multi-target-list">
+                                <!-- 由 JS 動態生成項目 -->
+                            </div>
+                            <button class="save-btn" style="margin-top:10px; background:var(--panel); border-style:dashed;" onclick="addMultiTargetRow()">+ Add Item</button>
+                            <div class="split-btn-container" style="margin-top:10px;">
+                                <button class="split-btn" onclick="saveMultiTargets(event)" title="Save to Browser">💾 Save List</button>
+                                <button class="split-btn" onclick="loadMultiTargets(event)" title="Load from Browser">📂 Load List</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h3>Logistics</h3>
+                        <div class="input-group">
+                            <div>
+                                <label>Heat Source</label>
+                                <span id="fuelEfficiencyCostByHeat" class="cost-tag">0.000 G/P</span> | 
+                                <span id="fuelEfficiencyHeatByCost" class="heat-tag" style="margin-left:auto">00.00 P/G</span>
+                            </div>
+                            <select id="fuelSelect" onchange="updateDefaultButtonState(); calculate();"></select>
+                            <input type="checkbox" id="selfFuel" style="display:none;">
+                            <div class="split-btn-container">
+                                <button id="btnSelfFuel" class="split-btn btn-inactive-red" onclick="toggleFuel()">Self-Fuel: OFF</button>
+                                <button id="btnDefFuel" class="split-btn" onclick="setDefaultFuel(event)">Make Default</button>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" checked id="fuelCostEnable" onchange="onLogisticsChange()">
+                                <label for="fuelCostEnable" style="display:inline; margin:0; cursor:pointer;">Cost (G/item):</label>
+                                <input type="number" id="fuelCostInput" class="small-num-input" value="0" oninput="onLogisticsChange()">
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <div>
+                                <label>Fertilizer Source</label>
+                                <span id="fertEfficiencyCostByNutr" class="cost-tag">0.000 G/V</span> | 
+                                <span id="fertEfficiencyNutrByCost" class="bio-tag" style="margin-left:auto">00.00 V/G</span>
+                            </div>
+                            <select id="fertSelect" onchange="updateDefaultButtonState(); calculate();"></select>
+                            <input type="checkbox" id="selfFert" style="display:none;">
+                            <div class="split-btn-container">
+                                <button id="btnSelfFert" class="split-btn btn-inactive-red" onclick="toggleFert()">Self-Fert: OFF</button>
+                                <button id="btnDefFert" class="split-btn" onclick="setDefaultFert(event)">Make Default</button>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" checked id="fertCostEnable" onchange="onLogisticsChange()">
+                                <label for="fertCostEnable" style="display:inline; margin:0; cursor:pointer;">Cost (G/item):</label>
+                                <input type="number" id="fertCostInput" class="small-num-input" value="0" oninput="onLogisticsChange()">
+                            </div>
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="showBeltCount" onchange="onLogisticsChange()">
+                            <label for="showBeltCount" style="display:inline; margin:0; cursor:pointer;">Show Belt Count</label>
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="showMaxCap" onchange="onLogisticsChange()">
+                            <label for="showMaxCap" style="display:inline; margin:0; cursor:pointer;">Show Machine Max Cap</label>
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="showHeatFert" onchange="onLogisticsChange()">
+                            <label for="showHeatFert" style="display:inline; margin:0; cursor:pointer;">Show Machine Heat & Nutr</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="results-area">
+                    <div id="summary-container"></div>
+                    <div id="summary-icons"></div>
+                    <div id="summary-line" style="margin-bottom: 5px;"></div>
+                    <div id="tree"></div>
+                </div>
+
+                <div>
+                    <div class="panel">
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #444; margin-bottom:10px; padding-bottom:8px;">
+                            <h3 style="margin:0; border:none; padding:0;">Construction List</h3>
+                        </div>
+                        <ul id="construction-list" class="build-list"></ul>
+                        <div id="total-mats-container"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="panel">
+                        <h3>Upgrades (Levels)</h3>
+                        <div class="input-group">
+                            <label id="lvlBelt-title">Logistics Efficiency</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn left first" onclick="adjustInput('lvlBelt', -1); updateFromSlider();">-</button>
+                                <input type="number" id="lvlBelt" value="0" min="0" oninput="updateFromSlider()">
+                                <button class="spinner-btn right last" onclick="adjustInput('lvlBelt', 1); updateFromSlider();">+</button>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label id="lvlSpeed-title">Factory Efficiency</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn left first" onclick="adjustInput('lvlSpeed', -1); calculate();">-</button>
+                                <input type="number" id="lvlSpeed" value="0" min="0" oninput="calculate()">
+                                <button class="spinner-btn right last" onclick="adjustInput('lvlSpeed', 1); calculate();">+</button>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label id="lvlAlchemy-title">Alchemy Skill</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn left first" onclick="adjustInput('lvlAlchemy', -1); calculate();">-</button>
+                                <input type="number" id="lvlAlchemy" value="0" min="0" oninput="calculate()">
+                                <button class="spinner-btn right last" onclick="adjustInput('lvlAlchemy', 1); calculate();">+</button>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label id="lvlFuel-title">Fuel Efficiency</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn left first" onclick="adjustInput('lvlFuel', -1); calculate();">-</button>
+                                <input type="number" id="lvlFuel" value="0" min="0" oninput="calculate()">
+                                <button class="spinner-btn right last" onclick="adjustInput('lvlFuel', 1); calculate();">+</button>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label id="lvlFert-title">Fert Efficiency</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn left first" onclick="adjustInput('lvlFert', -1); calculate();">-</button>
+                                <input type="number" id="lvlFert" value="0" min="0" oninput="calculate()">
+                                <button class="spinner-btn right last" onclick="adjustInput('lvlFert', 1); calculate();">+</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="panel">
+                        <h3>Save/Reset</h3>                        
+                        <span id="db-gameversion-text"></span>
+                        <button class="save-btn" onclick="saveSettings(event)">Save Upgrades</button>
+                        <button class="reset-btn" onclick="resetRecips()">Reset Recipes</button>
+                        <button class="reset-btn" onclick="resetTranslations()">Reset Translations</button>
+                        <button class="reset-btn" onclick="resetAllData()">All Data Reset</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-cauldron" class="view">
+            <div class="cauldron-grid">
+                <div class="panel scroll-panel">
+                    <h3>Settings & Candidates</h3>
+                    <div class="cauldron-tabs-row">
+                        <button id="cauldron-type-0" class="tab-btn mini-tab active" onclick="switchCauldronType(0)">Cauldron</button>
+                        <button id="cauldron-type-1" class="tab-btn mini-tab" onclick="switchCauldronType(1)">Advanced Cauldron</button>
+                    </div>
+                    <div class="cauldron-tabs-row">
+                        <button id="cauldron-tab-0" class="tab-btn mini-tab active" onclick="switchCauldronProfile(0)">Profile 1</button>
+                        <button id="cauldron-tab-1" class="tab-btn mini-tab" onclick="switchCauldronProfile(1)">Profile 2</button>
+                        <button id="cauldron-tab-2" class="tab-btn mini-tab" onclick="switchCauldronProfile(2)">Profile 3</button>
+                    </div>
+                    <div class="input-group" style="margin-bottom:2px;">
+                        <label>Filter Category</label>
+                        <select id="cauldron-cat-select" onchange="renderCandidatePool()"></select>
+                    </div>
+                    <div class="split-btn-container">
+                        <button class="split-btn" onclick="bulkToggleCandidates(true)">Select All</button>
+                        <button class="split-btn" onclick="bulkToggleCandidates(false)">Deselect All</button>
+                    </div>
+                    <div class="checkbox-row" style="margin-top:10px;">
+                        <input type="checkbox" id="cauldron-sort-by-cost" checked onchange="renderCandidatePool()">
+                        <label for="cauldron-sort-by-cost" style="display:inline; margin:0; cursor:pointer; font-size: 1.0em;">Sort by Value</label>
+                        <div style="margin-left:auto; display:flex; gap:5px;">
+                            <button class="swap-btn" style="width:28px; height:28px; font-size:1.1em;" onclick="applyHerbPreset()" title="Apply Herb Preset">🌿</button>
+                            <button id="cauldron-sort-order-btn" class="swap-btn" style="margin-left:auto; width:28px; height:28px; font-size:1.2em;" onclick="toggleCauldronSortOrder()" title="Toggle Sort Order">🔼</button>
+                        </div>
+                    </div>
+                    <div id="candidate-pool" class="candidate-list">
+                    </div>
+                </div>
+
+                <div class="cauldron-main">
+                    <div class="panel">
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:10px;">
+                            <div style="display:flex; align-items:baseline; gap:10px;">
+                                <h3 style="border:none; margin:0;">Filtered Results</h3>
+                                <span id="cauldron-progress" style="color:var(--accent); font-size:0.9em; font-weight:bold;"></span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div class="checkbox-row" style="margin:0;">
+                                    <input type="checkbox" checked id="cauldron-real-time-calculation">
+                                    <label for="cauldron-real-time-calculation" style="display:inline; margin:0; cursor:pointer; font-size: 1.0em;">Real-time</label>
+                                </div>
+                                <button id="btn-run-cauldron" class="save-btn" style="width:auto; padding:5px 15px; margin:0;" onclick="runCauldronSimulation()">Calculate All</button>
+                            </div>
+                        </div>
+
+                        <div class="cauldron-filter-bar">
+                            <div class="filter-group">
+                                <div class="filter-slot-wrapper">
+                                    <div class="filter-main-row">
+                                        <div class="mini-picker" id="slot1" onclick="pickFilterItem(1)">Set Input 1</div>
+                                        <button class="swap-btn" title="clear" onclick="pickFilterItem(1,true); runCauldronSimulation();">×</button>
+                                    </div>
+                                    <div class="filter-control-row" id="slot-ctrl-1"></div>
+                                </div>
+                                <div class="filter-slot-wrapper">
+                                    <div class="filter-main-row">
+                                        <div class="mini-picker" id="slot2" onclick="pickFilterItem(2)">Set Input 2</div>
+                                        <button class="swap-btn" title="clear" onclick="pickFilterItem(2,true); runCauldronSimulation();">×</button>
+                                    </div>
+                                    <div class="filter-control-row" id="slot-ctrl-2"></div>
+                                </div>
+                                <div class="filter-slot-wrapper" id="slot3-wrapper">
+                                    <div class="filter-main-row">
+                                        <div class="mini-picker" id="slot3" onclick="pickFilterItem(3)">Set Input 3</div>
+                                        <button class="swap-btn" title="clear" onclick="pickFilterItem(3,true); runCauldronSimulation();">×</button>
+                                    </div>
+                                    <div class="filter-control-row" id="slot-ctrl-3"></div>
+                                </div>
+                            </div>
+                            <div class="filter-group" id="ratio-filter-group">
+                                <div class="checkbox-row"><input type="checkbox" id="filter-2-diff" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">2 Diff</label></div>
+                                <div class="checkbox-row"><input type="checkbox" id="filter-3-diff" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">3 Diff</label></div>
+                                <div class="checkbox-row"><input type="checkbox" id="filter-2-same" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">2 Same</label></div>
+                                <div class="checkbox-row"><input type="checkbox" id="filter-3-same" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">3 Same</label></div>
+                            </div>
+                        </div>
+                        
+                        <div id="cauldron-results"></div>
+
+                        <div id="unattainable-section" style="margin-top:20px; display:none;">
+                            <h3 style="color:var(--danger); border-bottom:1px solid var(--danger); font-size:0.9em; margin-bottom:10px;">Unattainable Targets</h3>
+                            <div id="unattainable-list" class="picker-grid compact-grid"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel scroll-panel">
+                    <h3>Saved Recipes</h3>
+                        <div class="split-btn-container" style="margin-bottom: 10px;">
+                            <button class="split-btn" onclick="importCauldronFavorites()" style="font-size:0.9em;">Import</button>
+                            <button class="split-btn" onclick="exportCauldronFavorites()" style="font-size:0.9em;">Export</button>
+                            <button class="split-btn" onclick="syncCauldronToMainDB(true)" style="font-size:0.9em; color:white;">Sync DB</button>
+                        </div>
+                    <div id="cauldron-favorites" class="fav-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-recipes" class="view">
+            <div class="recipe-container">
+                <!-- 頂部過濾器與升級項 -->
+                <div class="panel sticky-filter-bar">
+                    <div class="recipe-top-bar">
+                        <!-- 搜尋框 -->
+                        <div class="recipe-search-box">
+                            <input type="text" id="recipe-search-input" placeholder="Search Item..." oninput="renderRecipeTable()">
+                        </div>
+
+                        <!-- 三個升級項並列 -->
+                        <div class="recipe-upgrades-row">
+                            <div class="recipe-upgrade-item">
+                                <label id="recipe-lvlAlchemy-label">Alchemy Skill</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlAlchemy', -1)">-</button>
+                                    <input type="number" id="recipe-lvlAlchemy" value="0" min="0" oninput="renderRecipeTable()">
+                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlAlchemy', 1)">+</button>
+                                </div>
+                            </div>
+                            <div class="recipe-upgrade-item">
+                                <label id="recipe-lvlFuel-label">Fuel Efficiency</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFuel', -1)">-</button>
+                                    <input type="number" id="recipe-lvlFuel" value="0" min="0" oninput="renderRecipeTable()">
+                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFuel', 1)">+</button>
+                                </div>
+                            </div>
+                            <div class="recipe-upgrade-item">
+                                <label id="recipe-lvlFert-label">Fert Efficiency</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFert', -1)">-</button>
+                                    <input type="number" id="recipe-lvlFert" value="0" min="0" oninput="renderRecipeTable()">
+                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFert', 1)">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 新增：HPC -->
+                        <div class="recipe-upgrade-item">
+                            <label>Heat per Cost</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-hpc', -1)">-</button>
+                                <input type="number" id="recipe-hpc" value="20" oninput="renderRecipeTable()">
+                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-hpc', 1)">+</button>
+                            </div>
+                        </div>
+                        
+                        <!-- 新增：NPC -->
+                        <div class="recipe-upgrade-item">
+                            <label>Nutr per Cost</label>
+                            <div class="spinner-wrapper">
+                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-npc', -1)">-</button>
+                                <input type="number" id="recipe-npc" value="20" oninput="renderRecipeTable()">
+                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-npc', 1)">+</button>
+                            </div>
+                        </div>
+
+                        <!-- 切換與列選擇 -->
+                        <div class="recipe-controls">
+                            <div class="toggle-group">
+                                <button id="mode-batch" class="tab-btn mini-tab active" onclick="setRecipeMode('batch')">Batch</button>
+                                <button id="mode-min" class="tab-btn mini-tab" onclick="setRecipeMode('min')">Minute</button>
+                            </div>
+                            <div class="column-toggle-dropdown">
+                                <button class="split-btn" onclick="document.getElementById('col-selector').classList.toggle('show')">Cols ⚙️</button>
+                                <div id="col-selector" class="dropdown-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 表格區域 -->
+                <div class="recipe-table-wrapper">
+                    <table class="recipe-table" id="recipe-table">
+                        <thead>
+                            <tr id="recipe-table-header"></tr>
+                        </thead>
+                        <tbody id="recipe-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-db" class="view">
+            <div class="editor-container">
+                <div class="editor-toolbar">
+                    <!-- Add a selector to switch between DB and I18N -->
+                    <select id="editor-target" onchange="loadEditorContent()" style="width: auto; padding: 5px;">
+                        <option value="db">Database</option>
+                        <option value="i18n">Translations</option>
+                        <option value="settings">Settings</option>
+                        <option value="db_backup">(BACKUP) Database</option>
+                        <option value="i18n_backup">(BACKUP) Translations</option>
+                        <option value="settings_backup">(BACKUP) Settings</option>
+                    </select>
+                    <button class="save-btn" onclick="applyChanges()" style="width:auto; margin:0;">Apply Changes</button>
+                    <button class="info" onclick="exportData()" style="padding:10px; background:var(--info); border:none; color:white; border-radius:4px; font-weight:bold; cursor:pointer;">Export to File</button>
+                </div>
+                <textarea id="json-editor"></textarea>
+            </div>
+        </div>
+    </main>
+    
+    <script src="alchemy_ui.js"></script>
+    <script src="alchemy_calc.js"></script>
+    <script src="alchemy_cauldron.js"></script>
+    <script src="alchemy_recipe.js"></script>
+</body>
+</html>

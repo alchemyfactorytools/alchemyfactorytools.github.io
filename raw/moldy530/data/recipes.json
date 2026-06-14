@@ -1,0 +1,3679 @@
+[
+  {
+    "id": "flax",
+    "inputs": [
+      {
+        "id": "flaxseed",
+        "name": "Flax Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "flax",
+        "name": "Flax",
+        "count": 200
+      }
+    ],
+    "time": 400,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "sage",
+    "inputs": [
+      {
+        "id": "sageseed",
+        "name": "Sage Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sage",
+        "name": "Sage",
+        "count": 180
+      }
+    ],
+    "time": 540,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "redcurrant",
+    "inputs": [
+      {
+        "id": "redcurrantseed",
+        "name": "Redcurrant Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "redcurrant",
+        "name": "Redcurrant",
+        "count": 150
+      }
+    ],
+    "time": 720,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "lavender",
+    "inputs": [
+      {
+        "id": "lavenderseed",
+        "name": "Lavender Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "lavender",
+        "name": "Lavender",
+        "count": 120
+      }
+    ],
+    "time": 1440,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "chamomile",
+    "inputs": [
+      {
+        "id": "chamomileseed",
+        "name": "Chamomile Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "chamomile",
+        "name": "Chamomile",
+        "count": 140
+      }
+    ],
+    "time": 1120,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "gentian",
+    "inputs": [
+      {
+        "id": "gentianseed",
+        "name": "Gentian Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "gentian",
+        "name": "Gentian",
+        "count": 80
+      },
+      {
+        "id": "gentiannectar",
+        "name": "Gentian Nectar",
+        "count": 80
+      }
+    ],
+    "time": 2160,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "wood-board",
+    "inputs": [
+      {
+        "id": "wood",
+        "name": "Logs",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 200
+      }
+    ],
+    "time": 400,
+    "crafted_in": "table-saw",
+    "category": "fuel"
+  },
+  {
+    "id": "large-wood-gear",
+    "inputs": [
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "largewoodgear",
+        "name": "Large Wooden Gear",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "stone",
+    "inputs": [
+      {
+        "id": "limestone",
+        "name": "Limestone",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "count": 150
+      }
+    ],
+    "time": 450,
+    "crafted_in": "stone-crusher",
+    "category": "solid"
+  },
+  {
+    "id": "sand",
+    "inputs": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand",
+        "name": "Sand",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "mortar",
+    "inputs": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "count": 5
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mortar",
+        "name": "Mortar",
+        "count": 1
+      }
+    ],
+    "time": 20,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "flax-fiber",
+    "inputs": [
+      {
+        "id": "flax",
+        "name": "Flax",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "flaxfiber",
+        "name": "Flax Fiber",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "linen-thread",
+    "inputs": [
+      {
+        "id": "flaxfiber",
+        "name": "Flax Fiber",
+        "count": 3
+      }
+    ],
+    "outputs": [
+      {
+        "id": "linenthread",
+        "name": "Linen Thread",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "linen-rope",
+    "inputs": [
+      {
+        "id": "linenthread",
+        "name": "Linen Thread",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "linenrope",
+        "name": "Linen Rope",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "wood-gear",
+    "inputs": [
+      {
+        "id": "largewoodgear",
+        "name": "Large Wooden Gear",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "woodgear",
+        "name": "Small Wooden Gear",
+        "count": 3
+      }
+    ],
+    "time": 12,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "iron-ingot",
+    "inputs": [
+      {
+        "id": "ironore",
+        "name": "Iron Ore",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 100
+      }
+    ],
+    "time": 600,
+    "crafted_in": "iron-smelter",
+    "category": "solid"
+  },
+  {
+    "id": "nails",
+    "inputs": [
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "nails",
+        "name": "Iron Nails",
+        "count": 3
+      }
+    ],
+    "time": 12,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "iron-sand",
+    "inputs": [
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ironsand",
+        "name": "Iron Sand",
+        "count": 1
+      }
+    ],
+    "time": 30,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "plant-ash",
+    "inputs": [
+      {
+        "id": "sage",
+        "name": "Sage",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "plantash",
+        "name": "Plant Ash",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "sage-powder",
+    "inputs": [
+      {
+        "id": "sage",
+        "name": "Sage",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sagepowder",
+        "name": "Sage Powder",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "healing-potion",
+    "inputs": [
+      {
+        "id": "sagepowder",
+        "name": "Sage Powder",
+        "count": 6
+      },
+      {
+        "id": "flaxfiber",
+        "name": "Flax Fiber",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "healingpotion",
+        "name": "Healing Potion",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "linen",
+    "inputs": [
+      {
+        "id": "linenthread",
+        "name": "Linen Thread",
+        "count": 10
+      }
+    ],
+    "outputs": [
+      {
+        "id": "linen",
+        "name": "Linen",
+        "count": 1
+      }
+    ],
+    "time": 5,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "bandage",
+    "inputs": [
+      {
+        "id": "linen",
+        "name": "Linen",
+        "count": 1
+      },
+      {
+        "id": "healingpotion",
+        "name": "Healing Potion",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "bandage",
+        "name": "Bandage",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "quicklime",
+    "inputs": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "quicklime",
+        "name": "Quicklime",
+        "count": 1
+      }
+    ],
+    "time": 9,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "quicklime-powder",
+    "inputs": [
+      {
+        "id": "quicklime",
+        "name": "Quicklime",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "quicklimepowder",
+        "name": "Quicklime Powder",
+        "count": 1
+      }
+    ],
+    "time": 9,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "charcoal",
+    "inputs": [
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "charcoal",
+        "name": "Charcoal",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "charcoal-powder",
+    "inputs": [
+      {
+        "id": "charcoal",
+        "name": "Charcoal",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "charcoalpowder",
+        "name": "Charcoal Powder",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "wood-pulley",
+    "inputs": [
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 2
+      },
+      {
+        "id": "linenrope",
+        "name": "Linen Rope",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "woodpulley",
+        "name": "Wooden Pulley",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "clay",
+    "inputs": [
+      {
+        "id": "charcoalpowder",
+        "name": "Charcoal Powder",
+        "count": 2
+      },
+      {
+        "id": "sand",
+        "name": "Sand",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "clay",
+        "name": "Clay",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "clay-powder",
+    "inputs": [
+      {
+        "id": "clay",
+        "name": "Clay",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "claypowder",
+        "name": "Clay Powder",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "brick",
+    "inputs": [
+      {
+        "id": "clay",
+        "name": "Clay",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "brick",
+        "name": "Brick",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "kiln",
+    "category": "solid"
+  },
+  {
+    "id": "linseed-oil",
+    "inputs": [
+      {
+        "id": "flax",
+        "name": "Flax",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "linseedoil",
+        "name": "Linseed Oil",
+        "count": 50
+      }
+    ],
+    "time": 2,
+    "crafted_in": "extractor",
+    "category": "oil"
+  },
+  {
+    "id": "fruit-wine",
+    "inputs": [
+      {
+        "id": "redcurrant",
+        "name": "Redcurrant",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "fruitwine",
+        "name": "Fruit Wine",
+        "count": 10
+      }
+    ],
+    "time": 6,
+    "crafted_in": "extractor",
+    "category": "oil"
+  },
+  {
+    "id": "limewater",
+    "inputs": [
+      {
+        "id": "quicklimepowder",
+        "name": "Quicklime Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "limewater",
+        "name": "Limewater",
+        "count": 30
+      }
+    ],
+    "time": 3,
+    "crafted_in": "extractor",
+    "category": "oil"
+  },
+  {
+    "id": "glass",
+    "inputs": [
+      {
+        "id": "sand",
+        "name": "Sand",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "glass",
+        "name": "Glass",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "kiln",
+    "category": "solid"
+  },
+  {
+    "id": "soap",
+    "inputs": [
+      {
+        "id": "plantash",
+        "name": "Plant Ash",
+        "count": 3
+      },
+      {
+        "id": "linseedoil",
+        "name": "Linseed Oil",
+        "count": 200
+      }
+    ],
+    "outputs": [
+      {
+        "id": "soap",
+        "name": "Soap",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "blender",
+    "category": "potions"
+  },
+  {
+    "id": "soap-powder",
+    "inputs": [
+      {
+        "id": "soap",
+        "name": "Soap",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "soappowder",
+        "name": "Soap Powder",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "vitality-potion",
+    "inputs": [
+      {
+        "id": "quicklimepowder",
+        "name": "Quicklime Powder",
+        "count": 4
+      },
+      {
+        "id": "fruitwine",
+        "name": "Fruit Wine",
+        "count": 80
+      }
+    ],
+    "outputs": [
+      {
+        "id": "vitalitypotion",
+        "name": "Vitality Potion",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "blender",
+    "category": "potions"
+  },
+  {
+    "id": "basic-fertilizer",
+    "inputs": [
+      {
+        "id": "plantash",
+        "name": "Plant Ash",
+        "count": 1
+      },
+      {
+        "id": "quicklimepowder",
+        "name": "Quicklime Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "basicfertilizer",
+        "name": "Basic Fertilizer",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "turquoise",
+    "inputs": [
+      {
+        "id": "healingpotion",
+        "name": "Healing Potion",
+        "count": 2
+      },
+      {
+        "id": "sand",
+        "name": "Sand",
+        "count": 12
+      }
+    ],
+    "outputs": [
+      {
+        "id": "turquoise",
+        "name": "Turquoise",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "jupiter",
+    "inputs": [
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 4
+      },
+      {
+        "id": "woodgear",
+        "name": "Small Wooden Gear",
+        "count": 6
+      },
+      {
+        "id": "woodpulley",
+        "name": "Wooden Pulley",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "jupiter",
+        "name": "Jupiter",
+        "count": 300
+      }
+    ],
+    "time": 600,
+    "crafted_in": "shaper"
+  },
+  {
+    "id": "coke",
+    "inputs": [
+      {
+        "id": "charcoalpowder",
+        "name": "Charcoal Powder",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "coke",
+        "name": "Coke",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "athanor"
+  },
+  {
+    "id": "coke-powder",
+    "inputs": [
+      {
+        "id": "coke",
+        "name": "Coke",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "cokepowder",
+        "name": "Coke Powder",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "steel-ingot",
+    "inputs": [
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 1
+      },
+      {
+        "id": "cokepowder",
+        "name": "Coke Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "steelingot",
+        "name": "Steel Ingot",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "athanor"
+  },
+  {
+    "id": "steel-gear",
+    "inputs": [
+      {
+        "id": "steelingot",
+        "name": "Steel Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "steelgear",
+        "name": "Steel Gear",
+        "count": 1
+      }
+    ],
+    "time": 16,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "yeast-powder",
+    "inputs": [
+      {
+        "id": "soappowder",
+        "name": "Soap Powder",
+        "count": 2
+      },
+      {
+        "id": "fruitwine",
+        "name": "Fruit Wine",
+        "count": 40
+      }
+    ],
+    "outputs": [
+      {
+        "id": "yeastpowder",
+        "name": "Yeast Powder",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "blender",
+    "category": "potions"
+  },
+  {
+    "id": "mana-potion",
+    "inputs": [
+      {
+        "id": "cokepowder",
+        "name": "Coke Powder",
+        "count": 2
+      },
+      {
+        "id": "gloomspores",
+        "name": "Gloom Spores",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "manapotion",
+        "name": "Transformation Potion",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "gloom-fungus",
+    "inputs": [
+      {
+        "id": "rottenlog",
+        "name": "Rotten Log",
+        "count": 5
+      }
+    ],
+    "outputs": [
+      {
+        "id": "gloomfungus",
+        "name": "Gloom Fungus",
+        "count": 40
+      },
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 160
+      }
+    ],
+    "time": 400,
+    "crafted_in": "table-saw",
+    "category": "fuel"
+  },
+  {
+    "id": "gloom-spores",
+    "inputs": [
+      {
+        "id": "gloomfungus",
+        "name": "Gloom Fungus",
+        "count": 2
+      },
+      {
+        "id": "yeastpowder",
+        "name": "Yeast Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "gloomspores",
+        "name": "Gloom Spores",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "advanced-fertilizer",
+    "inputs": [
+      {
+        "id": "basicfertilizer",
+        "name": "Basic Fertilizer",
+        "count": 1
+      },
+      {
+        "id": "gloomfungus",
+        "name": "Gloom Fungus",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "advancedfertilizer",
+        "name": "Advanced Fertilizer",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "chamomile-powder",
+    "inputs": [
+      {
+        "id": "chamomile",
+        "name": "Chamomile",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "chamomilepowder",
+        "name": "Chamomile Powder",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "sulfur",
+    "inputs": [
+      {
+        "id": "pyrite",
+        "name": "Pyrite Ore",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sulfur",
+        "name": "Sulfur",
+        "count": 40
+      },
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 120
+      }
+    ],
+    "time": 960,
+    "crafted_in": "iron-smelter",
+    "category": "solid"
+  },
+  {
+    "id": "sulfur-powder",
+    "inputs": [
+      {
+        "id": "sulfur",
+        "name": "Sulfur",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sulfurpowder",
+        "name": "Sulfur Powder",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "coal",
+    "inputs": [
+      {
+        "id": "coalore",
+        "name": "Coal Ore",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "coal",
+        "name": "Coal",
+        "count": 120
+      }
+    ],
+    "time": 360,
+    "crafted_in": "stone-crusher",
+    "category": "solid"
+  },
+  {
+    "id": "salt",
+    "inputs": [
+      {
+        "id": "charcoalpowder",
+        "name": "Charcoal Powder",
+        "count": 2
+      },
+      {
+        "id": "quicklimepowder",
+        "name": "Quicklime Powder",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "salt",
+        "name": "Salt",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "athanor"
+  },
+  {
+    "id": "salt-water",
+    "inputs": [
+      {
+        "id": "salt",
+        "name": "Salt",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "saltwater",
+        "name": "Brine",
+        "count": 20
+      }
+    ],
+    "time": 4,
+    "crafted_in": "extractor",
+    "category": "oil"
+  },
+  {
+    "id": "copper-powder",
+    "inputs": [
+      {
+        "id": "ironsand",
+        "name": "Iron Sand",
+        "count": 4
+      },
+      {
+        "id": "soappowder",
+        "name": "Soap Powder",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperpowder",
+        "name": "Impure Copper Powder",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "athanor"
+  },
+  {
+    "id": "copper-powder2",
+    "inputs": [
+      {
+        "id": "ironsand",
+        "name": "Iron Sand",
+        "count": 6
+      },
+      {
+        "id": "soappowder",
+        "name": "Soap Powder",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperpowder2",
+        "name": "Copper Powder",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "athanor"
+  },
+  {
+    "id": "bronze-ingot",
+    "inputs": [
+      {
+        "id": "copperpowder",
+        "name": "Impure Copper Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "bronzeingot",
+        "name": "Bronze Ingot",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "copper-ingot",
+    "inputs": [
+      {
+        "id": "copperpowder2",
+        "name": "Copper Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "copper-coin",
+    "inputs": [
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "coppercoin",
+        "name": "Copper Coin",
+        "count": 300
+      }
+    ],
+    "time": 12,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "copper-bearing",
+    "inputs": [
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperbearing",
+        "name": "Copper Bearing",
+        "count": 2
+      }
+    ],
+    "time": 12,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "bronze-rivet",
+    "inputs": [
+      {
+        "id": "bronzeingot",
+        "name": "Bronze Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "bronzerivet",
+        "name": "Bronze Rivet",
+        "count": 3
+      }
+    ],
+    "time": 12,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "black-powder",
+    "inputs": [
+      {
+        "id": "sulfurpowder",
+        "name": "Sulfur Powder",
+        "count": 1
+      },
+      {
+        "id": "charcoalpowder",
+        "name": "Charcoal Powder",
+        "count": 12
+      },
+      {
+        "id": "limewater",
+        "name": "Limewater",
+        "count": 150
+      }
+    ],
+    "outputs": [
+      {
+        "id": "blackpowder",
+        "name": "Black Powder",
+        "count": 2
+      }
+    ],
+    "time": 12,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "growth-potion",
+    "inputs": [
+      {
+        "id": "chamomilepowder",
+        "name": "Chamomile Powder",
+        "count": 2
+      },
+      {
+        "id": "claypowder",
+        "name": "Clay Powder",
+        "count": 6
+      },
+      {
+        "id": "saltwater",
+        "name": "Brine",
+        "count": 80
+      }
+    ],
+    "outputs": [
+      {
+        "id": "growthpotion",
+        "name": "Growth Potion",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "catalyst1",
+    "inputs": [
+      {
+        "id": "chamomilepowder",
+        "name": "Chamomile Powder",
+        "count": 1
+      },
+      {
+        "id": "gloomspores",
+        "name": "Gloom Spores",
+        "count": 1
+      },
+      {
+        "id": "sulfurpowder",
+        "name": "Sulfur Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "catalyst1",
+        "name": "Unstable Catalyst",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "omni-machine"
+  },
+  {
+    "id": "pocket-watch",
+    "inputs": [
+      {
+        "id": "steelgear",
+        "name": "Steel Gear",
+        "count": 2
+      },
+      {
+        "id": "copperbearing",
+        "name": "Copper Bearing",
+        "count": 2
+      },
+      {
+        "id": "glass",
+        "name": "Glass",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "pocketwatch",
+        "name": "Pocket Watch",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "omni-machine"
+  },
+  {
+    "id": "malachite",
+    "inputs": [
+      {
+        "id": "copperpowder",
+        "name": "Impure Copper Powder",
+        "count": 2
+      },
+      {
+        "id": "claypowder",
+        "name": "Clay Powder",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "malachite",
+        "name": "Malachite",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "athanor"
+  },
+  {
+    "id": "saturn",
+    "inputs": [
+      {
+        "id": "salt",
+        "name": "Salt",
+        "count": 6
+      },
+      {
+        "id": "brick",
+        "name": "Brick",
+        "count": 6
+      },
+      {
+        "id": "glass",
+        "name": "Glass",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "saturn",
+        "name": "Saturn",
+        "count": 100
+      }
+    ],
+    "time": 300,
+    "crafted_in": "shaper"
+  },
+  {
+    "id": "mars",
+    "inputs": [
+      {
+        "id": "nails",
+        "name": "Iron Nails",
+        "count": 8
+      },
+      {
+        "id": "steelgear",
+        "name": "Steel Gear",
+        "count": 4
+      },
+      {
+        "id": "bronzerivet",
+        "name": "Bronze Rivet",
+        "count": 8
+      },
+      {
+        "id": "copperbearing",
+        "name": "Copper Bearing",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mars",
+        "name": "Mars",
+        "count": 75
+      }
+    ],
+    "time": 300,
+    "crafted_in": "shaper"
+  },
+  {
+    "id": "sand2",
+    "inputs": [
+      {
+        "id": "sand",
+        "name": "Sand",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand2",
+        "name": "Sand2",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "sand3",
+    "inputs": [
+      {
+        "id": "sand2",
+        "name": "Sand2",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand3",
+        "name": "Sand3",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "sand4",
+    "inputs": [
+      {
+        "id": "sand3",
+        "name": "Sand3",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand4",
+        "name": "Sand4",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "sand5",
+    "inputs": [
+      {
+        "id": "sand4",
+        "name": "Sand4",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand5",
+        "name": "Sand5",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "sand6",
+    "inputs": [
+      {
+        "id": "sand5",
+        "name": "Sand5",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand6",
+        "name": "Sand6",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "sand8",
+    "inputs": [
+      {
+        "id": "sand6",
+        "name": "Sand6",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand8",
+        "name": "Sand8",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "shard1",
+    "inputs": [
+      {
+        "id": "sand8",
+        "name": "Sand8",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "shard1",
+        "name": "Crude Shard",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "shard2",
+    "inputs": [
+      {
+        "id": "shard1",
+        "name": "Crude Shard",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "shard2",
+        "name": "Broken Shard",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "shard3",
+    "inputs": [
+      {
+        "id": "shard2",
+        "name": "Broken Shard",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "shard3",
+        "name": "Dull Shard",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "crystal1",
+    "inputs": [
+      {
+        "id": "shard3",
+        "name": "Dull Shard",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "crystal1",
+        "name": "Shattered Crystal",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "crystal2",
+    "inputs": [
+      {
+        "id": "crystal1",
+        "name": "Shattered Crystal",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "crystal2",
+        "name": "Crude Crystal",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "crystal3",
+    "inputs": [
+      {
+        "id": "crystal2",
+        "name": "Crude Crystal",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "crystal3",
+        "name": "Polished Crystal",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "diamond1",
+    "inputs": [
+      {
+        "id": "crystal3",
+        "name": "Polished Crystal",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "diamond1",
+        "name": "Adamant",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "diamond2",
+    "inputs": [
+      {
+        "id": "diamond1",
+        "name": "Adamant",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "diamond2",
+        "name": "Diamond",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "diamond3",
+    "inputs": [
+      {
+        "id": "diamond2",
+        "name": "Diamond",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "diamond3",
+        "name": "Perfect Diamond",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "lavender-essential-oil",
+    "inputs": [
+      {
+        "id": "lavender",
+        "name": "Lavender",
+        "count": 3
+      },
+      {
+        "id": "linseedoil",
+        "name": "Linseed Oil",
+        "count": 300
+      }
+    ],
+    "outputs": [
+      {
+        "id": "lavenderessentialoil",
+        "name": "Lavender Essential Oil",
+        "count": 15
+      }
+    ],
+    "time": 3,
+    "crafted_in": "alembic",
+    "category": "essence"
+  },
+  {
+    "id": "brandy",
+    "inputs": [
+      {
+        "id": "cokepowder",
+        "name": "Coke Powder",
+        "count": 5
+      },
+      {
+        "id": "fruitwine",
+        "name": "Fruit Wine",
+        "count": 100
+      }
+    ],
+    "outputs": [
+      {
+        "id": "brandy",
+        "name": "Brandy",
+        "count": 40
+      }
+    ],
+    "time": 5,
+    "crafted_in": "alembic",
+    "category": "essence"
+  },
+  {
+    "id": "sulfuric-acid",
+    "inputs": [
+      {
+        "id": "sulfurpowder",
+        "name": "Sulfur Powder",
+        "count": 1
+      },
+      {
+        "id": "saltwater",
+        "name": "Brine",
+        "count": 60
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sulfuricacid",
+        "name": "Sulfuric Acid",
+        "count": 20
+      }
+    ],
+    "time": 4,
+    "crafted_in": "alembic",
+    "category": "essence"
+  },
+  {
+    "id": "topaz",
+    "inputs": [
+      {
+        "id": "shard1",
+        "name": "Crude Shard",
+        "count": 1
+      },
+      {
+        "id": "sulfuricacid",
+        "name": "Sulfuric Acid",
+        "count": 30
+      }
+    ],
+    "outputs": [
+      {
+        "id": "topaz",
+        "name": "Topaz",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "blender",
+    "category": "potions"
+  },
+  {
+    "id": "blast-potion",
+    "inputs": [
+      {
+        "id": "mors",
+        "name": "Oblivion Essence",
+        "count": 1
+      },
+      {
+        "id": "blackpowder",
+        "name": "Black Powder",
+        "count": 2
+      },
+      {
+        "id": "brandy",
+        "name": "Brandy",
+        "count": 40
+      }
+    ],
+    "outputs": [
+      {
+        "id": "blastpotion",
+        "name": "Blast Potion",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "catalyst2",
+    "inputs": [
+      {
+        "id": "catalyst1",
+        "name": "Unstable Catalyst",
+        "count": 1
+      },
+      {
+        "id": "vitae",
+        "name": "Vitality Essence",
+        "count": 1
+      },
+      {
+        "id": "lavenderessentialoil",
+        "name": "Lavender Essential Oil",
+        "count": 18
+      }
+    ],
+    "outputs": [
+      {
+        "id": "catalyst2",
+        "name": "Fertile Catalyst",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "perfumed-soap",
+    "inputs": [
+      {
+        "id": "soappowder",
+        "name": "Soap Powder",
+        "count": 4
+      },
+      {
+        "id": "lavenderessentialoil",
+        "name": "Lavender Essential Oil",
+        "count": 30
+      }
+    ],
+    "outputs": [
+      {
+        "id": "perfumedsoap",
+        "name": "Perfumed Soap",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "blender",
+    "category": "potions"
+  },
+  {
+    "id": "perfumed-soap-powder",
+    "inputs": [
+      {
+        "id": "perfumedsoap",
+        "name": "Perfumed Soap",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "perfumedsoappowder",
+        "name": "Perfumed Soap Powder",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "vitae",
+    "inputs": [
+      {
+        "id": "mors",
+        "name": "Oblivion Essence",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "vitae",
+        "name": "Vitality Essence",
+        "count": 1
+      }
+    ],
+    "time": 5,
+    "crafted_in": "paradox-crucible"
+  },
+  {
+    "id": "venus",
+    "inputs": [
+      {
+        "id": "healingpotion",
+        "name": "Healing Potion",
+        "count": 1
+      },
+      {
+        "id": "vitalitypotion",
+        "name": "Vitality Potion",
+        "count": 1
+      },
+      {
+        "id": "manapotion",
+        "name": "Transformation Potion",
+        "count": 1
+      },
+      {
+        "id": "growthpotion",
+        "name": "Growth Potion",
+        "count": 1
+      },
+      {
+        "id": "blastpotion",
+        "name": "Blast Potion",
+        "count": 1
+      },
+      {
+        "id": "sulfuricacid",
+        "name": "Sulfuric Acid",
+        "count": 20
+      }
+    ],
+    "outputs": [
+      {
+        "id": "venus",
+        "name": "Venus",
+        "count": 200
+      }
+    ],
+    "time": 1200,
+    "crafted_in": "advanced-shaper"
+  },
+  {
+    "id": "gentian-powder",
+    "inputs": [
+      {
+        "id": "gentian",
+        "name": "Gentian",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "gentianpowder",
+        "name": "Gentian Powder",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "gentian-nectar",
+    "inputs": [
+      {
+        "id": "gentianseed",
+        "name": "Gentian Seeds",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "gentiannectar",
+        "name": "Gentian Nectar",
+        "count": 80
+      },
+      {
+        "id": "gentian",
+        "name": "Gentian",
+        "count": 80
+      }
+    ],
+    "time": 2160,
+    "crafted_in": "nursery",
+    "category": "herbs"
+  },
+  {
+    "id": "silver-powder",
+    "inputs": [
+      {
+        "id": "copperpowder2",
+        "name": "Copper Powder",
+        "count": 1
+      },
+      {
+        "id": "catalyst1",
+        "name": "Unstable Catalyst",
+        "count": 1
+      },
+      {
+        "id": "blackpowder",
+        "name": "Black Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silverpowder",
+        "name": "Crude Silver Powder",
+        "count": 1
+      }
+    ],
+    "time": 6.4,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "silver-powder2",
+    "inputs": [
+      {
+        "id": "silverpowder",
+        "name": "Crude Silver Powder",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silverpowder2",
+        "name": "Impure Silver Powder",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "silver-powder3",
+    "inputs": [
+      {
+        "id": "copperpowder2",
+        "name": "Copper Powder",
+        "count": 2
+      },
+      {
+        "id": "catalyst1",
+        "name": "Unstable Catalyst",
+        "count": 2
+      },
+      {
+        "id": "blackpowder",
+        "name": "Black Powder",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silverpowder3",
+        "name": "Silver Powder",
+        "count": 1
+      }
+    ],
+    "time": 6.4,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "volcanic-ash_alt",
+    "inputs": [
+      {
+        "id": "obsidian",
+        "name": "Obsidian",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "volcanicash",
+        "name": "Volcanic Ash",
+        "count": 1
+      }
+    ],
+    "time": 24,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "obsidian",
+    "inputs": [
+      {
+        "id": "mors",
+        "name": "Oblivion Essence",
+        "count": 1
+      },
+      {
+        "id": "crystal1",
+        "name": "Shattered Crystal",
+        "count": 1
+      },
+      {
+        "id": "catalyst1",
+        "name": "Unstable Catalyst",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "obsidian",
+        "name": "Obsidian",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "silver-ingot",
+    "inputs": [
+      {
+        "id": "silverpowder3",
+        "name": "Silver Powder",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silveringot",
+        "name": "Silver Ingot",
+        "count": 1
+      }
+    ],
+    "time": 16,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "silver-coin",
+    "inputs": [
+      {
+        "id": "silveringot",
+        "name": "Silver Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silvercoin",
+        "name": "Silver Coin",
+        "count": 5
+      }
+    ],
+    "time": 16,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "silver-amulet",
+    "inputs": [
+      {
+        "id": "silveringot",
+        "name": "Silver Ingot",
+        "count": 2
+      },
+      {
+        "id": "lapislazuli",
+        "name": "Lapis Lazuli",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silveramulet",
+        "name": "Silver Amulet",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "mercury",
+    "inputs": [
+      {
+        "id": "silverpowder",
+        "name": "Crude Silver Powder",
+        "count": 1
+      },
+      {
+        "id": "vitae",
+        "name": "Vitality Essence",
+        "count": 1
+      },
+      {
+        "id": "sulfuricacid",
+        "name": "Sulfuric Acid",
+        "count": 80
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mercury",
+        "name": "Quicksilver",
+        "count": 10
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-alembic",
+    "category": "liquid"
+  },
+  {
+    "id": "aqua-vitae",
+    "inputs": [
+      {
+        "id": "gentiannectar",
+        "name": "Gentian Nectar",
+        "count": 1
+      },
+      {
+        "id": "worldtreeleaf",
+        "name": "World Tree Leaf",
+        "count": 1
+      },
+      {
+        "id": "brandy",
+        "name": "Brandy",
+        "count": 200
+      }
+    ],
+    "outputs": [
+      {
+        "id": "aquavitae",
+        "name": "Aqua Vitae",
+        "count": 10
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-alembic",
+    "category": "liquid"
+  },
+  {
+    "id": "lapis-lazuli",
+    "inputs": [
+      {
+        "id": "silverpowder2",
+        "name": "Impure Silver Powder",
+        "count": 1
+      },
+      {
+        "id": "shard1",
+        "name": "Crude Shard",
+        "count": 4
+      },
+      {
+        "id": "gentianpowder",
+        "name": "Gentian Powder",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "lapislazuli",
+        "name": "Lapis Lazuli",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "mercury-p",
+    "inputs": [
+      {
+        "id": "turquoise",
+        "name": "Turquoise",
+        "count": 1
+      },
+      {
+        "id": "malachite",
+        "name": "Malachite",
+        "count": 1
+      },
+      {
+        "id": "topaz",
+        "name": "Topaz",
+        "count": 1
+      },
+      {
+        "id": "obsidian",
+        "name": "Obsidian",
+        "count": 1
+      },
+      {
+        "id": "lapislazuli",
+        "name": "Lapis Lazuli",
+        "count": 1
+      },
+      {
+        "id": "mercury",
+        "name": "Quicksilver",
+        "count": 10
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mercuryp",
+        "name": "Mercury",
+        "count": 100
+      }
+    ],
+    "time": 600,
+    "crafted_in": "advanced-shaper"
+  },
+  {
+    "id": "catalyst3",
+    "inputs": [
+      {
+        "id": "catalyst2",
+        "name": "Fertile Catalyst",
+        "count": 1
+      },
+      {
+        "id": "volcanicash",
+        "name": "Volcanic Ash",
+        "count": 1
+      },
+      {
+        "id": "aquavitae",
+        "name": "Aqua Vitae",
+        "count": 12
+      }
+    ],
+    "outputs": [
+      {
+        "id": "catalyst3",
+        "name": "Resonant Catalyst",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "panacea-elixir",
+    "inputs": [
+      {
+        "id": "catalyst2",
+        "name": "Fertile Catalyst",
+        "count": 3
+      },
+      {
+        "id": "blastpotion",
+        "name": "Blast Potion",
+        "count": 3
+      },
+      {
+        "id": "aquavitae",
+        "name": "Aqua Vitae",
+        "count": 12
+      }
+    ],
+    "outputs": [
+      {
+        "id": "panaceaelixir",
+        "name": "Panacea Potion",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "gold-dust",
+    "inputs": [
+      {
+        "id": "silverpowder3",
+        "name": "Silver Powder",
+        "count": 0
+      },
+      {
+        "id": "volcanicash",
+        "name": "Volcanic Ash",
+        "count": 0
+      },
+      {
+        "id": "catalyst2",
+        "name": "Fertile Catalyst",
+        "count": 0
+      },
+      {
+        "id": "mercury",
+        "name": "Quicksilver",
+        "count": 7
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust",
+        "name": "Crude Gold Dust",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "gold-dust2",
+    "inputs": [
+      {
+        "id": "golddust",
+        "name": "Crude Gold Dust",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust2",
+        "name": "Impure Gold Dust",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "gold-dust3",
+    "inputs": [
+      {
+        "id": "silverpowder3",
+        "name": "Silver Powder",
+        "count": 1
+      },
+      {
+        "id": "volcanicash",
+        "name": "Volcanic Ash",
+        "count": 1
+      },
+      {
+        "id": "catalyst2",
+        "name": "Fertile Catalyst",
+        "count": 1
+      },
+      {
+        "id": "mercury",
+        "name": "Quicksilver",
+        "count": 12
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust3",
+        "name": "Gold Dust",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "gold-dust5",
+    "inputs": [
+      {
+        "id": "golddust3",
+        "name": "Gold Dust",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust5",
+        "name": "Pure Gold Dust",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "gold-ingot",
+    "inputs": [
+      {
+        "id": "golddust5",
+        "name": "Pure Gold Dust",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "goldingot",
+        "name": "Gold Ingot",
+        "count": 1
+      }
+    ],
+    "time": 40,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "gold-coin",
+    "inputs": [
+      {
+        "id": "goldingot",
+        "name": "Gold Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "goldcoin",
+        "name": "Gold Coin",
+        "count": 1
+      }
+    ],
+    "time": 40,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "crown",
+    "inputs": [
+      {
+        "id": "goldingot",
+        "name": "Gold Ingot",
+        "count": 3
+      },
+      {
+        "id": "ruby",
+        "name": "Ruby",
+        "count": 1
+      },
+      {
+        "id": "sapphire",
+        "name": "Sapphire",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "crown",
+        "name": "Crown",
+        "count": 1
+      }
+    ],
+    "time": 15,
+    "crafted_in": "omni-machine"
+  },
+  {
+    "id": "catalyst4",
+    "inputs": [
+      {
+        "id": "catalyst3",
+        "name": "Resonant Catalyst",
+        "count": 15
+      },
+      {
+        "id": "philosopherstone",
+        "name": "Philosopher's Stone",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "catalyst4",
+        "name": "Eternal Catalyst",
+        "count": 1
+      }
+    ],
+    "time": 60,
+    "crafted_in": "arcane-processor"
+  },
+  {
+    "id": "star-dust",
+    "inputs": [
+      {
+        "id": "jupiter",
+        "name": "Jupiter",
+        "count": 12
+      },
+      {
+        "id": "saturn",
+        "name": "Saturn",
+        "count": 4
+      },
+      {
+        "id": "mars",
+        "name": "Mars",
+        "count": 3
+      }
+    ],
+    "outputs": [
+      {
+        "id": "stardust",
+        "name": "Star Dust",
+        "count": 50
+      }
+    ],
+    "time": 300,
+    "crafted_in": "arcane-processor"
+  },
+  {
+    "id": "fairy-dust",
+    "inputs": [
+      {
+        "id": "chamomilepowder",
+        "name": "Chamomile Powder",
+        "count": 1
+      },
+      {
+        "id": "gentianpowder",
+        "name": "Gentian Powder",
+        "count": 1
+      },
+      {
+        "id": "worldtreeleaf",
+        "name": "World Tree Leaf",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "fairydust",
+        "name": "Fairy Dust",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "arcane-processor"
+  },
+  {
+    "id": "fairy-tear",
+    "inputs": [
+      {
+        "id": "fairydust",
+        "name": "Fairy Dust",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "fairytear",
+        "name": "Fairy Tear",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "extractor",
+    "category": "oil"
+  },
+  {
+    "id": "moon-tear",
+    "inputs": [
+      {
+        "id": "stardust",
+        "name": "Star Dust",
+        "count": 16
+      },
+      {
+        "id": "fairytear",
+        "name": "Fairy Tear",
+        "count": 10
+      }
+    ],
+    "outputs": [
+      {
+        "id": "moontear",
+        "name": "Moon Tear",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "advanced-alembic",
+    "category": "liquid"
+  },
+  {
+    "id": "moonlit-soap",
+    "inputs": [
+      {
+        "id": "perfumedsoappowder",
+        "name": "Perfumed Soap Powder",
+        "count": 2
+      },
+      {
+        "id": "moontear",
+        "name": "Moon Tear",
+        "count": 5
+      }
+    ],
+    "outputs": [
+      {
+        "id": "moonlitsoap",
+        "name": "Moonlit Soap",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "blender",
+    "category": "potions"
+  },
+  {
+    "id": "luna",
+    "inputs": [
+      {
+        "id": "steelingot",
+        "name": "Steel Ingot",
+        "count": 1
+      },
+      {
+        "id": "bronzeingot",
+        "name": "Bronze Ingot",
+        "count": 1
+      },
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      },
+      {
+        "id": "silveringot",
+        "name": "Silver Ingot",
+        "count": 1
+      },
+      {
+        "id": "goldingot",
+        "name": "Gold Ingot",
+        "count": 1
+      },
+      {
+        "id": "moontear",
+        "name": "Moon Tear",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "luna",
+        "name": "Luna",
+        "count": 75
+      }
+    ],
+    "time": 600,
+    "crafted_in": "advanced-shaper"
+  },
+  {
+    "id": "sol",
+    "inputs": [
+      {
+        "id": "jupiter",
+        "name": "Jupiter",
+        "count": 60
+      },
+      {
+        "id": "saturn",
+        "name": "Saturn",
+        "count": 20
+      },
+      {
+        "id": "mars",
+        "name": "Mars",
+        "count": 15
+      },
+      {
+        "id": "venus",
+        "name": "Venus",
+        "count": 40
+      },
+      {
+        "id": "mercuryp",
+        "name": "Mercury",
+        "count": 20
+      },
+      {
+        "id": "luna",
+        "name": "Luna",
+        "count": 15
+      },
+      {
+        "id": "diamond3",
+        "name": "Perfect Diamond",
+        "count": 5
+      },
+      {
+        "id": "catalyst4",
+        "name": "Eternal Catalyst",
+        "count": 1
+      },
+      {
+        "id": "worldtreecore",
+        "name": "World Tree Core",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sol",
+        "name": "Sol",
+        "count": 5
+      }
+    ],
+    "time": 300,
+    "crafted_in": "aether-shaper"
+  },
+  {
+    "id": "salt_alt",
+    "inputs": [
+      {
+        "id": "rocksalt",
+        "name": "Rock Salt",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "salt",
+        "name": "Salt",
+        "count": 100
+      },
+      {
+        "id": "sand",
+        "name": "Sand",
+        "count": 100
+      }
+    ],
+    "time": 600,
+    "crafted_in": "stone-crusher",
+    "category": "solid"
+  },
+  {
+    "id": "meteorite_alt",
+    "inputs": [
+      {
+        "id": "meteorite",
+        "name": "Meteorite",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "count": 1000
+      }
+    ],
+    "time": 3000,
+    "crafted_in": "stone-crusher",
+    "category": "solid"
+  },
+  {
+    "id": "coke_alt",
+    "inputs": [
+      {
+        "id": "coal",
+        "name": "Coal",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "coke",
+        "name": "Coke",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "copper-powder2_alt",
+    "inputs": [
+      {
+        "id": "copperpowder",
+        "name": "Impure Copper Powder",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperpowder2",
+        "name": "Copper Powder",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "silver-powder3_alt",
+    "inputs": [
+      {
+        "id": "silverpowder2",
+        "name": "Impure Silver Powder",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silverpowder3",
+        "name": "Silver Powder",
+        "count": 1
+      }
+    ],
+    "time": 8,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "gold-dust3_alt",
+    "inputs": [
+      {
+        "id": "golddust2",
+        "name": "Impure Gold Dust",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust3",
+        "name": "Gold Dust",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "refiner",
+    "category": "misc"
+  },
+  {
+    "id": "copper-ingot_alt",
+    "inputs": [
+      {
+        "id": "coppercoin",
+        "name": "Copper Coin",
+        "count": 400
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "kiln",
+    "category": "solid"
+  },
+  {
+    "id": "silver-ingot_alt",
+    "inputs": [
+      {
+        "id": "silvercoin",
+        "name": "Silver Coin",
+        "count": 6
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silveringot",
+        "name": "Silver Ingot",
+        "count": 1
+      }
+    ],
+    "time": 16,
+    "crafted_in": "kiln",
+    "category": "solid"
+  },
+  {
+    "id": "gold-ingot_alt",
+    "inputs": [
+      {
+        "id": "goldcoin",
+        "name": "Gold Coin",
+        "count": 3
+      }
+    ],
+    "outputs": [
+      {
+        "id": "goldingot",
+        "name": "Gold Ingot",
+        "count": 2
+      }
+    ],
+    "time": 40,
+    "crafted_in": "kiln",
+    "category": "solid"
+  },
+  {
+    "id": "iron-ingot_alt",
+    "inputs": [
+      {
+        "id": "ironsand",
+        "name": "Iron Sand",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "crucible",
+    "category": "solid"
+  },
+  {
+    "id": "copper-powder2_alt2",
+    "inputs": [
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperpowder2",
+        "name": "Copper Powder",
+        "count": 1
+      }
+    ],
+    "time": 12,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "silver-powder3_alt3",
+    "inputs": [
+      {
+        "id": "silveringot",
+        "name": "Silver Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "silverpowder3",
+        "name": "Silver Powder",
+        "count": 1
+      }
+    ],
+    "time": 16,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "gold-dust5_alt",
+    "inputs": [
+      {
+        "id": "goldingot",
+        "name": "Gold Ingot",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust5",
+        "name": "Pure Gold Dust",
+        "count": 1
+      }
+    ],
+    "time": 40,
+    "crafted_in": "grinder",
+    "category": "powder"
+  },
+  {
+    "id": "shard1_alt",
+    "inputs": [
+      {
+        "id": "quartzore",
+        "name": "Quartz Ore",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "shard1",
+        "name": "Crude Shard",
+        "count": 80
+      }
+    ],
+    "time": 480,
+    "crafted_in": "stone-crusher",
+    "category": "solid"
+  },
+  {
+    "id": "mors_alt",
+    "inputs": [
+      {
+        "id": "vitae",
+        "name": "Vitality Essence",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mors",
+        "name": "Oblivion Essence",
+        "count": 1
+      }
+    ],
+    "time": 5,
+    "crafted_in": "paradox-crucible"
+  },
+  {
+    "id": "philosopher-stone_alt",
+    "inputs": [
+      {
+        "id": "ruby",
+        "name": "Ruby",
+        "count": 1
+      },
+      {
+        "id": "sapphire",
+        "name": "Sapphire",
+        "count": 1
+      },
+      {
+        "id": "emerald",
+        "name": "Emerald",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "philosopherstone",
+        "name": "Philosopher's Stone",
+        "count": 1
+      }
+    ],
+    "time": 60,
+    "crafted_in": "cauldron"
+  },
+  {
+    "id": "ruby_alt",
+    "inputs": [
+      {
+        "id": "diamond2",
+        "name": "Diamond",
+        "count": 1
+      },
+      {
+        "id": "golddust5",
+        "name": "Pure Gold Dust",
+        "count": 1
+      },
+      {
+        "id": "catalyst3",
+        "name": "Resonant Catalyst",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ruby",
+        "name": "Ruby",
+        "count": 1
+      }
+    ],
+    "time": 30.9,
+    "crafted_in": "cauldron"
+  },
+  {
+    "id": "sapphire_alt",
+    "inputs": [
+      {
+        "id": "diamond3",
+        "name": "Perfect Diamond",
+        "count": 1
+      },
+      {
+        "id": "worldtreecore",
+        "name": "World Tree Core",
+        "count": 1
+      },
+      {
+        "id": "catalyst1",
+        "name": "Unstable Catalyst",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sapphire",
+        "name": "Sapphire",
+        "count": 1
+      }
+    ],
+    "time": 38.2,
+    "crafted_in": "cauldron"
+  },
+  {
+    "id": "emerald_alt",
+    "inputs": [
+      {
+        "id": "moonlitsoap",
+        "name": "Moonlit Soap",
+        "count": 1
+      },
+      {
+        "id": "lapislazuli",
+        "name": "Lapis Lazuli",
+        "count": 1
+      },
+      {
+        "id": "catalyst2",
+        "name": "Fertile Catalyst",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "emerald",
+        "name": "Emerald",
+        "count": 1
+      }
+    ],
+    "time": 45.5,
+    "crafted_in": "cauldron"
+  },
+  {
+    "id": "iron-amulet",
+    "inputs": [
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 1
+      },
+      {
+        "id": "linenrope",
+        "name": "Linen Rope",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ironamulet",
+        "name": "IronAmulet",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "fine-bandage",
+    "inputs": [
+      {
+        "id": "linen",
+        "name": "Linen",
+        "count": 1
+      },
+      {
+        "id": "healingpotion",
+        "name": "Healing Potion",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "finebandage",
+        "name": "FineBandage",
+        "count": 2
+      }
+    ],
+    "time": 6,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "copper-amulet",
+    "inputs": [
+      {
+        "id": "copperingot",
+        "name": "Copper Ingot",
+        "count": 1
+      },
+      {
+        "id": "turquoise",
+        "name": "Turquoise",
+        "count": 1
+      }
+    ],
+    "outputs": [
+      {
+        "id": "copperamulet",
+        "name": "CopperAmulet",
+        "count": 1
+      }
+    ],
+    "time": 3,
+    "crafted_in": "assembler",
+    "category": "crafted"
+  },
+  {
+    "id": "cart",
+    "inputs": [
+      {
+        "id": "woodboard",
+        "name": "Plank",
+        "count": 10
+      },
+      {
+        "id": "ironingot",
+        "name": "Iron Ingot",
+        "count": 8
+      },
+      {
+        "id": "copperbearing",
+        "name": "Copper Bearing",
+        "count": 4
+      }
+    ],
+    "outputs": [
+      {
+        "id": "cart",
+        "name": "Cart",
+        "count": 1
+      }
+    ],
+    "time": 40,
+    "crafted_in": "omni-machine"
+  },
+  {
+    "id": "amethyst",
+    "inputs": [
+      {
+        "id": "sulfurpowder",
+        "name": "Sulfur Powder",
+        "count": 1
+      },
+      {
+        "id": "chamomilepowder",
+        "name": "Chamomile Powder",
+        "count": 1
+      },
+      {
+        "id": "lavenderessentialoil",
+        "name": "Lavender Essential Oil",
+        "count": 100
+      }
+    ],
+    "outputs": [
+      {
+        "id": "amethyst",
+        "name": "Amethyst",
+        "count": 1
+      }
+    ],
+    "time": 1,
+    "crafted_in": "advanced-athanor"
+  },
+  {
+    "id": "charisma-potion",
+    "inputs": [
+      {
+        "id": "blackpowder",
+        "name": "Black Powder",
+        "count": 1
+      },
+      {
+        "id": "perfumedsoappowder",
+        "name": "Perfumed Soap Powder",
+        "count": 3
+      },
+      {
+        "id": "brandy",
+        "name": "Brandy",
+        "count": 40
+      }
+    ],
+    "outputs": [
+      {
+        "id": "charismapotion",
+        "name": "CharismaPotion",
+        "count": 1
+      }
+    ],
+    "time": 9,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "sulfur_alt",
+    "inputs": [
+      {
+        "id": "chamomilepowder",
+        "name": "Chamomile Powder",
+        "count": 1
+      },
+      {
+        "id": "cokepowder",
+        "name": "Coke Powder",
+        "count": 3
+      },
+      {
+        "id": "saltwater",
+        "name": "Brine",
+        "count": 180
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sulfur_alt",
+        "name": "Sulfur_Alt",
+        "count": 1
+      }
+    ],
+    "time": 6,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "sand7",
+    "inputs": [
+      {
+        "id": "sand6",
+        "name": "Sand6",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "sand7",
+        "name": "Sand7",
+        "count": 1
+      }
+    ],
+    "time": 4,
+    "crafted_in": "processor",
+    "category": "solid"
+  },
+  {
+    "id": "invisbility-potion",
+    "inputs": [
+      {
+        "id": "volcanicash",
+        "name": "Volcanic Ash",
+        "count": 1
+      },
+      {
+        "id": "gentiannectar",
+        "name": "Gentian Nectar",
+        "count": 5
+      },
+      {
+        "id": "mercury",
+        "name": "Quicksilver",
+        "count": 15
+      }
+    ],
+    "outputs": [
+      {
+        "id": "invisbilitypotion",
+        "name": "InvisbilityPotion",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "advanced-blender",
+    "category": "potions"
+  },
+  {
+    "id": "gold-dust4",
+    "inputs": [
+      {
+        "id": "golddust3",
+        "name": "Gold Dust",
+        "count": 2
+      }
+    ],
+    "outputs": [
+      {
+        "id": "golddust4",
+        "name": "GoldDust4",
+        "count": 1
+      }
+    ],
+    "time": 10,
+    "crafted_in": "processor",
+    "category": "solid"
+  }
+]

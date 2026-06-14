@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alchemy Factory — Production Planner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><button id="sidebarToggle" title="Show/hide controls">☰</button> Alchemy Factory <span class="muted">Production Planner</span></h1>
+    <div class="version" id="version">—</div>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="panel" id="controls">
+      <section>
+        <h2>Target</h2>
+        <label>Output item
+          <input type="text" id="item" list="items" placeholder="e.g. Mars" autocomplete="off">
+          <datalist id="items"></datalist>
+        </label>
+        <label>Rate <small>(or # of final-product machines to build)</small>
+          <span class="rate-row">
+            <input type="number" id="rate" value="0.1" min="0" step="any">
+            <select id="rateUnit">
+              <option value="min" selected>/ min</option>
+              <option value="sec">/ sec</option>
+              <option value="machines">× output machines</option>
+            </select>
+          </span>
+        </label>
+        <label>Unlock tier <small>(limits recipes to your tier or below)</small>
+          <select id="maxTier">
+            <option value="">All unlocked</option>
+            <option value="1">Tier 1</option>
+            <option value="2">Tier 2</option>
+            <option value="3">Tier 3</option>
+            <option value="4">Tier 4</option>
+            <option value="5">Tier 5</option>
+            <option value="6">Tier 6</option>
+            <option value="7">Tier 7</option>
+            <option value="8">Tier 8</option>
+            <option value="9">Tier 9</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>Cauldron</h2>
+        <label class="check"><input type="checkbox" id="cauldronEnabled" checked> Use cauldron formula</label>
+        <label>Input pool
+          <select id="pool">
+            <option value="unrestricted" selected>Unrestricted (any item)</option>
+            <option value="buyables">Buyables only (no farming)</option>
+            <option value="buyables+growables">Buyables + growables (buy or grow, no crafted inputs)</option>
+            <option value="easy">Easy inputs (buy / grow / 1-step craft)</option>
+            <option value="growables">Growables only (Nursery herbs)</option>
+          </select>
+        </label>
+        <label>Never cauldron these <small>(comma-separated)</small>
+          <input type="text" id="forbidCauldron" placeholder="e.g. Obsidian">
+        </label>
+        <label>Only cauldron these <small>(must have a cauldron target)</small>
+          <input type="text" id="forceCauldron" placeholder="e.g. Impure Copper Powder">
+        </label>
+        <label>Discourage cauldron→cauldron <small>(weight on feeding a cauldron's output into another)</small>
+          <select id="cauldronChain">
+            <option value="0" selected>Off — allow cauldron chains</option>
+            <option value="0.5">Light — prefer non-cauldron inputs</option>
+            <option value="1.5">Medium — avoid where reasonable</option>
+            <option value="4">Strong — chain only if far cheaper</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>Allowed external inputs</h2>
+        <p class="hint">Leave empty to allow buying anything. Add items to restrict the
+          factory to a specific set of purchasable feedstock + coins.</p>
+        <div id="allowChips" class="chips"></div>
+        <input type="text" id="allowInput" list="buyables" placeholder="add an input…" autocomplete="off">
+        <datalist id="buyables"></datalist>
+      </section>
+
+      <section>
+        <h2>Byproducts</h2>
+        <label>Policy
+          <select id="byproducts">
+            <option value="reuse" selected>Reuse (credit downstream, discard surplus)</option>
+            <option value="sell">Sell (revenue offsets cost)</option>
+            <option value="trash">Trash (discard, no credit)</option>
+          </select>
+        </label>
+        <label>Trash only these <small>(comma-separated)</small>
+          <input type="text" id="byproductTrash" placeholder="e.g. Crude Silver Powder">
+        </label>
+      </section>
+
+      <section>
+        <h2>Main belt supply</h2>
+        <p class="hint">Items already arriving on your main belt — fuel, fertilizer,
+          coins, anything. Treated as free incoming supply (optionally capped at a
+          rate/min) instead of being crafted. A fertilizer's quality sets Nursery
+          grow speed; belt speed (Logistics skill) caps it.</p>
+        <div id="beltRows" class="belt-rows"></div>
+        <div class="belt-add">
+          <input type="text" id="beltItem" list="items" placeholder="item…" autocomplete="off">
+          <input type="number" id="beltRate" placeholder="/min (blank = ∞)" min="0" step="any">
+          <button id="beltAdd" class="secondary">Add</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Craft fuel / fertilizer</h2>
+        <label class="check"><input type="checkbox" id="selfFuel" checked> Allow crafting fuel (self-fuel loops)</label>
+        <label class="check"><input type="checkbox" id="selfFert" checked> Allow crafting fertilizer (self-fert loops)</label>
+      </section>
+
+      <section>
+        <h2>Capacity & capital</h2>
+        <label>Optimize for <small>(cost ↔ easiest to build)</small>
+          <select id="buildability">
+            <option value="0" selected>Cheapest — pure min copper</option>
+            <option value="1">Balanced — waste up to 1× per-item cost</option>
+            <option value="5">Lean — waste up to 5× per-item cost</option>
+            <option value="1000000">Simplest — fewest routes, cost no object</option>
+          </select>
+        </label>
+        <p class="hint">How much copper <b>per item</b> you'll waste for a simpler factory.
+          It finds the cheapest build, then within that budget picks the one with the
+          <b>fewest distinct production lines</b> — always a single clean route per item,
+          never a split. Budget scales to the build's own cheapest per-item cost (same for a
+          2g 80s Mars or a 1c nail). "Simplest" ignores cost entirely and takes the globally
+          fewest-line build (e.g. buy ore → smelter over a sprawling free-herb cauldron chain).</p>
+        <label>Override: ignore cost gaps under <small>(absolute copper per item — wins over the dropdown)</small>
+          <input type="number" id="costTolerance" value="0" min="0" step="any" placeholder="0 = use dropdown">
+        </label>
+        <p class="hint">Set an exact per-item waste budget instead of the dropdown's scaled
+          default. e.g. set it to 5 and a
+          1c-vs-4c-per-nail difference stops mattering — it'll pick a one-machine ore smelter
+          over a free-herb cauldron chain.</p>
+        <label>Machines per type <small>(capacity bound)</small>
+          <input type="number" id="machines" value="1000" min="1" step="1">
+        </label>
+        <label class="check"><input type="checkbox" id="capital" checked> Count machine build cost</label>
+        <p class="hint">Counts what each machine costs to build (including the Nursery plots
+          a low-quality fertilizer implies), so the planner won't pick a thousand-nursery
+          sprawl just because the materials are cheap. Use <b>Optimize for</b> above to trade
+          factory size against running cost.</p>
+      </section>
+
+      <section>
+        <h2>Skills</h2>
+        <div class="skills-grid">
+          <label>Factory<input type="number" id="sk_factory" value="0" min="0" step="1"></label>
+          <label>Logistics<input type="number" id="sk_logistics" value="0" min="0" step="1"></label>
+          <label>Alchemy<input type="number" id="sk_alchemy" value="0" min="0" step="1"></label>
+          <label>Fuel<input type="number" id="sk_fuel" value="0" min="0" step="1"></label>
+          <label>Fertilizer<input type="number" id="sk_fertilizer" value="0" min="0" step="1"></label>
+        </div>
+      </section>
+
+      <button id="solve" class="primary">Solve ▶</button>
+      <button id="exportDot" class="secondary">Copy Graphviz DOT</button>
+      <button id="copySettings" class="secondary">Copy settings (for debugging)</button>
+    </aside>
+
+    <main>
+      <div id="status" class="status"></div>
+      <div id="summary" class="summary"></div>
+      <div class="graph-wrap">
+        <div class="graph-toolbar">
+          <div class="toolbar-btns">
+            <button id="zoomIn">＋</button><button id="zoomOut">－</button><button id="zoomFit">Fit</button>
+            <button id="orientToggle" title="Toggle horizontal / vertical layout">⇅ Vertical</button>
+            <button id="clusterToggle" title="Group production lines into containers">▦ Lines</button>
+            <button id="utilEdgeToggle" title="Show/collapse fuel &amp; fertilizer distribution edges (the bands always show the amounts)">🔥 Fuel/fert</button>
+            <button id="layoutToggle" title="Switch between the classic and experimental 2D layout">⊞ Layout: classic</button>
+            <button id="mermaidBtn" class="secondary" title="Copy diagram as Mermaid">Copy Mermaid</button>
+          </div>
+          <span class="legend">
+            <span class="lg process">machine</span>
+            <span class="lg external">input</span>
+            <span class="lg demand">target</span>
+            <span class="lg fuel">fuel</span>
+            <span class="lg fert">fertilizer</span>
+            <span class="lg cash">coins</span>
+            <span class="lg surplus">surplus</span>
+            <span class="lg recycle">feedback loop</span>
+          </span>
+        </div>
+        <svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <details id="explainBox">
+        <summary>Text route tree</summary>
+        <pre id="explain"></pre>
+      </details>
+    </main>
+  </div>
+  <script src="layout.js"></script>
+  <script src="layout2.js"></script>
+  <script src="layout3.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

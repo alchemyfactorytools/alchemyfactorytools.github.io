@@ -1,0 +1,57 @@
+{
+  "_meta": {
+    "source": "starfi5h/AlchemyFactoryCalculator develop branch, alchemy_calc_engine.js (DB v41, gameVersion 0.5.0.4471)",
+    "confidence": "medium",
+    "note": "These are the five production-affecting upgrade tracks modeled by the community calculator, with formulas extracted verbatim from its engine code. Community guides name additional skills (e.g. Catapult Speed, Commerce) that are NOT modeled here; no authoritative datamined skill-tree dump exists yet. Verified against the live calculator 2026-06-12."
+  },
+  "tracks": [
+    {
+      "id": "logistics_efficiency",
+      "name": "Logistics Efficiency (Belt Speed)",
+      "affects": "conveyor belt throughput, items/min",
+      "formula": "beltSpeed(lvl) = 60 + 15 * min(lvl, 12) + 3 * max(lvl - 12, 0)",
+      "baseValue": 60,
+      "unit": "items/min",
+      "examples": { "0": 60, "6": 150, "12": 240, "20": 264 }
+    },
+    {
+      "id": "factory_efficiency",
+      "name": "Factory Efficiency (Machine Speed)",
+      "affects": "all machine crafting speed (divides recipe baseTime); also multiplies machine heat consumption per second (net heat per batch unchanged)",
+      "formula": "speedMult(lvl) = 1.0 + 0.25 * min(lvl, 12) + 0.05 * max(lvl - 12, 0)",
+      "baseValue": 1.0,
+      "unit": "multiplier",
+      "examples": { "0": 1.0, "6": 2.5, "12": 4.0, "20": 4.4 }
+    },
+    {
+      "id": "alchemy_skill",
+      "name": "Alchemy Skill (Batch Yield)",
+      "affects": "batch yield multiplier, ONLY for: Extractor, Thermal Extractor, Alembic, Advanced Alembic. Thermal Extractor additionally gets a fixed 3x yield on top of this multiplier.",
+      "formula": "alchemyMult(lvl) = 1.0 + sum_{i=1..lvl}(p_i)/100 where p_i = 6 for i<=2, 8 for 3<=i<=8, 10 for i>=9",
+      "baseValue": 1.0,
+      "unit": "multiplier",
+      "examples": { "0": 1.0, "2": 1.12, "8": 1.6, "12": 2.0 }
+    },
+    {
+      "id": "fuel_efficiency",
+      "name": "Fuel Efficiency",
+      "affects": "heat energy extracted per fuel item burned",
+      "formula": "fuelMult(lvl) = 1 + 0.10 * lvl",
+      "baseValue": 1.0,
+      "unit": "multiplier"
+    },
+    {
+      "id": "fertilizer_efficiency",
+      "name": "Fertilizer Efficiency",
+      "affects": "nutrient value extracted per fertilizer item consumed",
+      "formula": "fertMult(lvl) = 1 + 0.10 * lvl",
+      "baseValue": 1.0,
+      "unit": "multiplier"
+    }
+  ],
+  "notModeled": [
+    "Catapult Speed (named in community guides; no formula source found)",
+    "Commerce (named in community guides; no formula source found)",
+    "full skill tree layout, level caps, and unlock costs"
+  ]
+}

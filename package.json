@@ -1,0 +1,21 @@
+{
+  "name": "alchfact",
+  "version": "0.1.0",
+  "description": "Alchemy Factory production optimizer — flow-balance LP over the full cauldron triple space (game 0.5.0.4471, June 2026)",
+  "main": "src/model.js",
+  "bin": {
+    "alchfact": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "node server.js",
+    "validate": "node scripts/validate.js",
+    "cost": "node src/cli.js cost",
+    "profit": "node src/cli.js profit"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "highs": "^1.14.2"
+  }
+}
