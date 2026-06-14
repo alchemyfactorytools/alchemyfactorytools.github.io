@@ -124,11 +124,23 @@ function composeGraph(composed, db, cfg) {
   if (fertRoot) for (const n of nurseryNodes) edges.push({ from: fertRoot, to: n.id, item: composed.summary.fertItem, ratePerMin: n.fertPerMin, nutrient: true });
 
   // main-belt money line: a single source feeding every buy/mint (incl. the trunks'). A minted
-  // coin links here by the cash-provenance rule; the edge is labelled in copper/min.
+  // coin links here by the cash-provenance rule; the edge is labelled in copper/min. The line must
+  // not conjure coins: if the user belts coins, THOSE back it (a real belt supply, valued at face);
+  // if no coins are belted, the copper is "minted" — an explicit ASSUMPTION (you bring real cash),
+  // flagged so it never silently reads as free, mirroring the LP's mint valve.
+  const COINS = new Set(['Copper Coin', 'Silver Coin', 'Gold Coin']);
+  const beltCoins = (cfg.belt || []).map((b) => (typeof b === 'string' ? b : b.item)).filter((n) => COINS.has(n));
   const totalCopper = moneyDraws.reduce((s, d) => s + d.copperPerMin, 0);
   if (totalCopper > EPS) {
     const moneyId = 'money:belt';
-    addNode({ id: moneyId, type: 'external', kind: 'belt', item: 'coins', label: 'Main belt: coins', ratePerMin: totalCopper, copperPerMin: totalCopper, beltLanes: null, beltSpeed: null, badges: [] });
+    const backed = beltCoins.length > 0;
+    addNode({
+      id: moneyId, type: 'external', kind: backed ? 'belt' : 'cash',
+      item: backed ? beltCoins.join('+') : 'coins',
+      label: backed ? `Main belt: ${beltCoins.join(', ')}` : 'Coins (minted — assumption)',
+      ratePerMin: totalCopper, copperPerMin: totalCopper, beltLanes: null, beltSpeed: null,
+      badges: backed ? [] : ['ASSUMPTION'],
+    });
     for (const d of moneyDraws) edges.push({ from: moneyId, to: d.id, item: d.coinItem || 'copper', ratePerMin: d.copperPerMin, cash: true });
   }
 

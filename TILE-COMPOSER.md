@@ -241,6 +241,12 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    composer (LP-free) when `solver==='composer'`, picking carriers via the new LP-free
    `canonicalCarriers(db, cfg)` (top heat/floor fuel, top maxFertility fert) and returning the same
    `{status, copperPerMin, copperPerItem, graph, explainText}` envelope. The LP path is untouched.
+8. **[DONE] Belt supplies wired into the trunks.** A user-supplied belt fuel/fert OVERRIDES the
+   heuristic carrier (`canonicalCarriers` in `utilities.js`): belt the item and the build draws it
+   off the belt — the trunk collapses to one belt node (belt items are free leaves in the DP). The
+   money line never conjures coins: belted coins back it (kind `belt`, `Main belt: <coins>`), and
+   with NO belted coins the copper is an explicit minted **ASSUMPTION** (kind `cash`, ASSUMPTION
+   badge) — mirrors the LP's mint valve. `compose-graph.js` reads `cfg.belt`.
 7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
 
 ## Decisions (resolved)

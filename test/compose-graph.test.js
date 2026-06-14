@@ -65,6 +65,31 @@ test('Phase 4: a minted coin links back to the main-belt money line (cash edge)'
   assert.equal(g.summary.mintedCoins['Copper Coin'], 20);
 });
 
+test('belt fuel/fert is drawn off the belt (no built trunk); belt coins back the money line', () => {
+  // Belt a fertilizer (Growth Potion) and a coin (Silver Coin). The fert carrier must become the
+  // belted item, its trunk collapses to a single belt node, and the money line is backed by the
+  // belt coin (no "minted — assumption" flag, no coins from thin air).
+  const beltCfg = resolveConfig({ maxTier: 6, cauldron: { enabled: true, inputPool: 'growables' }, belt: [{ item: 'Silver Coin' }, { item: 'Growth Potion', rate: 60 }], canonical: {} });
+  const { canonicalCarriers } = require('../src/utilities');
+  const carriers = canonicalCarriers(db, beltCfg);
+  assert.equal(carriers.fertItem, 'Growth Potion', 'belted fertilizer overrides the heuristic carrier');
+  beltCfg.canonical = carriers;
+  const c2 = makeComposer(db, beltCfg);
+  const composed = c2.compose('Clay', 30);
+  assert.equal(composed.fert.source, 'belt', 'fert trunk is a belt supply, not a built production tree');
+  const g = composeGraph(composed, db, beltCfg);
+  const money = g.nodes.find((n) => n.id === 'money:belt');
+  assert.ok(money && money.kind === 'belt' && !money.badges.includes('ASSUMPTION'), 'belt coins back the money line');
+  const fertEdge = g.edges.find((e) => e.nutrient);
+  assert.ok(fertEdge && g.nodes.find((n) => n.id === fertEdge.from).kind === 'belt', 'nurseries draw fert from the belt node');
+});
+
+test('without belt coins the money line is an explicit minted assumption (not free)', () => {
+  const g = graphOf('Black Powder', 20); // no belt; mints Copper Coin
+  const money = g.nodes.find((n) => n.id === 'money:belt');
+  assert.ok(money && money.kind === 'cash' && money.badges.includes('ASSUMPTION'), 'minted money is flagged, never silent/free');
+});
+
 test('Phase 4: co-products render as trash sinks, not dangling outputs', () => {
   // Use a co-producing recipe route by disabling cauldron so a real db recipe with a co-product wins.
   const c2 = makeComposer(db, resolveConfig({ maxTier: 6, composer: { coW: 0 }, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } }));
