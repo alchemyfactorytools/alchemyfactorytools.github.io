@@ -94,6 +94,7 @@ function renderSvg(graph, { title = '', orientation = 'LR' } = {}) {
     if (n.machineCount && n.utilization != null) sub = `${n.machineCount}× ${n.machine} (${Math.round(n.utilization * 100)}%) · ${fmt(n.ratePerMin)}/min`;
     else if (n.machineCount) sub = `${n.machineCount}× ${n.machine} · ${fmt(n.ratePerMin)}/min`;
     else if (n.machine) sub = `${n.machine} · ${fmt(n.ratePerMin)}/min`;
+    else if (n.kind === 'belt' && n.supplyRate != null) sub = `${fmt(n.ratePerMin)}/min drawn · ${fmt(n.supplyRate)}/min belt supply${n.beltLanes ? ` · ${n.beltLanes} belt${n.beltLanes > 1 ? 's' : ''}` : ''}`;
     else if (n.kind === 'belt' && n.beltLanes) sub = `${fmt(n.ratePerMin)}/min · ${n.beltLanes} belt${n.beltLanes > 1 ? 's' : ''} @ ${fmt(n.beltSpeed)}/min`;
     else if (n.type === 'external') sub = `${fmt(n.ratePerMin)}/min${n.copperPerMin ? ' · ' + fmt(n.copperPerMin) + ' c/min' : ' · free'}`;
     else if (n.type === 'demand') sub = `${fmt(n.ratePerMin)}/min target`;

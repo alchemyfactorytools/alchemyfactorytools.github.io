@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-belt-ratecap-2026-06-14z';
+const BUILD_STAMP = 'composer-belt-supply-display-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -622,6 +622,7 @@ function renderGraph(rawGraph) {
     else if (n.machineCount && n.utilization != null) subText = `${n.machineCount}× ${promote ? '' : n.machine + ' '}(${Math.round(n.utilization * 100)}%) · ${fmt(n.ratePerMin)}/min`;
     else if (n.machineCount) subText = `${n.machineCount}× ${promote ? '' : n.machine + ' '}· ${fmt(n.ratePerMin)}/min`; // nursery: plot count, no time-util
     else if (n.machine) subText = `${n.machine} · ${fmt(n.ratePerMin)}/min`;
+    else if (n.kind === 'belt' && n.supplyRate != null) subText = `${fmt(n.ratePerMin)}/min drawn · ${fmt(n.supplyRate)}/min belt supply${n.beltLanes ? ` · ${n.beltLanes} belt${n.beltLanes > 1 ? 's' : ''}` : ''}`;
     else if (n.kind === 'belt' && n.beltLanes) subText = `${fmt(n.ratePerMin)}/min · ${n.beltLanes} belt${n.beltLanes > 1 ? 's' : ''} @ ${fmt(n.beltSpeed)}/min`;
     else if (n.type === 'external') subText = `${fmt(n.ratePerMin)}/min${n.copperPerMin ? ' · ' + fmtCu(n.copperPerMin) + '/min' : ' · free'}`;
     else if (n.type === 'demand') subText = `${fmt(n.ratePerMin)}/min target`;

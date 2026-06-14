@@ -35,6 +35,15 @@ function composeGraph(composed, db, cfg) {
   const params = skillParams(cfg.skills);
   const beltSpeed = params.beltSpeed;
   const liquid = (item) => !!(db.items[item] && db.items[item].liquid);
+  // What the USER declared on the belt for each item (rate cap; null = unlimited). Surfaced on belt
+  // nodes so the box shows "drawn X/min of YOUR Y/min supply" instead of only the physical belt
+  // carry speed (beltSpeed = the Logistics carry rate, which isn't the user's supply cap).
+  const beltDeclared = new Map((cfg.belt || []).map((b) => (typeof b === 'string' ? [b, null] : [b.item, b.rate == null ? null : Number(b.rate)])));
+  const beltNodeFields = (item, drawn) => {
+    const supplyRate = beltDeclared.has(item) ? beltDeclared.get(item) : null;
+    const forLanes = supplyRate != null ? supplyRate : drawn; // size belts to what you ROUTE IN (the supply), not the draw
+    return { supplyRate, beltSpeed, beltLanes: beltSpeed > 0 && !liquid(item) ? Math.ceil(forLanes / beltSpeed - 1e-9) : null };
+  };
 
   const nodes = [];
   const edges = [];
@@ -50,7 +59,7 @@ function composeGraph(composed, db, cfg) {
     const leaf = tile.source === 'buy' || tile.source === 'mint' || tile.source === 'belt' || tile.source === 'unmakeable';
     if (leaf) {
       const external = tile.source !== 'unmakeable';
-      const beltLanes = tile.source === 'belt' && beltSpeed > 0 && !liquid(tile.item) ? Math.ceil(tile.ratePerMin / beltSpeed - 1e-9) : null;
+      const belt = tile.source === 'belt' ? beltNodeFields(tile.item, tile.ratePerMin) : { supplyRate: null, beltSpeed: null, beltLanes: null };
       addNode({
         id: tile.id,
         type: external ? 'external' : 'process',
@@ -60,7 +69,7 @@ function composeGraph(composed, db, cfg) {
         machine: null, machineCount: null, utilization: null, tileLoad: null,
         ratePerMin: tile.ratePerMin,
         copperPerMin: tile.copperPerMin || 0,
-        beltLanes, beltSpeed: tile.source === 'belt' ? beltSpeed : null,
+        beltLanes: belt.beltLanes, beltSpeed: belt.beltSpeed, supplyRate: belt.supplyRate,
         badges: tile.source === 'mint' ? ['ASSUMPTION'] : [],
       });
       if ((tile.copperPerMin || 0) > 0) moneyDraws.push({ id: tile.id, copperPerMin: tile.copperPerMin, coinItem: tile.coinItem || null });
@@ -124,8 +133,8 @@ function composeGraph(composed, db, cfg) {
     const srcs = [];
     if (trunk.beltRate > EPS) {
       const id = `${trunk.item}#${tag}-belt`;
-      const lanes = beltSpeed > 0 && !liquid(trunk.item) ? Math.ceil(trunk.beltRate / beltSpeed - 1e-9) : null;
-      addNode({ id, type: 'external', kind: 'belt', item: trunk.item, label: `Main belt: ${trunk.item}`, ratePerMin: trunk.beltRate, copperPerMin: 0, beltLanes: lanes, beltSpeed, badges: [] });
+      const belt = beltNodeFields(trunk.item, trunk.beltRate);
+      addNode({ id, type: 'external', kind: 'belt', item: trunk.item, label: `Main belt: ${trunk.item}`, ratePerMin: trunk.beltRate, copperPerMin: 0, beltLanes: belt.beltLanes, beltSpeed: belt.beltSpeed, supplyRate: belt.supplyRate, badges: [] });
       srcs.push({ id, share: trunk.beltRate / trunk.rate });
     }
     if (trunk.prodTile) srcs.push({ id: trunk.prodTile._gid, share: trunk.prodRate / trunk.rate });
