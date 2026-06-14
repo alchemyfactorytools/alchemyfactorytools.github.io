@@ -300,6 +300,22 @@
       clusterOf = runBFS(seeds2);
     }
 
+    // Disposal sinks (surplus / trash) have no line of their own — the BFS above never
+    // reaches them (they produce nothing a seed consumes), so they'd fall into the trailing
+    // unclustered band on the far side with a feed edge raking the whole canvas. Attach each
+    // to its PRODUCER's line (busiest incoming material edge wins) so it draws as a short
+    // stub directly under the machine that discards into it. Done after the final BFS so the
+    // pass-2 re-run can't drop the assignment.
+    for (const n of graph.nodes) {
+      if (n.type !== 'surplus') continue;
+      let from = null, best = -1;
+      for (const e of graph.edges) {
+        if (e.to !== n.id || e.heat || e.nutrient || e.cash || e.from === e.to) continue;
+        if ((e.ratePerMin || 0) > best) { best = e.ratePerMin || 0; from = e.from; }
+      }
+      if (from != null && clusterOf.has(from)) clusterOf.set(n.id, clusterOf.get(from));
+    }
+
     const byKey = new Map();
     for (const [nid, key] of clusterOf) {
       if (!byKey.has(key)) byKey.set(key, { id: key, label: labelOf.get(key) || key, members: [] });
@@ -498,6 +514,18 @@
     for (const n of graph.nodes) {
       if (isAux(n) && rank.get(n.id) > realMax) rank.set(n.id, realMax);
       if (n.type === 'demand') rank.set(n.id, realMax + 1);
+    }
+    // Drop each disposal sink to exactly one row below its producer (assignClusters already put
+    // it in the producer's lane), so a trashed co-product sits directly under the machine that
+    // makes it instead of being capped to the deepest production row off in a corner.
+    for (const n of graph.nodes) {
+      if (n.type !== 'surplus') continue;
+      let from = null, best = -1;
+      for (const e of graph.edges) {
+        if (e.to !== n.id || e.heat || e.nutrient || e.cash || e.from === e.to) continue;
+        if ((e.ratePerMin || 0) > best) { best = e.ratePerMin || 0; from = e.from; }
+      }
+      if (from != null && rank.has(from)) rank.set(n.id, rank.get(from) + 1);
     }
     let maxR = 0;
     // re-derive maxR (util remap may have changed the deepest rank)
