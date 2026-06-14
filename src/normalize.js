@@ -294,7 +294,7 @@ function buildProcessTable(db, cfg) {
         copperCost: 0, copperRevenue: 0, flags: {},
       });
     }
-    if (item.nutrientValue !== undefined && item.nutrientValue > 0 && (cfg.selfFert || buyable) && (!canonFert || name === canonFert)) {
+    if (!cfg.noFert && item.nutrientValue !== undefined && item.nutrientValue > 0 && (cfg.selfFert || buyable) && (!canonFert || name === canonFert)) {
       processes.push({
         id: `fert:${name}`, kind: 'fertilize', timeSec: 0,
         consumes: { [name]: 1 }, produces: {},
@@ -390,7 +390,7 @@ function buildProcessTable(db, cfg) {
         copperCost: 0, copperRevenue: 0, flags: { fuelItem: item, belt: true },
       });
     }
-    if (isFert) {
+    if (isFert && !cfg.noFert) {
       processes.push({
         id: `fert:${item}@belt`, kind: 'fertilize', timeSec: 0,
         consumes: { [supplyItem]: 1 }, produces: {},

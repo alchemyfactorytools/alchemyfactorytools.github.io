@@ -24,7 +24,7 @@ const db = require('./data/alchemy_db.v41.json');
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'canonical-fuel-fert-tiles-2026-06-14x';
+const SERVER_STAMP = 'fuel-tile-buyore-nofert-2026-06-14y';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -55,7 +55,13 @@ async function solveRequest(body) {
   if (config.canonicalUtilities !== false) {
     const canon = await canonicalUtilities(db, cfg, { buildProcessTable, Model, optimizeWithinTolerance });
     // exemptItem: never let the lock forbid producing the very item we're solving for
-    if (canon) cfg.canonical = { ...canon, exemptItem: item };
+    if (canon) {
+      cfg.canonical = { ...canon, exemptItem: item };
+      // Forbid cauldron-producing the fuel chain so the main build can't shortcut it (the
+      // refine tile is recipe-based). The target itself is exempt (you can still build it).
+      const block = (canon.forbidCauldronItems || []).filter((n) => n !== item);
+      if (block.length) cfg.cauldron = { ...cfg.cauldron, forbidFor: [...(cfg.cauldron.forbidFor || []), ...block] };
+    }
   }
   const pt = buildProcessTable(db, cfg);
   const model = new Model(pt, db);

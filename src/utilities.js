@@ -52,70 +52,58 @@ async function computeCanonicalUtilities(db, cfg, deps) {
     .map(([n, it]) => [n, it.maxFertility])
     .sort((a, b) => b[1] - a[1]).map(([n]) => n);
 
-  // Build the simplest tile for the first candidate that's producible. Returns the chosen
-  // item plus the set of RECIPE columns (by id) that make it — the canonical chain.
-  const buildTile = async (candidates, sink) => {
+  const pt0 = buildProcessTable(db, cfg);
+  const isRecipe = (p) => p.kind === 'recipe' || p.kind === 'cauldron' || p.kind === 'catalystVariant';
+
+  // Build the simplest tile for the first candidate that's producible — fewest routes
+  // (route MIP, big tolerance), so it buys raw ore rather than building a farm. Returns the
+  // chosen item, the canonical recipe columns, and every item those recipes PRODUCE (the
+  // chain's items — Coal, Coke, Coke Powder — which the main build will lock to this chain).
+  const buildTile = async (candidates, baseCfg) => {
     for (const item of candidates) {
-      const pt = buildProcessTable(db, cfg);
+      const pt = buildProcessTable(db, baseCfg);
       const model = new Model(pt, db);
       model.wasteWeight = 0.01; // tight: the canonical chain must be clean
       let r;
       try { r = await optimizeWithinTolerance(model, { demand: { [item]: 1 }, toleranceFraction: 1000 }); } catch (e) { continue; }
       if (!r || r.status !== 'Optimal' || !r.flows || !r.flows.length) continue;
-      const recipeIds = new Set(
-        r.flows
-          .filter((f) => ['recipe', 'catalystVariant', 'cauldron'].includes(f.process.kind))
-          .map((f) => f.process.id)
-      );
-      return { item, recipeIds };
+      const recipes = r.flows.filter((f) => isRecipe(f.process));
+      const recipeIds = new Set(recipes.map((f) => f.process.id));
+      const items = new Set(recipes.flatMap((f) => Object.keys(f.process.produces || {})).filter((o) => db.items[o]));
+      return { item, recipeIds, items };
     }
     return null;
   };
 
-  const fuel = await buildTile(fuels);
-  const fert = await buildTile(ferts);
+  // FUEL tile: built with NO fertilizer (noFert) — fuel must not depend on fert, so it can't
+  // farm; that forces a bought-ore refine chain (Buy Coal Ore → Coal → Coke → Coke Powder), a
+  // clean droppable blueprint. FERT tile: built normally — it MAY burn fuel, and its farm
+  // chain is inherent. Both may buy raws (coins are fine). Fall back to allowing fert for fuel
+  // only if it's otherwise impossible (then we don't lock the chain).
+  const fuelCfg = { ...cfg, noFert: true };
+  let fuel = await buildTile(fuels, fuelCfg);
+  const lockFuel = !!fuel; // fert-free fuel found ⇒ the main build can lock the whole chain
+  if (!fuel) fuel = await buildTile(fuels, cfg);
+  const fert = await buildTile(ferts, cfg);
   if (!fuel && !fert) return null;
 
-  // Recipes to FORBID in the main build: any non-canonical producer of a UTILITY-EXCLUSIVE
-  // item (one consumed only by burning/fertilizing, transitively). Locking these to the
-  // canonical chain kills wasteful alternates (the Charcoal→Coke route) without touching
-  // items that also feed real products. Computed over a fresh, unrestricted table.
-  const pt = buildProcessTable(db, cfg);
-  const consumersOf = new Map();
-  for (const p of pt.processes) {
-    for (const it of Object.keys(p.consumes || {})) {
-      if (!consumersOf.has(it)) consumersOf.set(it, []);
-      consumersOf.get(it).push(p);
-    }
-  }
-  // Only the FUEL chain is locked: fuel-exclusive items (consumed solely by burning) have a
-  // single clean carrier (Coke Powder) whose alternates we want gone. Fertilizer is left to
-  // the carrier restriction alone — its chain is an inherent farm loop we can't shorten, and
-  // forbidding fert producers breaks builds that TARGET a fertilizer.
-  const isSink = (p) => p.kind === 'burn';
-  const isRecipe = (p) => p.kind === 'recipe' || p.kind === 'cauldron' || p.kind === 'catalystVariant';
-  const exclusive = new Set();
-  for (let changed = true; changed;) {
-    changed = false;
-    for (const [item, consumers] of consumersOf) {
-      if (exclusive.has(item) || !db.items[item]) continue;
-      const ok = consumers.length > 0 && consumers.every(
-        (p) => isSink(p) || (isRecipe(p) && Object.keys(p.produces).some((o) => exclusive.has(o)))
-      );
-      if (ok) { exclusive.add(item); changed = true; }
-    }
-  }
-  const canonical = new Set([...(fuel ? fuel.recipeIds : []), ...(fert ? fert.recipeIds : [])]);
+  // Lock the fuel chain: every item the canonical tile produces (Coal, Coke, Coke Powder —
+  // even those that double as recipe ingredients) may ONLY be made by the canonical recipes.
+  // Forbid every other RECIPE producer and (the same items) cauldron production, so the main
+  // build makes Coke Powder via the bought-ore refine chain, never a cauldron-farm.
+  const lockItems = lockFuel && fuel ? fuel.items : new Set();
   const forbidRecipeIds = new Set();
-  for (const p of pt.processes) {
-    if (!isRecipe(p) || canonical.has(p.id)) continue;
-    if (Object.keys(p.produces).some((o) => exclusive.has(o))) forbidRecipeIds.add(p.id);
+  for (const p of pt0.processes) {
+    if (!isRecipe(p) || fuel.recipeIds.has(p.id)) continue;
+    if (Object.keys(p.produces).some((o) => lockItems.has(o))) forbidRecipeIds.add(p.id);
   }
+  const forbidCauldronItems = [...lockItems];
 
   return {
     fuelItem: fuel ? fuel.item : null,
     fertItem: fert ? fert.item : null,
     forbidRecipeIds,
+    forbidCauldronItems,
   };
 }
 
