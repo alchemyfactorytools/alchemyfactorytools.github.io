@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'fullbelt-tiles-2026-06-14s';
+const BUILD_STAMP = 'tile-header-3line-2026-06-14t';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -477,14 +477,20 @@ function renderGraph(rawGraph) {
       // shown as the tile's capacity, even though backpressure may run it below that.
       const perTile = bp.perTileOut != null ? bp.perTileOut : (c.outRate && bp.K ? c.outRate / bp.K : null);
       const rateStr = perTile ? ` · ${fmt(perTile)}${c.outItem ? ' ' + c.outItem : ''}/min per tile` : '';
-      const t2 = document.createElementNS(SVGNS, 'text');
-      t2.setAttribute('x', c.x + 10); t2.setAttribute('y', c.y + 30); t2.setAttribute('class', 'clustersub'); t2.setAttribute('style', `fill:${col}`);
-      t2.textContent = `⬢ ${bp.K}× tiles${rateStr} · each: ${cellShort}${bp.idle > 0.2 ? ` (${Math.round(bp.idle * 100)}% idle)` : ''}`;
+      const idleStr = bp.idle > 0.2 ? ` (${Math.round(bp.idle * 100)}% idle)` : '';
       const cellStr = bp.cell.map((x) => `${x.count}× ${x.label} (${x.machine})`).join(' + ');
-      const ttl = document.createElementNS(SVGNS, 'title');
-      ttl.textContent = `Tileable: build ${bp.K} identical tiles, each one = ${cellStr}. ${Math.round(bp.idle * 100)}% of machine capacity idles (build cost only — backpressure means no extra input/fuel).`;
-      t2.appendChild(ttl);
-      cg.appendChild(t2);
+      const ttlText = `Tileable: build ${bp.K} identical tiles, each one = ${cellStr}. ${Math.round(bp.idle * 100)}% of machine capacity idles (build cost only — backpressure means no extra input/fuel).`;
+      // line 2 = tile count + per-tile output; line 3 = the cell (its own line so the long
+      // machine list doesn't stretch the header sideways across the canvas).
+      const subLine = (dy, text) => {
+        const tx = document.createElementNS(SVGNS, 'text');
+        tx.setAttribute('x', c.x + 10); tx.setAttribute('y', c.y + dy); tx.setAttribute('class', 'clustersub'); tx.setAttribute('style', `fill:${col}`);
+        tx.textContent = text;
+        const ttl = document.createElementNS(SVGNS, 'title'); ttl.textContent = ttlText; tx.appendChild(ttl);
+        cg.appendChild(tx);
+      };
+      subLine(30, `⬢ ${bp.K}× tiles${rateStr}`);
+      subLine(44, `each: ${cellShort}${idleStr}`);
     }
     if (COLLAPSE_ENABLED && c.key && !c.belt) {
       t.style.cursor = 'pointer';

@@ -23,7 +23,7 @@ const db = require('./data/alchemy_db.v41.json');
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'fullbelt-tiles-2026-06-14s';
+const SERVER_STAMP = 'tile-header-3line-2026-06-14t';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);

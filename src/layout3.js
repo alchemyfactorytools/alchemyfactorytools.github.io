@@ -916,10 +916,10 @@
       if (ps.length < 2) return;
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const p of ps) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + p.w); y1 = Math.max(y1, p.y + p.h); }
-      // Tiled lines get a taller header: line 1 = name, line 2 = the tiling blueprint.
-      // outItem/outRate (the dominant product leaving the box) come from assignClusters —
-      // the header divides outRate by K to show each tile's output rate.
-      const headH = extra && extra.tile ? 32 : 14;
+      // Tiled lines get a taller header: line 1 = name, line 2 = tile count + per-tile
+      // output, line 3 = the cell list (on its own line). outItem/outRate come from
+      // assignClusters; the header shows the per-tile output capacity.
+      const headH = extra && extra.tile ? 46 : 14;
       clusterBoxes.push({ x: x0 - PAD, y: y0 - PAD - headH, w: (x1 - x0) + 2 * PAD, h: (y1 - y0) + 2 * PAD + headH, headH, ...extra });
     };
     // A nest-merged cluster draws a box per ORIGINAL sub-line (so each stays a labelled,
