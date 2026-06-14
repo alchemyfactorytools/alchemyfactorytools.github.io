@@ -305,7 +305,6 @@
     // each tile's rate. Must match the leaving-item logic used to render the header.
     const summary = graph.summary || {};
     const beltSpeed = summary.beltSpeed || 0;
-    const pipeSpeed = summary.pipeSpeed || 0;
     const liquidSet = new Set(summary.liquidItems || []);
     const lineOutput = (members) => {
       const mset = new Set(members);
@@ -322,8 +321,8 @@
       const out = lineOutput(c.members);
       c.outItem = out ? out.item : null;
       c.outRate = out ? out.rate : null;
-      // liquids are piped (much higher throughput), everything else rides a belt.
-      const cap = c.outItem && liquidSet.has(c.outItem) ? pipeSpeed : beltSpeed;
+      // liquids are piped (effectively uncapped → cap 0 = no floor), solids ride a belt.
+      const cap = c.outItem && liquidSet.has(c.outItem) ? 0 : beltSpeed;
       c.tile = blueprint(c.members, nodeById, c.outRate, cap);
     }
     return { clusterOf, clusters };

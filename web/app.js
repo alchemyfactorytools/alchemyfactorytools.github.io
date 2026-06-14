@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'liquid-pipe-cap-2026-06-14q';
+const BUILD_STAMP = 'liquid-uncapped-2026-06-14r';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
