@@ -92,6 +92,97 @@ test('co-product waste (CO_W) deters dumping value; drop it and the wasteful rou
   assert.equal(desc(noWaste.canonicalPick('Sand')), 'Stone Crusher{Rock Salt:1}');
 });
 
+// ---- Phase 3: composition (compose → sized tile tree) ----
+
+const kid = (tile, item) => (tile.inputs || []).find((c) => c.item === item);
+const collectIds = (tile, acc = []) => { acc.push(tile.id); (tile.inputs || []).forEach((c) => collectIds(c, acc)); return acc; };
+
+test('Phase 3: compose sizes the tile tree by rate (Glass @60/min)', () => {
+  const comp = composer();
+  const r = comp.compose('Glass', 60);
+  // Glass = Kiln{Sand:6}: 60/min ⇒ 6 Kilns, needs 360 Sand/min.
+  assert.equal(r.tree.item, 'Glass');
+  assert.equal(r.tree.source, 'recipe');
+  assert.equal(r.tree.machine, 'Kiln');
+  assert.equal(r.tree.ratePerMin, 60);
+  assert.equal(r.tree.machineCount, 6);
+  const sand = kid(r.tree, 'Sand');
+  assert.equal(sand.ratePerMin, 360);          // 6 Sand × 60 Glass/min
+  assert.equal(sand.machine, 'Grinder');
+  const stone = kid(sand, 'Stone');
+  assert.equal(stone.ratePerMin, 360);
+  const lime = kid(stone, 'Limestone');
+  assert.equal(lime.source, 'buy');            // bottoms out at a bought raw
+  assert.equal(lime.inputs.length, 0);
+  // operating cost = opCost × rate (the per-min material drain), independent of the build's depth.
+  assert.equal(r.summary.operatingCopperPerMin, comp.opCost('Glass') * 60);
+});
+
+test('Phase 3: rates scale linearly with demand (machine counts via ceil)', () => {
+  const comp = composer();
+  const a = comp.compose('Glass', 60);
+  const b = comp.compose('Glass', 120);
+  assert.equal(b.tree.ratePerMin, 2 * a.tree.ratePerMin);
+  assert.equal(kid(b.tree, 'Sand').ratePerMin, 2 * kid(a.tree, 'Sand').ratePerMin);
+});
+
+test('Phase 3: heated machines draw a shared fuel trunk that covers its own heat (fixpoint)', () => {
+  const comp = composer();
+  const r = comp.compose('Glass', 60);
+  assert.ok(r.fuel, 'a build with heated Kilns must have a fuel trunk');
+  assert.equal(r.fuel.item, 'Coke Powder');
+  // the trunk supplies at least the main tree's raw fuel need — MORE, since the fuel tile is
+  // itself heated (fuel-for-fuel), which the scalar fixpoint folds in.
+  const mainFuel = r.tree.fuelPerMin; // the Kiln's own draw
+  assert.ok(r.totals.fuelPerMin >= mainFuel, 'trunk must cover the main tree plus its own heat');
+  assert.ok(r.totals.fuelPerMin > 0);
+});
+
+test('Phase 3: a farmed cauldron build draws a shared fert trunk and sizes nursery plots', () => {
+  const comp = composer();
+  const r = comp.compose('Clay', 30);
+  assert.equal(r.tree.source, 'cauldron');
+  assert.equal(r.tree.machine, 'Cauldron');
+  const herb = kid(r.tree, 'Redcurrant');
+  assert.equal(herb.machine, 'Nursery');
+  assert.ok(herb.machineCount >= 1, 'nursery plots sized from the fert carrier maxFertility');
+  assert.ok(/plot/.test(herb.nurseryNote || ''));
+  assert.ok(r.fert && r.fert.item === 'Growth Potion', 'nurseries draw a Growth Potion fert trunk');
+  assert.ok(r.totals.fertPerMin > 0);
+});
+
+test('Phase 3: replicated tiles get unique ids (a tile tree is a pure tree, no shared nodes)', () => {
+  const comp = composer();
+  const ids = collectIds(comp.compose('Glass', 60).tree);
+  assert.equal(new Set(ids).size, ids.length, 'every tile id is unique under replication');
+});
+
+test('Phase 3: a minted coin links back to the main belt money line', () => {
+  const comp = composer();
+  // Charcoal’s canonical tree feeds a Copper Coin satisfied by minting (coins valued at sellPrice).
+  const r = comp.compose('Charcoal', 10);
+  assert.ok(r.summary.mintedCoins['Copper Coin'] > 0, 'minted coins are tracked for money-line wiring');
+  assert.equal(r.totals.mintedCoins['Copper Coin'], r.summary.mintedCoins['Copper Coin']);
+  // every buy/mint leaf draws copper from the money line, never free
+  const findMint = (t) => (t.source === 'mint' ? t : (t.inputs || []).reduce((a, c) => a || findMint(c), null));
+  const mint = findMint(r.tree);
+  assert.ok(mint && mint.fromMoneyLine === true && mint.copperPerMin > 0 && mint.coinItem === 'Copper Coin');
+});
+
+test('Phase 3: same-item recirculation is netted (Steel Ingot returns 3 of its 4 Iron Ingot)', () => {
+  // Steel Ingot [Athanor]: in {Iron Ingot:4, Coke Powder:4} → out {Steel Ingot:1, Iron Ingot:3}.
+  // Net Iron Ingot consumption is 1/craft. Without netting the composer over-sizes the Iron Ingot
+  // tile 4× and dumps the recirculated 3 as false co-product waste.
+  const comp = makeComposer(db, resolveConfig({ maxTier: 10, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } }));
+  const r = comp.compose('Steel Gear', 30);          // 30 Steel Gear ⇒ 30 Steel Ingot/min
+  const steel = kid(r.tree, 'Steel Ingot');
+  const iron = kid(steel, 'Iron Ingot');
+  assert.equal(iron.ratePerMin, 30);                 // net 1 Iron Ingot/Steel, NOT 120 (4× raw)
+  assert.ok(!('Iron Ingot' in (steel.byproducts || {})), 'recirculated Iron Ingot is netted, not waste');
+  // Coke Powder is genuinely consumed (4/craft, none returned) → stays at 120/min.
+  assert.equal(kid(steel, 'Coke Powder').ratePerMin, 120);
+});
+
 test('nursery fertilizer is charged on the op axis (free fert → grown herb op is ~0)', () => {
   const comp = composer();
   // Redcurrant is grown; its op is the fertilizer it burns (nutrientCost × fert cost/nutrient) > 0.

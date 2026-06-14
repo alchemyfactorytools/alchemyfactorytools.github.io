@@ -497,4 +497,4 @@ function buildProcessTable(db, cfg) {
   return { processes, cauldron, params, warnings, config: cfg, virtualItems: [...virtualItems] };
 }
 
-module.exports = { buildProcessTable, primaryOutput, netSameItems };
+module.exports = { buildProcessTable, primaryOutput, netSameItems, machineHeatPerRun };

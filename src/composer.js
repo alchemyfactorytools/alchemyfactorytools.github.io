@@ -12,6 +12,8 @@
 const { tiers } = require('./tiers');
 const { makeItemCopperFloor } = require('./cost-floor');
 const { cauldronEligibility } = require('./cauldron');
+const { skillParams } = require('./config');
+const { machineHeatPerRun } = require('./normalize');
 
 // Simplicity weights (copper-equivalent units). Deliberately MINIMAL to start (per user):
 // only DEPTH, WIDTH, input/material cost, and a co-product-waste penalty. NO machine
@@ -60,21 +62,40 @@ function makeComposer(db, cfg) {
 
   const buyable = (name) => db.items[name] && db.items[name].buyPrice !== undefined && cfg.buy !== false;
 
+  // Net out items that a recipe BOTH consumes and produces (e.g. Steel Ingot's Athanor eats 4 Iron
+  // Ingot and returns 3 → net consumes 1). Same as normalize.js netSameItems: without it the DP
+  // double-charges (4 Iron Ingot of op AND a false 3-Iron-Ingot co-product-waste penalty) and
+  // composition over-sizes the upstream tile 4× while "trashing" the recirculated 90/min. We net at
+  // the source so both the metric and compose() see the true net inputs/outputs (and a recipe that
+  // nets to zero of an item is no longer registered as a producer of it).
+  const netRecipe = (r) => {
+    const inputs = { ...(r.inputs || {}) };
+    const outputs = { ...(r.outputs || {}) };
+    for (const k of Object.keys(outputs)) {
+      if (inputs[k] == null) continue;
+      const net = outputs[k] - inputs[k];
+      delete inputs[k]; delete outputs[k];
+      if (net > 0) outputs[k] = net;
+      else if (net < 0) inputs[k] = -net;
+    }
+    return { inputs, outputs };
+  };
+
   // recipes producing each item (tier-gated), with their primary/co outputs
   const producersOf = new Map();
   for (const [id, r] of Object.entries(db.recipes)) {
     if (!tierOk(r.id != null ? (db.items[r.id] ? r.id : id) : id)) { /* gate by outputs below */ }
-    const outputs = r.outputs || {};
+    const { inputs, outputs } = netRecipe(r);
     // skip currency mints (Bank Portal: copper → coin, zero inputs) — currency is valued at its
     // copper-equivalent (sellPrice) as a leaf, not crafted ~free via a depth stage. (Nurseries
     // are also zero-input but produce herbs, not currency, so they stay.)
     if (Object.keys(outputs).every((o) => db.items[o] && db.items[o].category === 'Currency')) continue;
     // gate: skip recipes whose machine or any input/output is above tier
     if (Object.keys(outputs).some((o) => !tierOk(o))) continue;
-    if (Object.keys(r.inputs || {}).some((i) => !tierOk(i))) continue;
+    if (Object.keys(inputs).some((i) => !tierOk(i))) continue;
     for (const out of Object.keys(outputs)) {
       if (!producersOf.has(out)) producersOf.set(out, []);
-      producersOf.get(out).push({ id, ...r });
+      producersOf.get(out).push({ id, ...r, inputs, outputs }); // netted I/O overrides raw
     }
   }
 
@@ -258,6 +279,7 @@ function makeComposer(db, cfg) {
                     inputs: consumes,
                     outputs: { [it]: 1 },
                     baseTime: cauldron.compiled.targets[cauldron.compiled.outIdx[t]].time,
+                    baseHeat: cauldron.compiled.targets[cauldron.compiled.outIdx[t]].heat, // per-craft heat draw (Phase 3 sizing)
                   },
                 };
               }
@@ -271,6 +293,166 @@ function makeComposer(db, cfg) {
     return { build, op, score, pick };
   }
 
+  // ===== Phase 3: composition — expand a canonical pick into a sized tile tree =====
+  // Replicated by default (Q1): a shared intermediate gets a private subtree per consumer, so a
+  // tile tree is a pure tree (no node dedup). Three things are NOT in the material tree — they are
+  // shared TRUNKS the whole build draws from: the canonical FUEL tile (heat), the canonical FERT
+  // tile (nutrient), and the MAIN-BELT MONEY line (copper for buys + coin mints). Fuel/fert/money
+  // draws are computed per tile and aggregated; the trunks are then composed once at the total rate.
+  const params = skillParams(cfg.skills);
+  const { speedMult, beltSpeed, fuelMult, fertMult, alchemyMult } = params;
+  const machines = db.machines;
+  // alchemy machines multiply their output (alchemyMult; Thermal Extractor ×3) — sizing must use
+  // the REAL produced qty per run or machine counts overcount. (The selection metric ignores this;
+  // it only affects sizing, not which recipe is canonical.)
+  const YIELD_MULT_MACHINES = new Set(['Extractor', 'Thermal Extractor', 'Alembic', 'Advanced Alembic']);
+  const yieldMultFor = (m) => (YIELD_MULT_MACHINES.has(m) ? alchemyMult * (m === 'Thermal Extractor' ? 3 : 1) : 1);
+  // Fuel trunk: heat per unit of the canonical fuel = item.heat × fuelMult (normalize.js burn col).
+  const fuelItem = (cfg.canonical && cfg.canonical.fuelItem) || null;
+  const fuelHeatPerUnit = fuelItem && db.items[fuelItem] ? (db.items[fuelItem].heat || 0) * fuelMult : 0;
+  // Fert trunk: nutrient per unit of the canonical fert = nutrientValue × fertMult; plots are sized
+  // by the carrier's maxFertility (same formula as flowgraph.js nurseryPlots).
+  const fertCarrier = fertItem; // canonical fert carrier (defined above for the op axis)
+  const fertNutrientPerUnit = fertCarrier && db.items[fertCarrier] ? (db.items[fertCarrier].nutrientValue || 0) * fertMult : 0;
+  const fertMaxFertility = fertCarrier && db.items[fertCarrier] ? (db.items[fertCarrier].maxFertility || 0) : 0;
+  const COINS = new Set(['Copper Coin', 'Silver Coin', 'Gold Coin']);
+  const opCostOf = (it) => { if (beltItems.has(it)) return 0; const s = solve(); return s.op.has(it) ? s.op.get(it) : Infinity; };
+
+  // Build the sized subtree for `item` at `rate` items/min, accumulating utility/money draws into
+  // `acc`. Replicated: each call returns a fresh subtree. `path` makes node ids unique across
+  // replicas; `seen` guards the (provably-acyclic, but defensively bounded) recursion.
+  function buildTree(item, rate, path, seen, acc) {
+    const id = path;
+    if (beltItems.has(item)) return { id, item, source: 'belt', ratePerMin: rate, inputs: [] };
+    const pick = solve().pick.get(item);
+    if (!pick) return { id, item, source: 'unmakeable', ratePerMin: rate, inputs: [] };
+    // Leaves: bought raw, minted coin, or belt arrival. A buy/mint leaf DRAWS COPPER from the main
+    // belt money line — never free. A minted coin specifically must link back to that money line
+    // (per the cash-provenance rule), so we tag it with the coin item for the Phase-4 wiring.
+    if (pick.source === 'buy' || pick.source === 'mint' || pick.source === 'belt') {
+      const it = db.items[item];
+      let copperPerMin = 0, coinItem = null;
+      if (pick.source === 'buy') copperPerMin = (it.buyPrice || 0) * rate;
+      else if (pick.source === 'mint') { copperPerMin = (it.sellPrice || 0) * rate; coinItem = COINS.has(item) ? item : null; }
+      if (copperPerMin > 0) {
+        acc.copperPerMin += copperPerMin;
+        if (coinItem) acc.mintedCoins[coinItem] = (acc.mintedCoins[coinItem] || 0) + rate; // coins/min minted → belt money line
+      }
+      return { id, item, source: pick.source, ratePerMin: rate, copperPerMin, coinItem, fromMoneyLine: copperPerMin > 0, inputs: [] };
+    }
+
+    // recipe / cauldron: size the machine, draw heat/nutrient, recurse on (replicated) inputs.
+    const r = pick.recipe;
+    const machine = r.machine;
+    const yieldMult = yieldMultFor(machine);
+    const prim = (r.outputs[item] || 1) * yieldMult;
+    const runsPerMin = rate / prim;
+    const baseTime = r.baseTime || 0;
+
+    let machineCount = null, tileLoad = null, nurseryNote = null;
+    if (NURSERY.has(machine)) {
+      const nutrientCost = r.nutrientCost || 0;
+      const fertilityRate = nutrientCost > 0 && fertMaxFertility ? (60 * fertMaxFertility) / nutrientCost : Infinity;
+      const perPlot = Math.min(fertilityRate, beltSpeed);
+      if (isFinite(perPlot) && perPlot > 0) {
+        tileLoad = rate / perPlot;
+        machineCount = Math.ceil(tileLoad - 1e-9);
+        nurseryNote = `${perPlot.toFixed(1)}/plot, limited by ${fertilityRate < beltSpeed ? 'fertilizer' : 'belt speed'}`;
+      }
+    } else if (machine && baseTime > 0) {
+      tileLoad = (runsPerMin * baseTime) / (60 * speedMult);
+      machineCount = Math.ceil(tileLoad - 1e-9);
+    }
+
+    // Heat draw: recipe machines via machineHeatPerRun; cauldron crafts carry per-craft baseHeat.
+    const heatPerRun = pick.source === 'cauldron' ? (r.baseHeat || 0) : machineHeatPerRun(machines[machine], machines, baseTime, speedMult);
+    const heatPerMin = heatPerRun * runsPerMin;
+    const nutrientPerMin = (r.nutrientCost || 0) * runsPerMin;
+    acc.heatPerMin += heatPerMin;
+    acc.nutrientPerMin += nutrientPerMin;
+    const fuelPerMin = fuelHeatPerUnit > 0 ? heatPerMin / fuelHeatPerUnit : 0;
+    const fertPerMin = fertNutrientPerUnit > 0 ? nutrientPerMin / fertNutrientPerUnit : 0;
+
+    const seen2 = new Set(seen); seen2.add(item);
+    const inputs = [];
+    for (const [inItem, qty] of Object.entries(r.inputs || {})) {
+      if (seen2.has(inItem)) continue; // defensive: optimal picks are acyclic, but never loop
+      inputs.push(buildTree(inItem, qty * runsPerMin, `${path}>${inItem}`, seen2, acc));
+    }
+    const byproducts = {}; // co-products other than the primary → trash/surplus (v1: no cross-tile feed)
+    for (const [out, q] of Object.entries(r.outputs || {})) {
+      if (out === item) continue;
+      byproducts[out] = q * yieldMult * runsPerMin;
+    }
+    return {
+      id, item, source: pick.source, machine, recipe: r,
+      ratePerMin: rate, runsPerMin, machineCount, tileLoad, nurseryNote,
+      heatPerMin, fuelPerMin, nutrientPerMin, fertPerMin,
+      byproducts, inputs,
+    };
+  }
+
+  // Sum machine counts across a tree (for the summary / total buildables).
+  function tallyMachines(tile, into) {
+    if (tile.machine && tile.machineCount) into[tile.machine] = (into[tile.machine] || 0) + tile.machineCount;
+    for (const c of tile.inputs || []) tallyMachines(c, into);
+    return into;
+  }
+
+  // compose(target, rate) → { tree, fuel, fert, totals, summary }. Builds the replicated material
+  // tree, then sizes the three shared trunks. Fuel/fert/money draws are LINEAR in rate (pre-ceil),
+  // and the fuel/fert carriers THEMSELVES draw heat/nutrient (a Growth-Potion fert tile is heated;
+  // a fuel tile may be too) — a small coupled fixpoint. We solve it on the scalar draw rates using
+  // each trunk's unit draw (its draw per 1 carrier/min), then build the final trunks once at the
+  // resolved rates. Money has no such feedback (buying doesn't cost heat), so it's a plain sum.
+  function compose(target, rate) {
+    solve();
+    const acc = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {} };
+    const tree = buildTree(target, rate, target, new Set(), acc);
+    const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
+
+    // unit draws: build each trunk at 1 carrier/min to read how much heat/nutrient it itself needs.
+    const trunkUnit = (carrier) => {
+      if (!carrier) return null;
+      const a = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {} };
+      buildTree(carrier, 1, `${carrier}#unit`, new Set(), a);
+      return { h: a.heatPerMin, n: a.nutrientPerMin };
+    };
+    const uFuel = fuelHeatPerUnit > 0 ? trunkUnit(fuelItem) : null;
+    const uFert = fertNutrientPerUnit > 0 ? trunkUnit(fertCarrier) : null;
+
+    // scalar fixpoint on (F, G) = fuel-units/min, fert-units/min the build must supply.
+    let F = 0, G = 0;
+    for (let i = 0; i < 24; i++) {
+      const totalHeat = heatMain + (uFuel ? F * uFuel.h : 0) + (uFert ? G * uFert.h : 0);
+      const totalNutrient = nutrientMain + (uFuel ? F * uFuel.n : 0) + (uFert ? G * uFert.n : 0);
+      const nF = fuelHeatPerUnit > 0 ? totalHeat / fuelHeatPerUnit : 0;
+      const nG = fertNutrientPerUnit > 0 ? totalNutrient / fertNutrientPerUnit : 0;
+      if (Math.abs(nF - F) < 1e-9 && Math.abs(nG - G) < 1e-9) { F = nF; G = nG; break; }
+      F = nF; G = nG;
+    }
+
+    // build the final trunks at the resolved rates (their own buys/mints feed the money line too).
+    const fuel = F > 0 ? buildTree(fuelItem, F, `${fuelItem}#fuel`, new Set(), acc) : null;
+    const fert = G > 0 ? buildTree(fertCarrier, G, `${fertCarrier}#fert`, new Set(), acc) : null;
+
+    const machineTotals = {};
+    tallyMachines(tree, machineTotals);
+    if (fuel) tallyMachines(fuel, machineTotals);
+    if (fert) tallyMachines(fert, machineTotals);
+
+    const totals = { heatPerMin: heatMain, nutrientPerMin: nutrientMain, fuelPerMin: F, fertPerMin: G, copperPerMin: acc.copperPerMin, mintedCoins: acc.mintedCoins };
+    const summary = {
+      target, ratePerMin: rate,
+      operatingCopperPerMin: opCostOf(target) * rate, // opCost × rate — the per-min material drain
+      copperPerMin: acc.copperPerMin,                  // total copper drawn from the money line
+      machineTotals,
+      fuelItem, fertItem: fertCarrier,
+      mintedCoins: acc.mintedCoins,                    // coins/min minted → must link to the belt money line
+    };
+    return { tree, fuel, fert, totals, summary };
+  }
+
   return {
     // tileCost = the selection metric (build + OP_W·op + waste of the chosen recipe). buildCost /
     // opCost expose the two axes separately (opCost is copper per unit of output → ×rate = per-min).
@@ -281,6 +463,7 @@ function makeComposer(db, cfg) {
       if (beltItems.has(item)) return { source: 'belt' };
       return solve().pick.get(item) || null;
     },
+    compose,
     beltItems,
     utilityCarriers,
     buyable,

@@ -60,8 +60,34 @@ Stone Crusher{Rock Salt} (dumps only cheap Sand); Glass → Kiln{Sand} (op = 6×
 Kiln{Clay}; Plank → Table Saw{Logs}; **Clay → Cauldron{Redcurrant×3}** — a self-contained grown
 cauldron, chosen by correct economics (cheap grown op, no purchase drain), not by depth-hacking.
 
-Open: Phase 3 (composition → sized tile tree, per-min op) not started. `OP_W` is now safe to raise
-(op is clean copper), should we want operating cost to weigh harder in picks.
+**Phase 3 (composition) is done and unit-tested.** `compose(target, rate)` → `{ tree, fuel, fert,
+totals, summary }`: it expands the canonical pick into a **replicated** sized tile tree (each
+consumer gets a private subtree — Q1) and sizes three **shared trunks** the material tree never
+expands into:
+- **fuel** — heated machines (recipe machines via `machineHeatPerRun`; cauldrons via per-craft
+  `baseHeat`) draw the canonical fuel carrier. Heat→fuel = `heat/min ÷ (item.heat·fuelMult)`.
+- **fert** — nurseries draw the canonical fert carrier; plots are sized
+  `min(60·maxFertility/nutrientCost, beltSpeed)` (same as `flowgraph.js`).
+- **money** — every buy/mint leaf draws copper from the **main-belt money line** (never free). A
+  minted coin (`Copper/Silver/Gold`, valued at `sellPrice`) is tagged with its coin and tracked in
+  `summary.mintedCoins` so Phase-4 graph emit **must wire it back to the belt money line** (the
+  cash-provenance rule — minted coins are not free).
+
+Sizing uses real game params from `skillParams(cfg.skills)` (`speedMult`, `beltSpeed`, `fuelMult`,
+`fertMult`, `alchemyMult`); alchemy-yield machines (`Extractor`/`Thermal Extractor`/`Alembic`/`Advanced
+Alembic`) apply their output multiplier so machine counts don't overcount. Heat/nutrient/money draws
+are **linear in rate** (pre-`ceil`); because the fuel/fert carriers are themselves heated/grown, the
+trunks form a small coupled feedback — resolved by a scalar fixpoint on the carrier draw rates, then
+the trunks are composed once at the resolved rate.
+
+**Fuel is computed but not (yet) charged.** Every heated tile carries `heatPerMin`/`fuelPerMin`
+structurally; whether fuel feeds the *selection metric* is a deliberate future gate (it does not
+today — fuel stays a free utility in picks). To charge it later, mirror the fert op-axis treatment:
+a `fuelOpPerHeat` constant added to `op` in `relax()`. The structural draw is already there, so the
+hook is symmetric with fertilizer — no re-architecture needed.
+
+Open: Phase 4 (graph emit `{nodes,edges,summary}` + renderer) not started. `OP_W` is now safe to
+raise (op is clean copper) if operating cost should weigh harder in picks.
 
 ---
 
@@ -190,9 +216,12 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    MODEL at top). Unit-tested in `test/composer.test.js`.
 2. **[DONE] Cauldron triples → DP** — via shared `cauldronEligibility` mask. Clay resolves to a
    grown cauldron.
-3. **Composition** (`compose`) → tile tree with rates + machine counts; per-min op = `opCost·rate`.
-   Bottom out at buy/belt/mint. Handle nurseries (plots) for farmed tiles.
-4. **Graph emit** → `{nodes, edges, summary}`; wire the renderer.
+3. **[DONE] Composition** (`compose`) → replicated tile tree with rates + machine counts; per-min
+   op = `opCost·rate`. Bottoms out at buy/belt/mint; nurseries sized as plots; shared fuel/fert/money
+   trunks (fuel/fert via a coupled scalar fixpoint). Minted coins link to the belt money line.
+   Unit-tested in `test/composer.test.js`.
+4. **Graph emit** → `{nodes, edges, summary}`; wire the renderer. Must wire each mint leaf to the
+   main-belt money line (`summary.mintedCoins`).
 5. **Full-belt tiling** per tile (reuse `blueprint`).
 6. **Mode switch** in the server/UI (Simplest → composer).
 7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
