@@ -229,7 +229,13 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    (a trunk can hold consumers of the other — the fert carrier's Clay cauldron burns fuel). Verified:
    0 validation issues across every makeable item; renders through `renderSvg`. Unit-tested in
    `test/compose-graph.test.js`. `summary.solver === 'composer'`.
-5. **Full-belt tiling** per tile (reuse `blueprint`). Not started.
+5. **[DONE] Full-belt tiling** per tile — reuses the existing `blueprint()` in the 2D/2D-nested
+   layouts. The material lines already tiled; the gap was the **fuel/fert utility lines**, whose
+   output leaves on `heat`/`nutrient` edges that `lineOutput` excludes — so the line's `outRate` was
+   null and it never belt-tiled or showed a per-tile rate. Fixed with `utilOutput()` (derive a
+   `util:fuel` / `util:fertilizer` line's output from its support edges — carrier = edge item, rate =
+   total carried out) in `web/layout3.js`, `web/layout2.js`, `src/layout2.js`. Now a fuel line shows
+   `Coke Powder N/min` per tile and splits into `ceil(N/beltSpeed)` full-belt tiles.
 6. **[DONE] Mode switch** in the server/UI. A **Solver** dropdown (`web/index.html` `#solver`:
    `lp` default | `composer`) sets `cfg.solver`; `server.js` `composerSolve()` branches to the
    composer (LP-free) when `solver==='composer'`, picking carriers via the new LP-free

@@ -323,8 +323,20 @@
       for (const [item, rate] of byItem) if (!out || rate > out.rate) out = { item, rate };
       return out;
     };
+    // A FUEL / FERTILIZER utility line emits its product (the carrier) on heat / nutrient edges,
+    // which lineOutput excludes — so its material output is null (or a stray boundary edge) and it
+    // never belt-tiles or shows a per-tile rate. Derive the line output from those support edges
+    // instead: the carrier is the edge's item, the rate is the total carried out of the box.
+    const utilOutput = (members, kind) => {
+      const mset = new Set(members);
+      let rate = 0, item = null;
+      for (const e of graph.edges) if (e[kind] && mset.has(e.from) && !mset.has(e.to)) { rate += e.ratePerMin || 0; item = e.item; }
+      return rate > 0 ? { item, rate } : null;
+    };
     for (const c of clusters) {
-      const out = lineOutput(c.members);
+      const out = String(c.id) === 'util:fuel' ? utilOutput(c.members, 'heat')
+        : String(c.id) === 'util:fertilizer' ? utilOutput(c.members, 'nutrient')
+        : lineOutput(c.members);
       c.outItem = out ? out.item : null;
       c.outRate = out ? out.rate : null;
       // liquids are piped (effectively uncapped → cap 0 = no floor), solids ride a belt.
