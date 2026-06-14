@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-phase2-build-op-split-2026-06-14z';
+const BUILD_STAMP = 'composer-phase4-server-wired-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -129,6 +129,7 @@ const splitList = (s) => s.split(',').map((x) => x.trim()).filter(Boolean);
 
 function buildConfig() {
   const cfg = { cauldron: {}, byproducts: {}, machines: {}, skills: {} };
+  cfg.solver = $('solver').value; // 'lp' (default) | 'composer' (deterministic tile composer)
   cfg.cauldron.enabled = $('cauldronEnabled').checked;
   cfg.cauldron.inputPool = $('pool').value;
   const forbid = splitList($('forbidCauldron').value);

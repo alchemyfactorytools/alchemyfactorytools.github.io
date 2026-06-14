@@ -119,6 +119,17 @@
 
       <section>
         <h2>Capacity & capital</h2>
+        <label>Solver <small>(how the build is chosen)</small>
+          <select id="solver">
+            <option value="lp" selected>Optimizer — global min-copper (LP)</option>
+            <option value="composer">Tile composer — deterministic simplest tiles</option>
+          </select>
+        </label>
+        <p class="hint">The <b>optimizer</b> finds the globally cheapest flow. The <b>tile composer</b>
+          picks one canonical recipe per item and builds a replicated, self-contained tile tree —
+          fuel, fertilizer and coins as shared trunks — i.e. "what you'd actually build", not
+          cost-minimal. The Optimize-for / override / farm-penalty knobs below apply to the
+          optimizer only.</p>
         <label>Optimize for <small>(cost ↔ easiest to build)</small>
           <select id="buildability">
             <option value="0" selected>Cheapest — pure min copper</option>

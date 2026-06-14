@@ -107,4 +107,22 @@ async function computeCanonicalUtilities(db, cfg, deps) {
   };
 }
 
-module.exports = { canonicalUtilities };
+// LP-free carrier pick for the tile composer: the top tier-ok fuel (max heat / copper-floor) and
+// fert (max maxFertility) candidate — the SAME heuristic as the canonical-utilities presolve above,
+// minus the route MIP (the composer builds the chain to the carrier itself, so it only needs the
+// carrier ITEM, not a locked chain). Cheap + synchronous, so the composer path never touches the LP.
+function canonicalCarriers(db, cfg) {
+  const T = tiers(db);
+  const tierOk = (n) => cfg.maxTier == null || T.effective(n) <= cfg.maxTier;
+  const floor = makeItemCopperFloor(db);
+  const top = (entries, score) => entries.map(([n, it]) => [n, score(n, it)]).sort((a, b) => b[1] - a[1]).map(([n]) => n)[0] || null;
+  const fuelItem = top(
+    Object.entries(db.items).filter(([n, it]) => it.heat > 0 && tierOk(n)),
+    (n, it) => (isFinite(floor(n)) && floor(n) > 0 ? it.heat / floor(n) : 0));
+  const fertItem = top(
+    Object.entries(db.items).filter(([n, it]) => it.nutrientValue > 0 && it.maxFertility > 0 && tierOk(n)),
+    (n, it) => it.maxFertility);
+  return { fuelItem, fertItem };
+}
+
+module.exports = { canonicalUtilities, canonicalCarriers };

@@ -229,8 +229,12 @@ a labelled, tileable box — the "Sand tile above Glass tile" structure falls ou
    (a trunk can hold consumers of the other — the fert carrier's Clay cauldron burns fuel). Verified:
    0 validation issues across every makeable item; renders through `renderSvg`. Unit-tested in
    `test/compose-graph.test.js`. `summary.solver === 'composer'`.
-5. **Full-belt tiling** per tile (reuse `blueprint`).
-6. **Mode switch** in the server/UI (Simplest → composer).
+5. **Full-belt tiling** per tile (reuse `blueprint`). Not started.
+6. **[DONE] Mode switch** in the server/UI. A **Solver** dropdown (`web/index.html` `#solver`:
+   `lp` default | `composer`) sets `cfg.solver`; `server.js` `composerSolve()` branches to the
+   composer (LP-free) when `solver==='composer'`, picking carriers via the new LP-free
+   `canonicalCarriers(db, cfg)` (top heat/floor fuel, top maxFertility fert) and returning the same
+   `{status, copperPerMin, copperPerItem, graph, explainText}` envelope. The LP path is untouched.
 7. **v2:** co-product feeds in reuse mode (Q1/Q2 below).
 
 ## Decisions (resolved)

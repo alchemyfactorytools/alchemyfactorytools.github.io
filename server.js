@@ -17,14 +17,16 @@ const { resolveConfig } = require('./src/config');
 const { buildProcessTable } = require('./src/normalize');
 const { Model, optimize, optimizeWithinTolerance, probeInfeasibility } = require('./src/model');
 const { buildFlowGraph, toDot, toMermaid } = require('./src/flowgraph');
-const { canonicalUtilities } = require('./src/utilities');
+const { canonicalUtilities, canonicalCarriers } = require('./src/utilities');
+const { makeComposer } = require('./src/composer');
+const { composeGraph } = require('./src/compose-graph');
 const { assignClusters } = require('./src/layout');
 const { explain } = require('./src/explain');
 const db = require('./data/alchemy_db.v41.json');
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'composer-phase2-build-op-split-2026-06-14z';
+const SERVER_STAMP = 'composer-phase4-server-wired-2026-06-14z';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -48,6 +50,10 @@ async function solveRequest(body) {
   if (!db.items[item]) throw Object.assign(new Error(`unknown item "${item}"`), { status: 400 });
   if (!(rate > 0)) throw Object.assign(new Error('rate must be > 0'), { status: 400 });
   const cfg = resolveConfig(config);
+  // "Simplest" solver: the deterministic tile composer, not the LP. Picks one canonical recipe per
+  // item and composes a replicated, self-contained tile tree (fuel/fert/coins as shared trunks).
+  // Same {summary, graph} response shape as the LP path, so the renderer is unchanged.
+  if (config.solver === 'composer') return composerSolve(item, rate, rateMode, cfg);
   cfg.buildability = 0; // scaled below, relative to THIS build's own cost (see the probe)
   // Canonical fuel/fert tiles: pre-pick the carrier (Coke Powder, Growth Potion @ t6) and
   // its simplest clean chain, then lock the build to it (default on; canonicalUtilities=false
@@ -127,6 +133,58 @@ async function solveRequest(body) {
     explainText: explain(result, demand),
     warnings: pt.warnings,
   };
+}
+
+// Tile-composer ("Simplest") solve — no LP. Deterministic canonical picks → sized replicated tile
+// tree → renderable graph. Returns the same response envelope solveRequest does for the LP path.
+function composerSolve(item, rate, rateMode, cfg) {
+  const { fuelItem, fertItem } = canonicalCarriers(db, cfg);
+  cfg.canonical = { fuelItem, fertItem };
+  const comp = makeComposer(db, cfg);
+  if (!Number.isFinite(comp.tileCost(item))) {
+    return {
+      status: 'Infeasible',
+      probe: { detail: `the tile composer can't make "${item}" at tier ${cfg.maxTier ?? '∞'} with these inputs (no canonical recipe reaches buy/belt/grow leaves)` },
+      warnings: [],
+    };
+  }
+  // "× output machines" mode: N final-product machines, not a rate. compose at 1/min reveals the
+  // machine-equivalents (or plots) one unit/min needs (the target tile's tileLoad), so N machines ⇒
+  // rate = N / load.
+  let effectiveRate = rate;
+  let machineTarget = null;
+  if (rateMode === 'machines') {
+    const load = comp.compose(item, 1).tree.tileLoad;
+    if (load && load > 0) { effectiveRate = rate / load; machineTarget = Math.round(rate); }
+  }
+  const composed = comp.compose(item, effectiveRate);
+  const graph = composeGraph(composed, db, cfg);
+  const copperPerMin = composed.summary.copperPerMin;
+  return {
+    status: 'Optimal',
+    copperPerMin,                                  // total money-line spend (incl. fuel/fert trunks)
+    copperPerItem: copperPerMin / effectiveRate,
+    effectiveRate,
+    machineTarget,
+    cgRounds: 0,                                    // not an LP — no column-generation rounds
+    graph,
+    explainText: composerExplain(composed, fuelItem, fertItem),
+    warnings: [],
+  };
+}
+
+function composerExplain(composed, fuelItem, fertItem) {
+  const s = composed.summary;
+  const lines = [
+    `Tile composer (Simplest) — ${s.target} @ ${s.ratePerMin}/min, replicated tiles.`,
+    `Operating ${Math.round(s.operatingCopperPerMin)} c/min (${Math.round(s.operatingCopperPerMin / s.ratePerMin)} c/item); money line ${Math.round(s.copperPerMin)} c/min total external spend.`,
+    `Fuel carrier ${fuelItem || '—'}, fert carrier ${fertItem || '—'} (shared trunks; machine build cost not amortized).`,
+    `Machines: ${Object.entries(s.machineTotals).sort((a, b) => b[1] - a[1]).map(([m, c]) => `${c}× ${m}`).join(', ')}.`,
+  ];
+  if (Object.keys(s.mintedCoins).length) {
+    lines.push(`Minted coins → belt money line: ${Object.entries(s.mintedCoins).map(([c, r]) => `${r}/min ${c}`).join(', ')}.`);
+  }
+  return lines.join('\n');
 }
 
 function send(res, status, body, type = 'application/json') {
