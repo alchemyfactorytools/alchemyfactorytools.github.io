@@ -9,6 +9,9 @@
 'use strict';
 
 const EPS = 1e-6;
+const COPPER = 'copper::cash'; // purchases consume this row; their real cost is consumes[COPPER]×rate,
+// NOT process.copperCost (which is 0 — copper is an explicit flow, minted or belt-coin funded).
+const copperSpent = (p) => (p.consumes && p.consumes[COPPER]) || 0;
 
 // Build production/consumption indexes from a solved flow vector.
 function flowIndex(flows) {
@@ -29,7 +32,7 @@ function flowIndex(flows) {
 
 function describeProcess(p) {
   switch (p.kind) {
-    case 'purchase': return `buy @ ${p.copperCost}g`;
+    case 'purchase': return `buy @ ${copperSpent(p)}g`;
     case 'mint': return `mint at face value (${p.copperCost}g/run) [ASSUMPTION]`;
     case 'cauldron': {
       const ins = Object.entries(p.consumes).map(([n, q]) => (q > 1 ? `${q}× ${n}` : n)).join(' + ');
@@ -77,7 +80,7 @@ function renderItem(item, idx, lines, prefix, visiting, demandRate) {
 // Regime detection: is the solution materially self-sustaining?
 function detectRegime(result, demand) {
   const purchases = result.flows.filter((f) => f.process.kind === 'purchase' || f.process.kind === 'mint');
-  const spend = purchases.reduce((s, f) => s + f.process.copperCost * f.rate, 0);
+  const spend = purchases.reduce((s, f) => s + copperSpent(f.process) * f.rate, 0);
   const loops = result.flows.filter((f) => f.process.kind === 'cauldron' && f.process.flags.fragileMargin !== undefined);
   const demandTotal = Object.values(demand).reduce((s, r) => s + r, 0);
   if (demandTotal > 0 && spend / demandTotal < 1) {
@@ -109,9 +112,9 @@ function explain(result, demand) {
   if (buys.length) {
     lines.push('');
     lines.push('External inputs:');
-    for (const f of buys.sort((a, b) => b.process.copperCost * b.rate - a.process.copperCost * a.rate)) {
+    for (const f of buys.sort((a, b) => copperSpent(b.process) * b.rate - copperSpent(a.process) * a.rate)) {
       const item = Object.keys(f.process.produces)[0];
-      lines.push(`  ${item}: ${(f.rate * (f.process.produces[item] ?? 1)).toFixed(2)}/min — ${(f.process.copperCost * f.rate).toFixed(1)} c/min${f.process.kind === 'mint' ? ' [mint, face-value assumption]' : ''}`);
+      lines.push(`  ${item}: ${(f.rate * (f.process.produces[item] ?? 1)).toFixed(2)}/min — ${(copperSpent(f.process) * f.rate).toFixed(1)} c/min${f.process.kind === 'mint' ? ' [mint, face-value assumption]' : ''}`);
     }
   }
   const sells = result.flows.filter((f) => f.process.kind === 'sale');
