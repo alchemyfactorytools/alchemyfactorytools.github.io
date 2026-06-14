@@ -300,7 +300,27 @@
       byKey.get(key).members.push(nid);
     }
     const clusters = [...byKey.values()];
-    for (const c of clusters) c.tile = blueprint(c.members, nodeById);
+    // Each line's DOMINANT product leaving the box (per minute) and one belt's carry rate
+    // — blueprint() caps a tile's output at one belt, and the header divides by K to show
+    // each tile's rate. Must match the leaving-item logic used to render the header.
+    const beltSpeed = (graph.summary && graph.summary.beltSpeed) || 0;
+    const lineOutput = (members) => {
+      const mset = new Set(members);
+      const byItem = new Map();
+      for (const e of graph.edges) {
+        if (e.heat || e.nutrient || e.cash) continue;
+        if (mset.has(e.from) && !mset.has(e.to)) byItem.set(e.item, (byItem.get(e.item) || 0) + (e.ratePerMin || 0));
+      }
+      let out = null;
+      for (const [item, rate] of byItem) if (!out || rate > out.rate) out = { item, rate };
+      return out;
+    };
+    for (const c of clusters) {
+      const out = lineOutput(c.members);
+      c.outItem = out ? out.item : null;
+      c.outRate = out ? out.rate : null;
+      c.tile = blueprint(c.members, nodeById, c.outRate, beltSpeed);
+    }
     return { clusterOf, clusters };
   }
 
@@ -313,8 +333,11 @@
   // continuous machine demand (node.tileLoad). NURSERIES are folded in too (tileLoad =
   // fractional plot count), so each tile is self-contained and K is driven by the most-
   // constrained producer — including the nursery (a fractional plot rounds up to a whole
-  // plot per tile, which is physically honest). Always returns a cell.
-  function blueprint(members, nodeById) {
+  // plot per tile, which is physically honest). A tile's OUTPUT is also capped at one
+  // belt: a tile producing more than beltSpeed/min can't be drained (backpressure
+  // throttles it), so K has a floor of ceil(outRate / beltSpeed) — better two 150/min
+  // tiles than one 300/min tile a 240 belt can't empty. Always returns a cell.
+  function blueprint(members, nodeById, outRate, beltSpeed) {
     // timed machines keep the (per-copy-rounded) machineCount × utilization load so
     // existing tiles are unchanged; nurseries (utilization == null) use the continuous
     // tileLoad (fractional plot count) so they fold in without disturbing the rest.
@@ -324,7 +347,10 @@
       .filter((n) => n && n.machine && loadOf(n) != null)
       .map((n) => ({ label: n.label, machine: n.machine, load: loadOf(n) }));
     if (loads.length < 2) return null;
-    const maxK = Math.min(200, Math.max(1, Math.round(Math.max(...loads.map((l) => l.load)))));
+    // belt floor: each tile's output must fit on one belt (one drain). Raises K even when
+    // the machine loads alone would prefer a single coarse tile.
+    const kBelt = beltSpeed > 0 && outRate > 0 ? Math.ceil(outRate / beltSpeed - 1e-6) : 1;
+    const maxK = Math.min(200, Math.max(1, Math.round(Math.max(...loads.map((l) => l.load))), kBelt));
     const cands = [];
     for (let K = 1; K <= maxK; K++) {
       let over = 0, total = 0, ok = true;
@@ -339,8 +365,11 @@
       cands.push({ K, cell, idle: over / total, total });
     }
     if (!cands.length) return null;
-    const clean = cands.filter((c) => c.idle <= 0.15);
-    return clean.length ? clean.sort((a, b) => b.K - a.K)[0] : cands.sort((a, b) => a.idle - b.idle)[0];
+    // honour the belt floor when any candidate satisfies it; otherwise fall back to all.
+    const beltOk = cands.filter((c) => c.K >= kBelt);
+    const pool = beltOk.length ? beltOk : cands;
+    const clean = pool.filter((c) => c.idle <= 0.15);
+    return clean.length ? clean.sort((a, b) => b.K - a.K)[0] : pool.sort((a, b) => a.idle - b.idle)[0];
   }
 
   function layout(graph, opts) {
@@ -837,23 +866,13 @@
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const p of ps) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + p.w); y1 = Math.max(y1, p.y + p.h); }
       // Tiled lines get a taller header: line 1 = name, line 2 = the tiling blueprint.
+      // outItem/outRate (the dominant product leaving the box) come from assignClusters —
+      // the header divides outRate by K to show each tile's output rate.
       const headH = extra && extra.tile ? 32 : 14;
-      // For a tiled line, the DOMINANT product leaving the box (per minute) — the header
-      // divides it by K to show each tile's output rate. Support flows don't count.
-      let out = null;
-      if (extra && extra.tile) {
-        const mset = new Set(members);
-        const byItem = new Map();
-        for (const e of graph.edges) {
-          if (e.heat || e.nutrient || e.cash) continue;
-          if (mset.has(e.from) && !mset.has(e.to)) byItem.set(e.item, (byItem.get(e.item) || 0) + (e.ratePerMin || 0));
-        }
-        for (const [item, rate] of byItem) if (!out || rate > out.rate) out = { item, rate };
-      }
-      clusterBoxes.push({ x: x0 - PAD, y: y0 - PAD - headH, w: (x1 - x0) + 2 * PAD, h: (y1 - y0) + 2 * PAD + headH, headH, outItem: out ? out.item : null, outRate: out ? out.rate : null, ...extra });
+      clusterBoxes.push({ x: x0 - PAD, y: y0 - PAD - headH, w: (x1 - x0) + 2 * PAD, h: (y1 - y0) + 2 * PAD + headH, headH, ...extra });
     };
-    for (const c of laneClusters) boxOf(c.members, { label: c.label, key: c.id, tile: c.tile });
-    for (const c of utilLines) boxOf(c.members, { label: c.label, util: true, key: c.id, tile: c.tile });
+    for (const c of laneClusters) boxOf(c.members, { label: c.label, key: c.id, tile: c.tile, outItem: c.outItem, outRate: c.outRate });
+    for (const c of utilLines) boxOf(c.members, { label: c.label, util: true, key: c.id, tile: c.tile, outItem: c.outItem, outRate: c.outRate });
     // the spanning belt band — full cross-extent of the lines, one node deep
     if (beltNodes.length) {
       let crossExtent = 0;

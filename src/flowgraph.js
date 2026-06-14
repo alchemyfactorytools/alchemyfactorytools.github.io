@@ -392,6 +392,8 @@ function buildFlowGraph(result, model, demand, opts = {}) {
   const summary = {
     copperPerMin: result.objective,
     capitalPerMin,
+    beltSpeed, // items/min one belt carries — tile blueprints cap per-tile output at this
+
     materialPerMin: result.objective - capitalPerMin,
     externals,
     machineTotals,
