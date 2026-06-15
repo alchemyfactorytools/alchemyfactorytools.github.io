@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'tile-saturate-terminal-2026-06-15e';
+const BUILD_STAMP = 'composer-profit-mode-2026-06-15l';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -67,11 +67,26 @@ async function init() {
     o.value = it.name;
     buyList.appendChild(o);
   }
+  // dispatch-only datalist: the item picker narrows to dispatchable items in dispatch mode.
+  const dispatchList = $('dispatchItems');
+  for (const it of items.filter((x) => x.dispatch)) {
+    const o = document.createElement('option');
+    o.value = it.name;
+    dispatchList.appendChild(o);
+  }
   $('version').textContent = 'dataset 0.5.0.4471 · DB v41';
   loadPrefs();
+  updateDispatchUI(); // reflect a restored rateUnit (show/hide the dispatch row + live readout)
   // persist any sidebar field edit (typing the output/rate, toggling a checkbox, …)
-  $('controls').addEventListener('change', savePrefs);
-  $('controls').addEventListener('input', savePrefs);
+  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); });
+  $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
+  // Switching INTO dispatch mode with a non-dispatchable item selected clears it (so you're not
+  // left targeting an item with no contract). Only on the mode switch — not per keystroke, which
+  // would erase partial typing. Validation + the filtered datalist handle the rest.
+  $('rateUnit').addEventListener('change', () => {
+    if ($('rateUnit').value === 'dispatch' && !dispatchInfo($('item').value.trim())) $('item').value = '';
+    updateDispatchUI();
+  });
 }
 
 // ---------- allowed-inputs chips ----------
@@ -157,18 +172,73 @@ function buildConfig() {
   return cfg;
 }
 
+// ---------- dispatch quota (output target) ----------
+// "Saturate dispatch quota" targets the /min rate that exactly fills an item's daily dispatch
+// quota: rate = dailyMaxBase · (1 + 0.25·Negotiation) / dayLengthMin (base day 16 min). There is
+// ONE quota per item — adding portals does NOT raise it; only Negotiation does — so there's no
+// count to pick. Contract data rides on the item catalog (server attaches `dispatch`). Pure
+// client-side math: the solver only ever sees the resolved /min rate, no server solve changes.
+const dispatchInfo = (name) => (CATALOG.find((c) => c.name === name) || {}).dispatch || null;
+const dispatchNames = () => CATALOG.filter((c) => c.dispatch).map((c) => c.name);
+const dispatchDailyMax = (d, neg) => d.dailyMaxBase * (1 + 0.25 * neg);
+function dispatchRate(name, neg, dayLen) {
+  const d = dispatchInfo(name);
+  if (!d || !(dayLen > 0)) return 0;
+  return dispatchDailyMax(d, neg) / dayLen;
+}
+
 function requestBody() {
   let rate = Number($('rate').value);
   const unit = $('rateUnit').value;
   if (unit === 'sec') rate *= 60;
-  const rateMode = unit === 'machines' ? 'machines' : 'rate';
-  return { item: $('item').value.trim(), rate, rateMode, config: buildConfig() };
+  let rateMode = unit === 'machines' ? 'machines' : 'rate';
+  const config = buildConfig();
+  if (unit === 'dispatch') {
+    // no quantity field — saturate the whole quota for the item.
+    rate = dispatchRate($('item').value.trim(), Number($('sk_negotiation').value) || 0, Number($('dispatchDayLen').value) || 16);
+    rateMode = 'rate';
+    // dispatch runs continuously → optimise for profit (minimise true operating cost), not build ease.
+    config.composer = { ...(config.composer || {}), profit: true };
+  }
+  return { item: $('item').value.trim(), rate, rateMode, config };
+}
+
+// show/hide the dispatch day-length row and a live "= X/min · ~Y/day" readout.
+function updateDispatchUI() {
+  const isDispatch = $('rateUnit').value === 'dispatch';
+  const name = $('item').value.trim();
+  // (a) the "× dispatch portals" option only appears once an eligible item is picked (or it's
+  // already selected — never hide the option out from under the current selection).
+  const opt = $('rateUnit').querySelector('option[value="dispatch"]');
+  if (opt) opt.hidden = !(isDispatch || dispatchInfo(name));
+  // (b) in dispatch mode the item picker narrows to dispatchable items, and the quantity field is
+  // hidden — saturating the quota has no count to pick (rate is fixed by item + Negotiation + day).
+  $('item').setAttribute('list', isDispatch ? 'dispatchItems' : 'items');
+  $('rate').style.display = isDispatch ? 'none' : '';
+  $('dispatchRow').style.display = isDispatch ? '' : 'none';
+  const hint = $('dispatchHint');
+  if (!hint) return;
+  if (!isDispatch) { hint.textContent = ''; return; }
+  const d = dispatchInfo(name);
+  if (!d) { hint.textContent = name ? `No dispatch contract for "${name}". Dispatchable: ${dispatchNames().join(', ')}.` : `Pick a dispatchable item: ${dispatchNames().join(', ')}.`; return; }
+  const neg = Number($('sk_negotiation').value) || 0;
+  const dayLen = Number($('dispatchDayLen').value) || 16;
+  const dailyMax = dispatchDailyMax(d, neg);
+  const rate = dispatchRate(name, neg, dayLen);
+  const revPerDay = dailyMax * (d.reward / d.unitsPerContract);
+  hint.textContent = `${name} quota ${fmt(dailyMax)}/day (Neg L${neg}) → ${fmt(rate)}/min · ~${fmtCu(revPerDay)}/day`;
 }
 
 // ---------- solve ----------
 async function solve() {
   const body = requestBody();
   if (!body.item) { setStatus('Pick an output item.', 'error'); return; }
+  const dispatchUnit = $('rateUnit').value === 'dispatch';
+  if (dispatchUnit && !dispatchInfo(body.item)) {
+    setStatus(`No dispatch contract for "${body.item}". Dispatchable: ${dispatchNames().join(', ')}.`, 'error');
+    return;
+  }
+  if (dispatchUnit && !(body.rate > 0)) { setStatus('Dispatch quota resolves to 0 — check the day length.', 'error'); return; }
   setStatus('Solving…', '');
   $('summary').innerHTML = '';
   let out;
@@ -196,6 +266,7 @@ async function solve() {
   $('explain').textContent = out.explainText || '';
   let status = `Solved in ${out.cgRounds} CG round(s). ${fmtCu(out.copperPerItem)} per ${body.item}.`;
   if (out.machineTarget) status = `Building ${out.machineTarget}× ${body.item} machine(s) = ${fmt(out.effectiveRate)}/min. ` + status;
+  if (dispatchUnit) status = `Saturating ${body.item} dispatch quota = ${fmt(body.rate)}/min (Neg L${Number($('sk_negotiation').value) || 0}, ${Number($('dispatchDayLen').value) || 16}-min day). ` + status;
   setStatus(status, 'ok');
   if (out.warnings?.length) {
     $('status').insertAdjacentHTML('beforeend', out.warnings.map((w) => `<span class="warn">⚠ ${esc(w)}</span>`).join(''));
@@ -221,6 +292,16 @@ function renderSummary(out, body) {
   let html = '<div class="stat-row">';
   html += `<div class="stat">Cost <b>${fmtCu(out.copperPerMin)}</b>/min</div>`;
   html += `<div class="stat">Per item <b>${fmtCu(out.copperPerItem)}</b></div>`;
+  if (s.profitPerMin != null) {
+    // Revenue source depends on how the output leaves: a dispatch target earns the CONTRACT REWARD
+    // (reward per unit = reward / unitsPerContract), everything else its sell price. Input cost is the
+    // same either way, so we just swap revenue here rather than re-solving.
+    const d = $('rateUnit').value === 'dispatch' ? dispatchInfo(body.item) : null;
+    const revenue = d ? out.effectiveRate * (d.reward / d.unitsPerContract) : s.revenuePerMin;
+    const profit = revenue - s.inputCostPerMin;
+    const title = `Revenue ${fmtCu(revenue)}/min (${d ? 'dispatch reward' : 'output sell value'}) − inputs ${fmtCu(s.inputCostPerMin)}/min (${fmtCu(out.copperPerMin)} buys${s.beltUtilCostPerMin > 0.01 ? ` + ${fmtCu(s.beltUtilCostPerMin)} belted fuel/fert` : ''})`;
+    html += `<div class="stat" title="${esc(title)}">Profit <b class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit < 0 ? '−' : ''}${fmtCu(Math.abs(profit))}</b>/min</div>`;
+  }
   if (s.capitalPerMin > 0.01) {
     html += `<div class="stat">Mat <b>${fmtCu(s.materialPerMin)}</b> · cap <b>${fmtCu(s.capitalPerMin)}</b>/min</div>`;
   }

@@ -36,6 +36,12 @@ const CO_W = 30;      // co-product waste: dumping a valued co-product (Rock Sal
                       // a high-multiplier route (1 Rock Salt → 100 Sand + 100 Salt) otherwise makes
                       // the bought input look ~free per unit and the dumped Salt too cheap to deter.
                       // Tunable via cfg.composer.coW.
+// PROFIT MODE (cfg.composer.profit): minimise true OPERATING cost instead of build difficulty — for
+// continuous "always running" targets (e.g. dispatch quotas) where material drain, not layout, is
+// the cost. OP_W jumps to PROFIT_OP_W (op dominates build) AND the fuel/fert utilities get charged on
+// the op axis (see solve()), so the metric's min-op equals true min-COST and won't over-farm "free"
+// belted fert. Off by default → ordinary build-first picks are byte-identical.
+const PROFIT_OP_W = 1000;
 
 // Build the canonical-recipe picker for a given db + config.
 function makeComposer(db, cfg) {
@@ -138,10 +144,13 @@ function makeComposer(db, cfg) {
   // only decrease, bounded below, so it converges in ≤ depth passes — context-free, cacheable,
   // no blowup. Solved once (lazily), then tileCost/canonicalPick are O(1) lookups.
   const cc = cfg.composer || {};
+  const profitMode = !!cc.profit; // minimise true op cost + charge fuel/fert utilities (see solve())
   const depthW = cc.depthW != null ? cc.depthW : DEPTH_W;
   const widthW = cc.widthW != null ? cc.widthW : WIDTH_W;
-  const OP_W = cc.opW != null ? cc.opW : OP_W_DEFAULT;
+  const OP_W = cc.opW != null ? cc.opW : (profitMode ? PROFIT_OP_W : OP_W_DEFAULT);
   const coW = cc.coW != null ? cc.coW : CO_W;
+  const cParams = skillParams(cfg.skills); // heat/speed multipliers, for the profit-mode fuel charge
+  const fuelItemC = (cfg.canonical && cfg.canonical.fuelItem) || null;
   // The metric tracks TWO independent quantities per item, each PER UNIT OF OUTPUT:
   //  • build — structural "how hard to lay out": DEPTH_W per stage + WIDTH_W per extra distinct
   //            input belt, summed down the chain. QTY-INDEPENDENT (fan-out is free: needing 6 Sand
@@ -177,19 +186,38 @@ function makeComposer(db, cfg) {
     // each nursery recipe pays (nutrientCost/prim)·fertOpPerNutrient on its OPERATING axis. The
     // residual fert-to-grow-fert term is ignored (a few %); it keeps the system finite and stable.
     const pass1 = relax(items, 0);
+    // Value a utility carrier per its consumed unit: in PROFIT MODE a BELTED carrier is charged its
+    // sell value (the profit stat's basis — what you forgo by burning/fertilising with it), a PRODUCED
+    // carrier its pass-1 production cost. Outside profit mode fert keeps the old production-cost charge
+    // and fuel stays free, so picks don't move.
+    const carrierOpValue = (item) => {
+      const prodOp = pass1.op.get(item);
+      if (profitMode && beltCapFor(item) > 0) return db.items[item] && db.items[item].sellPrice || 0;
+      return prodOp;
+    };
     let fertOpPerNutrient = 0;
     if (fertItem && fertNutrientValue) {
-      const fop = pass1.op.get(fertItem);
-      if (isFinite(fop) && fop > 0) fertOpPerNutrient = fop / fertNutrientValue;
+      const fval = carrierOpValue(fertItem);
+      if (isFinite(fval) && fval > 0) fertOpPerNutrient = fval / fertNutrientValue;
     }
-    solved = fertOpPerNutrient > 0 ? relax(items, fertOpPerNutrient) : pass1;
+    let fuelOpPerHeat = 0;
+    if (profitMode && fuelItemC && db.items[fuelItemC]) {
+      const heatPerCarrier = (db.items[fuelItemC].heat || 0) * cParams.fuelMult;
+      const fval = carrierOpValue(fuelItemC);
+      if (heatPerCarrier > 0 && isFinite(fval) && fval > 0) fuelOpPerHeat = fval / heatPerCarrier;
+      // per-run heat for every non-cauldron recipe (static: machine + baseTime + speed), charged below
+      if (fuelOpPerHeat > 0) for (const arr of producersOf.values()) for (const r of arr) {
+        if (r._heatPerRun == null) r._heatPerRun = r.machine ? machineHeatPerRun(db.machines[r.machine], db.machines, r.baseTime || 0, cParams.speedMult) : 0;
+      }
+    }
+    solved = (fertOpPerNutrient > 0 || fuelOpPerHeat > 0) ? relax(items, fertOpPerNutrient, fuelOpPerHeat) : pass1;
     solved.fertOpPerNutrient = fertOpPerNutrient;
     return solved;
   }
 
   // One min-score fixpoint relaxation tracking build & op separately. fertOpPerNutrient prices
   // a nursery's nutrient draw on the op axis (0 disables it, for pass 1).
-  function relax(items, fertOpPerNutrient) {
+  function relax(items, fertOpPerNutrient, fuelOpPerHeat = 0) {
     const build = new Map();
     const op = new Map();
     const score = new Map();
@@ -236,6 +264,7 @@ function makeComposer(db, cfg) {
           }
           if (!ok) continue;
           if (r.nutrientCost) oSum += (r.nutrientCost / prim) * fertOpPerNutrient; // fertilizer drain
+          if (fuelOpPerHeat && r._heatPerRun) oSum += (r._heatPerRun / prim) * fuelOpPerHeat; // fuel/heat drain
           // Co-product waste: a recipe making the target AND other items dumps those (trash mode).
           // Penalize by dumped value per unit of target, so Rock Salt → Salt + Sand loses for Sand
           // (dumps valuable Salt) but stays fine for Salt (cheap Sand dumped).
@@ -271,6 +300,7 @@ function makeComposer(db, cfg) {
               else if (a === b2) { distinct = 2; bSum = ba + bk; oSum = 2 * oa + okk; }
               else if (b2 === k) { distinct = 2; bSum = ba + bb; oSum = oa + 2 * ob; }
               else { distinct = 3; bSum = ba + bb + bk; oSum = oa + ob + okk; }
+              if (fuelOpPerHeat) oSum += cauldron.compiled.targets[cauldron.compiled.outIdx[t]].heat * fuelOpPerHeat; // cauldron craft heat
               const b = depthW + widthW * (distinct - 1) + bSum;
               const s = b + OP_W * oSum;
               const costSum = cIn[a].cost + cIn[b2].cost + cIn[k].cost;

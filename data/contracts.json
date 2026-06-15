@@ -1,0 +1,9 @@
+{
+  "_comment": "Alchemy Factory Dispatch Portal contracts. dailyMaxBase = per-portal daily cap at Negotiation level 0; effective = dailyMaxBase * (1 + 0.25*negotiation). unitsPerMin to saturate = effectiveDailyMax / dayLengthMin (base day 16 min). reward is in copper (per contract of unitsPerContract items). Source: codex contracts-calculator data attrs + user. Early Access v0.5.x — values may change.",
+  "Bandage":         { "dailyMaxBase": 800,  "unitsPerContract": 50, "reward": 12000 },
+  "Gloom Spores":    { "dailyMaxBase": 1600, "unitsPerContract": 50, "reward": 18000 },
+  "Pocket Watch":    { "dailyMaxBase": 960,  "unitsPerContract": 20, "reward": 26000 },
+  "Fertile Catalyst":{ "dailyMaxBase": 1200, "unitsPerContract": 20, "reward": 60000 },
+  "Silver Amulet":   { "dailyMaxBase": 480,  "unitsPerContract": 10, "reward": 340000 },
+  "Moonlit Soap":    { "dailyMaxBase": 80,   "unitsPerContract": 10, "reward": 6000000 }
+}

@@ -231,9 +231,26 @@ function composeGraph(composed, db, cfg) {
     .filter((n) => n.type === 'external' && (n.kind === 'purchase' || n.kind === 'mint'))
     .map((n) => ({ item: n.label.replace(/^(Buy|Mint) /, ''), kind: n.kind, ratePerMin: n.ratePerMin, copperPerMin: n.copperPerMin }))
     .sort((a, b) => b.copperPerMin - a.copperPerMin);
+  // Profit/min = output sell value − everything that enters from the main belt. The copper draw
+  // (copperPerMin) already covers all BOUGHT raws — including the coal ore etc. for a PRODUCED
+  // fuel/fert carrier — so only the BELT-supplied portion of a carrier is a separate free input,
+  // valued at its sell price. Coins ARE the copper draw, so they're not added again (no double-count).
+  const sellOf = (n) => (db.items[n] && db.items[n].sellPrice) || 0;
+  const revenuePerMin = sellOf(target) * composed.summary.ratePerMin;
+  let beltUtilCostPerMin = 0;
+  for (const tr of [composed.fuel, composed.fert]) {
+    if (tr && tr.beltRate > EPS) beltUtilCostPerMin += tr.beltRate * sellOf(tr.item);
+  }
+  const inputCostPerMin = composed.summary.copperPerMin + beltUtilCostPerMin;
+  const profitPerMin = revenuePerMin - inputCostPerMin;
+
   const summary = {
     copperPerMin: composed.summary.copperPerMin,            // total money-line draw
     operatingCopperPerMin: composed.summary.operatingCopperPerMin,
+    revenuePerMin,                                          // output item sell value / min
+    inputCostPerMin,                                        // copper buys + belt-supplied utility value
+    beltUtilCostPerMin,                                     // belted fuel/fert value (subset of inputCost)
+    profitPerMin,                                           // revenue − inputCost
     capitalPerMin: 0,                                        // composer doesn't amortize machine build (yet)
     materialPerMin: composed.summary.copperPerMin,
     beltSpeed,

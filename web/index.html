@@ -19,6 +19,7 @@
         <label>Output item
           <input type="text" id="item" list="items" placeholder="e.g. Mars" autocomplete="off">
           <datalist id="items"></datalist>
+          <datalist id="dispatchItems"></datalist>
         </label>
         <label>Rate <small>(or # of final-product machines to build)</small>
           <span class="rate-row">
@@ -27,8 +28,13 @@
               <option value="min" selected>/ min</option>
               <option value="sec">/ sec</option>
               <option value="machines">× output machines</option>
+              <option value="dispatch">dispatch quota</option>
             </select>
           </span>
+        </label>
+        <label id="dispatchRow" style="display:none">Dispatch day length <small>(min, base 16 — raised by potion-belt level)</small>
+          <input type="number" id="dispatchDayLen" value="16" min="1" step="any">
+          <p class="hint" id="dispatchHint"></p>
         </label>
         <label>Unlock tier <small>(limits recipes to your tier or below)</small>
           <select id="maxTier">
@@ -183,6 +189,7 @@
           <label>Alchemy<input type="number" id="sk_alchemy" value="0" min="0" step="1"></label>
           <label>Fuel<input type="number" id="sk_fuel" value="0" min="0" step="1"></label>
           <label>Fertilizer<input type="number" id="sk_fertilizer" value="0" min="0" step="1"></label>
+          <label>Negotiation<input type="number" id="sk_negotiation" value="0" min="0" step="1"><small>dispatch caps</small></label>
         </div>
       </section>
 

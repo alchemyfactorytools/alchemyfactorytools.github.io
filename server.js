@@ -23,10 +23,11 @@ const { composeGraph } = require('./src/compose-graph');
 const { assignClusters } = require('./src/layout');
 const { explain } = require('./src/explain');
 const db = require('./data/alchemy_db.v41.json');
+const contracts = require('./data/contracts.json'); // Dispatch Portal contract data (per-item daily caps)
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'tile-saturate-terminal-2026-06-15e';
+const SERVER_STAMP = 'composer-profit-mode-2026-06-15l';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -42,6 +43,9 @@ function itemCatalog() {
     cauldronTarget: item.cauldronTarget ?? null,
     cauldronEligible: item.cauldronCost !== undefined && !item.liquid,
     mintable: ['Copper Coin', 'Silver Coin', 'Gold Coin'].includes(name),
+    // Dispatch Portal contract (null unless this item is dispatchable). Lets the UI offer a
+    // "× dispatch portals" target: rate = portals × dailyMaxBase × (1+0.25·Negotiation) / dayLen.
+    dispatch: contracts[name] || null,
   }));
 }
 
