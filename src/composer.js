@@ -569,16 +569,17 @@ function makeComposer(db, cfg) {
   function compose(target, rate) {
     solve();
 
-    // Phase 7 — cross-tile co-product feeds (reuse mode). A co-product offsets dedicated production
-    // of the same item elsewhere in the build (the Sand thrown off making Saturn's Salt covers part
-    // of the Sand for its Glass → fewer Sand farms). Because offsetting a consumer's production can
-    // in turn shrink a co-product's OWN source, the supply pool is the fixpoint of "build with this
-    // budget → measure the resulting gross co-supply"; it only ever decreases, so it converges in a
-    // few passes. Trash mode (or 'sell' left to the LP) builds with no pool. Trunks excluded in v1.
-    const mode = (cfg.byproducts && cfg.byproducts.mode) || 'reuse';
-    const reuse = mode !== 'trash';
+    // Phase 7 — WITHIN-TILE co-product reuse (ALWAYS on, including trash mode). A co-product offsets
+    // dedicated production of the same item elsewhere in the SAME tree: the Sand thrown off making
+    // Saturn's Salt covers part of the Sand for its Glass (fewer Sand farms), and the Charcoal that
+    // Coke co-produces re-grinds into the Charcoal Powder Coke itself eats. Recycling what a line
+    // already makes is free and must never be trashed when a sibling/downstream step in the same line
+    // wants it — so it is decoupled from byproducts.mode. The mode now governs only the UNCLAIMED
+    // surplus (trashed, or — future — pooled cross-tile). Because offsetting a consumer's production
+    // can in turn shrink a co-product's OWN source, the supply pool is the fixpoint of "build with this
+    // budget → measure the resulting gross co-supply"; it only ever decreases, so it converges fast.
     let coBudget = new Map();
-    if (reuse) {
+    {
       let prev = null;
       for (let i = 0; i < 8; i++) {
         const probe = buildTree(target, rate, target, new Set(), freshAcc(), new Map(coBudget), null);
@@ -590,7 +591,7 @@ function makeComposer(db, cfg) {
 
     const acc = freshAcc();
     const coFeeds = []; // { item, rate, consumerId } — claimed cross-tile co-product draws (graph wiring)
-    const tree = buildTree(target, rate, target, new Set(), acc, reuse ? new Map(coBudget) : null, coFeeds);
+    const tree = buildTree(target, rate, target, new Set(), acc, new Map(coBudget), coFeeds);
     const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
     // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
     // fires when beltCap 0), so it adds to the dedicated trunk's output AND draws self-heat/nutrient
@@ -636,7 +637,20 @@ function makeComposer(db, cfg) {
       if (!(total > 1e-9)) return null;
       const beltRateUsed = Math.min(total, cap);
       const prodRate = Math.max(0, total - cap);
-      const prodTile = prodRate > 1e-9 ? buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc, null, null, false) : null;
+      // within-trunk co-product reuse — same always-on within-tile policy as the main tree, scoped to
+      // this trunk's own co-supply (e.g. the fuel line's Coke re-grinds its Charcoal co-product rather
+      // than trashing it). Same fixpoint; coFeeds collected so the recycle edge renders.
+      let prodTile = null;
+      if (prodRate > 1e-9) {
+        let tb = new Map(), prev = null;
+        for (let i = 0; i < 8; i++) {
+          const probe = buildTree(item, prodRate, `${item}#${tag}`, new Set(), freshAcc(), new Map(tb), null, false);
+          const m = measureCoSupply(probe, new Map());
+          if (prev && mapsClose(m, prev)) break;
+          prev = m; tb = m;
+        }
+        prodTile = buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc, new Map(tb), coFeeds, false);
+      }
       if (isFinite(cap) && cap > 0 && prodRate > 1e-9) {
         warnings.push(`Belt ${item} supplies ${cap.toFixed(1)}/min; this build needs ${total.toFixed(1)}/min ${tag} — composing the extra ${prodRate.toFixed(1)}/min.`);
       }
