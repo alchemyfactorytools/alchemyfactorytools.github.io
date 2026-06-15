@@ -43,7 +43,14 @@
     // row higher than their bought-ore siblings. Exclude them all from ranking: machines
     // rank by their material inputs, and fuel/fert/coin distribution falls out as the
     // back-edges that draw as feedback loops / trunks.
-    const isSupport = (e) => e.heat || e.nutrient || e.cash;
+    //
+    // CO-PRODUCT reuse edges are the same kind of supporting flow. A co-product re-consumed
+    // within the line (Coke's Charcoal re-ground into the Charcoal Powder Coke eats) loops
+    // BACK to a shallower step; if it counts toward ranking it forms a cycle and the DFS can
+    // break the REAL spine edge instead — inverting the line so the output box (Coke Powder)
+    // lands mid-column instead of at the bottom. Exclude co-product edges too: the spine ranks
+    // by primary inputs, and the reuse draws as a feedback loop without restructuring anything.
+    const isSupport = (e) => e.heat || e.nutrient || e.cash || e.coproduct;
     for (const e of graph.edges) {
       if (e.from === e.to || isSupport(e) || !adj.has(e.from) || !adj.has(e.to)) continue;
       adj.get(e.from).push(e.to);
@@ -519,12 +526,14 @@
       const indeg = new Map(c.members.map((m) => [m, 0]));
       const adj = new Map(c.members.map((m) => [m, []]));
       // Rank by the PRODUCTION flow only — exclude the nutrient/heat distribution
-      // edges (the fertilizer/fuel the line makes feeding its own nurseries/machines).
-      // Those run "backwards" up the line, so counting them shoved the line's OUTPUT
-      // (e.g. Fertile Catalyst) into the middle. Dropping them puts the output at the
-      // bottom of the box and the feedback draws as a loop.
+      // edges (the fertilizer/fuel the line makes feeding its own nurseries/machines)
+      // AND co-product reuse edges (Coke's Charcoal re-ground into its own Charcoal
+      // Powder). Those run "backwards" up the line, so counting them shoves the line's
+      // OUTPUT (e.g. Fertile Catalyst, Coke Powder) into the middle — or, for the
+      // co-product loop, deadlocks this Kahn sort and strands the output at sub-rank 0
+      // (the TOP). Dropping them puts the output at the bottom and the reuse draws as a loop.
       for (const e of graph.edges) {
-        if (mset.has(e.from) && mset.has(e.to) && e.from !== e.to && !e.nutrient && !e.heat && !back.has(e.from + '\t' + e.to)) {
+        if (mset.has(e.from) && mset.has(e.to) && e.from !== e.to && !e.nutrient && !e.heat && !e.coproduct && !back.has(e.from + '\t' + e.to)) {
           adj.get(e.from).push(e.to); indeg.set(e.to, indeg.get(e.to) + 1);
         }
       }
