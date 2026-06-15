@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'tighten-target-gap-2026-06-14z';
+const BUILD_STAMP = 'pertile-shorthand-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -493,7 +493,7 @@ function renderGraph(rawGraph) {
       // each tile is sized to output one full belt (or the whole line if it's sub-belt) —
       // shown as the tile's capacity, even though backpressure may run it below that.
       const perTile = bp.perTileOut != null ? bp.perTileOut : (c.outRate && bp.K ? c.outRate / bp.K : null);
-      const rateStr = perTile ? ` · ${fmt(perTile)}${c.outItem ? ' ' + c.outItem : ''}/min per tile` : '';
+      const rateStr = perTile ? ` · ${fmt(perTile)}${c.outItem ? ' ' + c.outItem : ''}/min/tile` : '';
       const idleStr = bp.idle > 0.2 ? ` (${Math.round(bp.idle * 100)}% idle)` : '';
       const cellStr = bp.cell.map((x) => `${x.count}× ${x.label} (${x.machine})`).join(' + ');
       const ttlText = `Tileable: build ${bp.K} identical tiles, each one = ${cellStr}. ${Math.round(bp.idle * 100)}% of machine capacity idles (build cost only — backpressure means no extra input/fuel).`;
@@ -506,8 +506,8 @@ function renderGraph(rawGraph) {
         const ttl = document.createElementNS(SVGNS, 'title'); ttl.textContent = ttlText; tx.appendChild(ttl);
         cg.appendChild(tx); els.push(tx);
       };
-      subLine(30, `⬢ ${bp.K}× tiles${rateStr}`);
-      subLine(44, `each: ${cellShort}${idleStr}`);
+      subLine(30, `⬢ ${bp.K}× tiles${rateStr}${idleStr}`);
+      subLine(44, `each: ${cellShort}`);
     }
     if (COLLAPSE_ENABLED && c.key && !c.belt) {
       t.style.cursor = 'pointer';
