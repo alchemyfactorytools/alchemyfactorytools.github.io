@@ -880,6 +880,14 @@
     let utilSpan = 0;
     for (const c of cluster.clusters.filter(isUtil)) for (const m of c.members) { utilNodeSet.add(m); utilSpan = Math.max(utilSpan, rank.get(m) || 0); }
     const spineDrop = utilNodeSet.size ? utilSpan + 2 : 0;
+    // The extra-row drop below only earns its keep when SEVERAL producers converge on the
+    // target (they need vertical room to fan in). With a single producer — the usual case,
+    // one root tile → target — it just opens a dead gap, so size the drop to the fan-in.
+    const demandFanIn = new Map();
+    for (const e of graph.edges) {
+      if (e.heat || e.nutrient || e.cash || e.from === e.to) continue;
+      if ((nodeMap.get(e.to) || {}).type === 'demand') demandFanIn.set(e.to, (demandFanIn.get(e.to) || 0) + 1);
+    }
     const pos = new Map();
     cols.forEach((c, r) => {
       if (!c) return;
@@ -888,9 +896,9 @@
         const l = lane(n.id);
         // use the barycenter slot if we computed one; else fall back to packed order
         const slot = slotOf.has(n.id) ? slotOf.get(n.id) : seenInLane[l]++;
-        // Drop the final target an extra row below its producers so the many lines that
-        // converge on it have vertical room to fan in without piling onto each other.
-        const demandDrop = n.type === 'demand' ? flowStep : 0;
+        // Drop the final target an extra row below its producers ONLY when >1 line fans into
+        // it; a single-producer target sits at normal row spacing (no dead gap).
+        const demandDrop = (n.type === 'demand' && (demandFanIn.get(n.id) || 0) > 1) ? flowStep : 0;
         const flow = (r + (utilNodeSet.has(n.id) ? 0 : spineDrop)) * flowStep + headerOffset + demandDrop;
         const cross = laneOffset[l] + slot * crossStep;
         if (orientation === 'TB') pos.set(n.id, { x: cross, y: flow, w: NODE_W, h: NODE_H });
@@ -1038,7 +1046,10 @@
       // output, line 3 = the cell list (on its own line). outItem/outRate come from
       // assignClusters; the header shows the per-tile output capacity.
       const headH = extra && extra.tile ? 46 : 14;
-      clusterBoxes.push({ x: x0 - PAD, y: y0 - PAD - headH, w: (x1 - x0) + 2 * PAD, h: (y1 - y0) + 2 * PAD + headH, headH, ...extra });
+      // members ride along so the renderer can map a node → its box (hover un-fades the
+      // box(es) that hold a highlighted node, so a line's wrapper/header doesn't dim while
+      // its own tile is in focus).
+      clusterBoxes.push({ x: x0 - PAD, y: y0 - PAD - headH, w: (x1 - x0) + 2 * PAD, h: (y1 - y0) + 2 * PAD + headH, headH, members, ...extra });
     };
     // A nest-merged cluster draws a box per ORIGINAL sub-line (so each stays a labelled,
     // tileable unit) rather than one box around the whole merged stack.
@@ -1051,8 +1062,9 @@
     if (beltNodes.length) {
       let crossExtent = 0;
       for (const p of pos.values()) crossExtent = Math.max(crossExtent, (orientation === 'TB' ? p.x + NODE_W : p.y + NODE_H));
-      if (orientation === 'TB') clusterBoxes.push({ label: 'Main belt', belt: true, x: -PAD, y: -PAD - 14, w: crossExtent + 2 * PAD, h: NODE_H + 2 * PAD + 14 });
-      else clusterBoxes.push({ label: 'Main belt', belt: true, x: -PAD, y: -PAD - 14, w: NODE_W + 2 * PAD, h: crossExtent + 2 * PAD + 14 });
+      const beltMembers = beltNodes.map((n) => n.id);
+      if (orientation === 'TB') clusterBoxes.push({ label: 'Main belt', belt: true, members: beltMembers, x: -PAD, y: -PAD - 14, w: crossExtent + 2 * PAD, h: NODE_H + 2 * PAD + 14 });
+      else clusterBoxes.push({ label: 'Main belt', belt: true, members: beltMembers, x: -PAD, y: -PAD - 14, w: NODE_W + 2 * PAD, h: crossExtent + 2 * PAD + 14 });
     }
 
     // Trunk routing for fuel/fertilizer distribution: instead of one edge from a
