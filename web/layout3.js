@@ -31,15 +31,19 @@
     const adj = new Map();
     const ids = [];
     for (const n of graph.nodes) { adj.set(n.id, []); ids.push(n.id); }
-    // Fuel/fertilizer (heat/nutrient) edges are a SUPPORTING resource flow, not the
-    // main material spine — a furnace's fuel or a nursery's fertilizer is produced
-    // deep in the graph and fed BACK to a machine near the top. Letting them drive the
-    // longest-path rank strands the real producer of the target shallow (e.g. the Black
-    // Powder cauldron eating from fertilized nurseries gets ranked ABOVE them, leaving a
-    // monster edge down to the target). Exclude them from ranking entirely: machines
-    // rank by their material inputs, and the fuel/fert distribution falls out as the
-    // back-edges that draw as feedback loops.
-    const isSupport = (e) => e.heat || e.nutrient;
+    // Fuel/fertilizer (heat/nutrient) AND coin (cash) edges are a SUPPORTING resource
+    // flow, not the main material spine — a furnace's fuel or a nursery's fertilizer is
+    // produced deep in the graph and fed BACK to a machine near the top, and coins are
+    // purchasing power fed INTO the bought-ore nodes, not a material the factory
+    // transforms toward the target. Letting any of them drive the longest-path rank
+    // distorts it: fuel/fert strand the real producer shallow (e.g. the Black Powder
+    // cauldron eating from fertilized nurseries gets ranked ABOVE them, leaving a monster
+    // edge to the target), and the coin belt shoves every Buy node down a row — lengthening
+    // the whole diagram and leaving farm-grown lines (fed by fert, not coins) floating a
+    // row higher than their bought-ore siblings. Exclude them all from ranking: machines
+    // rank by their material inputs, and fuel/fert/coin distribution falls out as the
+    // back-edges that draw as feedback loops / trunks.
+    const isSupport = (e) => e.heat || e.nutrient || e.cash;
     for (const e of graph.edges) {
       if (e.from === e.to || isSupport(e) || !adj.has(e.from) || !adj.has(e.to)) continue;
       adj.get(e.from).push(e.to);
@@ -961,21 +965,34 @@
     // the natural end of the main line.
     {
       const crossCtr = (p) => (orientation === 'TB' ? p.x + NODE_W / 2 : p.y + NODE_H / 2);
-      const rowCount = new Map();
-      for (const id of pos.keys()) { const r = rank.get(id); rowCount.set(r, (rowCount.get(r) || 0) + 1); }
       const demandIds = new Set(graph.nodes.filter((n) => n.type === 'demand').map((n) => n.id));
       const finalProducers = new Set();
       for (const e of graph.edges) if (demandIds.has(e.to) && !beltSet.has(e.from)) finalProducers.add(e.from);
       // shallowest first: centre the final producer (on its product inputs) before
       // the demand centres on the producer.
       const toCenter = [...new Set([...demandIds, ...finalProducers])].sort((a, b) => rank.get(a) - rank.get(b));
+      const span = orientation === 'TB' ? NODE_W : NODE_H;
+      const lead = (p) => (orientation === 'TB' ? p.x : p.y);
       for (const id of toCenter) {
         const p = pos.get(id);
-        if (!p || (rowCount.get(rank.get(id)) || 0) > 1) continue; // not alone in its row → keep banded (no overlap)
+        if (!p) continue;
         const ins = graph.edges.filter((e) => e.to === id && pos.get(e.from)).map((e) => pos.get(e.from));
         if (!ins.length) continue;
         const c = ins.reduce((s, q) => s + crossCtr(q), 0) / ins.length;
-        if (orientation === 'TB') p.x = c - NODE_W / 2; else p.y = c - NODE_H / 2;
+        const newLead = c - span / 2;
+        // Centre on the inputs even when the row is shared — the old guard bailed whenever ANY
+        // node sat in this flow row, even one in a distant lane (a fuel tower's same-depth node)
+        // the centred producer never overlaps, leaving it stranded in the far unclustered band.
+        // Only skip if the centred position would actually COLLIDE with a same-row neighbour.
+        const r = rank.get(id);
+        let collides = false;
+        for (const oid of pos.keys()) {
+          if (oid === id || rank.get(oid) !== r) continue;
+          const ol = lead(pos.get(oid));
+          if (newLead < ol + span + GAP_CROSS && ol < newLead + span + GAP_CROSS) { collides = true; break; }
+        }
+        if (collides) continue;
+        if (orientation === 'TB') p.x = newLead; else p.y = newLead;
       }
     }
 
