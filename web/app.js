@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'lateral-rake-aware-sort-2026-06-15v';
+const BUILD_STAMP = 'static-build-phase-b-2026-06-15w';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -45,15 +45,12 @@ function loadPrefs() {
   if (typeof prefs.utilEdgeMode === 'string' && UTIL_MODE_LABEL[prefs.utilEdgeMode]) utilEdgeMode = prefs.utilEdgeMode;
   else if (typeof prefs.showUtilEdges === 'boolean') utilEdgeMode = prefs.showUtilEdges ? 'all' : 'off';
   $('utilEdgeToggle').textContent = UTIL_MODE_LABEL[utilEdgeMode];
-  if (typeof prefs.layoutMode === 'string' && LAYOUT_LABEL[prefs.layoutMode]) layoutMode = prefs.layoutMode;
-  else if (typeof prefs.useLayout2 === 'boolean') layoutMode = prefs.useLayout2 ? '2d' : 'classic'; // migrate old pref
-  $('layoutToggle').textContent = LAYOUT_LABEL[layoutMode];
   if (Array.isArray(prefs.collapsed)) { collapsed.clear(); prefs.collapsed.forEach((k) => collapsed.add(k)); }
 }
 
 // ---------- bootstrap ----------
 async function init() {
-  const items = await (await fetch('/api/items')).json();
+  const items = AlchSolver.itemCatalog();
   CATALOG = items;
   const itemList = $('items');
   for (const it of items) {
@@ -246,6 +243,17 @@ function updateDispatchUI() {
 }
 
 // ---------- solve ----------
+// Solve routing. The tile composer runs fully in-browser (bundled in solver.bundle.js as the
+// global AlchSolver), so the hosted static site needs no server. The LP optimizer's WASM solver
+// isn't bundled yet, so LP still posts to the dev server's /api/solve — works under
+// `npm run serve`; on the static build, choose the Tile composer.
+async function solveBody(body) {
+  const useComposer = body.config && body.config.solver === 'composer';
+  if (useComposer && window.AlchSolver) return AlchSolver.solve(body);
+  const res = await fetch('/api/solve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`server solve failed (${res.status}) — the LP optimizer needs the local dev server; switch Solver to "Tile composer" for the hosted build`);
+  return res.json();
+}
 async function solve() {
   const body = requestBody();
   if (!body.item) { setStatus('Pick an output item.', 'error'); return; }
@@ -259,7 +267,7 @@ async function solve() {
   $('summary').innerHTML = '';
   let out;
   try {
-    out = await (await fetch('/api/solve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    out = await solveBody(body);
   } catch (e) { setStatus('Request failed: ' + e.message, 'error'); return; }
 
   if (out.error) { setStatus(out.error, 'error'); return; }
@@ -344,13 +352,12 @@ function renderSummary(out, body) {
 let viewState = { k: 1, x: 0, y: 0 };
 let orientation = 'TB';   // 'TB' vertical (default) | 'LR' horizontal
 let showClusters = true;  // draw labeled production-line containers
-// layout engine: 'classic' (layout.js) | '2d' (layout2.js, lane-based) | '2dn'
-// (layout3.js, lane-based + vertical nesting of wide shared producers over their
-// consumers). '2d' and '2dn' both use the per-line split + container rendering.
-let layoutMode = 'classic';
-const LAYOUT_LABEL = { classic: '⊞ Layout: classic', '2d': '⊞ Layout: 2D', '2dn': '⊞ Layout: 2D-nested' };
-const engineFor = (m) => (m === '2dn' && window.AlchLayout3) ? AlchLayout3 : (m === '2d' && window.AlchLayout2) ? AlchLayout2 : AlchLayout;
-const isLayout2ish = (m) => m === '2d' || m === '2dn';
+// Single layout engine: 2D-nested (layout3.js) — lane-based + vertical nesting of wide shared
+// producers over their consumers, with the per-line split + container rendering. The older
+// 'classic' (layout.js) and '2d' (layout2.js) engines were removed; splitBaseGoods's
+// line-membership clustering now comes from the bundled AlchSolver.assignClusters, which is
+// byte-identical to the src/layout.js code that 'classic' used.
+const layoutMode = '2dn';
 const collapsed = new Set(); // cluster ids folded into a single group node (drill-down)
 const COLLAPSE_ENABLED = false; // line collapse/drill-down temporarily disabled (re-clustering made it confusing)
 // fuel/fert distribution edges: 'all' = every source→machine edge, 'trunk' = one
@@ -391,7 +398,7 @@ function applyCollapse(graph, engine) {
   // nodes differently, e.g. shared sub-assemblies / disposal sinks) means the collapse finds
   // no matching cluster (click does nothing) or folds the wrong members. Mirror renderGraph's
   // own clOf/tileByKey, which already key off the render engine.
-  const ca = (engine && engine.assignClusters ? engine : AlchLayout).assignClusters(graph);
+  const ca = (engine && engine.assignClusters ? engine : AlchSolver).assignClusters(graph);
   const byId = new Map(ca.clusters.map((c) => [c.id, c]));
   const active = [...collapsed].filter((id) => byId.has(id));
   if (!active.length) return graph;
@@ -440,7 +447,7 @@ function applyCollapse(graph, engine) {
 // item edges drive replication; belt taps are physical (tapped per consumer) so they
 // replicate too, keyed off the lines their fuel/fert/cash ultimately serves.
 function splitBaseGoods(graph) {
-  const cl = AlchLayout.assignClusters(graph);
+  const cl = AlchSolver.assignClusters(graph);
   const homeLine = (id) => cl.clusterOf.get(id) ?? '·loose';
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   // A co-product feed is a cross-tile reuse edge (Salt tile's Sand → the Glass line), not part of a
@@ -561,9 +568,9 @@ function splitBaseGoods(graph) {
 
 function renderGraph(rawGraph) {
   lastGraph = rawGraph;
-  const ENGINE = engineFor(layoutMode);
+  const ENGINE = AlchLayout3;
   let graph = applyCollapse(rawGraph, ENGINE);
-  if (isLayout2ish(layoutMode) && ENGINE !== AlchLayout) graph = splitBaseGoods(graph);
+  graph = splitBaseGoods(graph);
   const svg = $('graph');
   svg.innerHTML = '';
   const defs = document.createElementNS(SVGNS, 'defs');
@@ -927,19 +934,12 @@ function fitView() {
     savePrefs();
     if (lastGraph) { renderGraph(lastGraph); }
   };
-  $('layoutToggle').onclick = () => {
-    const order = ['classic', '2d', '2dn'];
-    layoutMode = order[(order.indexOf(layoutMode) + 1) % order.length];
-    $('layoutToggle').textContent = LAYOUT_LABEL[layoutMode];
-    savePrefs();
-    if (lastGraph) { renderGraph(lastGraph); }
-  };
   $('mermaidBtn').onclick = async () => {
     const body = requestBody();
     if (!body.item) { setStatus('Pick an item first.', 'error'); return; }
-    const res = await fetch('/api/mermaid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!res.ok) { setStatus('No solution to export.', 'error'); return; }
-    await navigator.clipboard.writeText(await res.text());
+    let out; try { out = await solveBody(body); } catch (e) { setStatus(e.message, 'error'); return; }
+    if (!out || out.status !== 'Optimal' || !out.graph) { setStatus('No solution to export.', 'error'); return; }
+    await navigator.clipboard.writeText(AlchSolver.toMermaid(out.graph));
     setStatus('Mermaid diagram copied — paste into GitHub/Notion/Obsidian.', 'ok');
   };
 })();
@@ -948,10 +948,9 @@ function fitView() {
 $('exportDot').onclick = async () => {
   const body = requestBody();
   if (!body.item) { setStatus('Pick an item first.', 'error'); return; }
-  const res = await fetch('/api/dot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) { setStatus('No solution to export.', 'error'); return; }
-  const dot = await res.text();
-  await navigator.clipboard.writeText(dot);
+  let out; try { out = await solveBody(body); } catch (e) { setStatus(e.message, 'error'); return; }
+  if (!out || out.status !== 'Optimal' || !out.graph) { setStatus('No solution to export.', 'error'); return; }
+  await navigator.clipboard.writeText(AlchSolver.toDot(out.graph));
   setStatus('Graphviz DOT copied to clipboard.', 'ok');
 };
 

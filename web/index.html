@@ -57,8 +57,8 @@
         <h2>Solver</h2>
         <label>Build method <small>(how the build is chosen)</small>
           <select id="solver">
-            <option value="lp" selected>Optimizer — global min-copper (LP)</option>
-            <option value="composer">Tile composer — deterministic simplest tiles</option>
+            <option value="lp">Optimizer — global min-copper (LP)</option>
+            <option value="composer" selected>Tile composer — deterministic simplest tiles</option>
           </select>
         </label>
         <p class="hint">The <b>optimizer</b> finds the globally cheapest flow. The <b>tile composer</b>
@@ -218,7 +218,6 @@
             <button id="orientToggle" title="Toggle horizontal / vertical layout">⇅ Vertical</button>
             <button id="clusterToggle" title="Group production lines into containers">▦ Lines</button>
             <button id="utilEdgeToggle" title="Show/collapse fuel &amp; fertilizer distribution edges (the bands always show the amounts)">🔥 Fuel/fert</button>
-            <button id="layoutToggle" title="Switch between the classic and experimental 2D layout">⊞ Layout: classic</button>
             <button id="mermaidBtn" class="secondary" title="Copy diagram as Mermaid">Copy Mermaid</button>
           </div>
           <span class="legend">
@@ -240,9 +239,8 @@
       </details>
     </main>
   </div>
-  <script src="layout.js"></script>
-  <script src="layout2.js"></script>
   <script src="layout3.js"></script>
+  <script src="solver.bundle.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

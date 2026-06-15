@@ -8,7 +8,9 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "serve": "node server.js",
+    "build:bundle": "esbuild web/solver.entry.js --bundle --format=iife --global-name=AlchSolver --platform=browser --outfile=web/solver.bundle.js",
+    "build": "node scripts/build-static.js",
+    "serve": "npm run build:bundle && node server.js",
     "validate": "node scripts/validate.js",
     "cost": "node src/cli.js cost",
     "profit": "node src/cli.js profit"
@@ -17,5 +19,8 @@
   "type": "commonjs",
   "dependencies": {
     "highs": "^1.14.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }
