@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'nutrient-fixpoint-recipe-cost-2026-06-15p';
+const BUILD_STAMP = 'layout-output-side-polish-2026-06-15r';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -440,7 +440,15 @@ function splitBaseGoods(graph) {
   // A co-product feed is a cross-tile reuse edge (Salt tile's Sand → the Glass line), not part of a
   // node's primary material spine — it renders as a dashed recycle link but must NOT drag its source
   // into the consumer's replication cone, or the Salt tile would clone onto the Glass line.
-  const isItemEdge = (e) => !e.heat && !e.nutrient && !e.cash && !e.coproduct;
+  // A disposal sink (a trashed co-product, e.g. Salt's Sand → trash) is the SAME deal: it is not a
+  // product line, so it must not count toward how many lines its producer serves. Without this, a
+  // single-line producer (Salt → Brine, dumping Sand → trash) reads as serving TWO lines — its real
+  // Brine line plus the trash sink's home — and gets cloned into a phantom orphan line (Buy Rock Salt
+  // → Salt → Sand → trash drawn off to the side). This is engine-independent on purpose: only
+  // layout3.assignClusters attaches sinks to their producer's cluster; classic/layout2 leave them
+  // '·loose', so keying the decision off clustering alone would still orphan in 2D and classic modes.
+  const isSink = (id) => { const n = byId.get(id); return !!n && (n.type === 'surplus' || n.type === 'trash'); };
+  const isItemEdge = (e) => !e.heat && !e.nutrient && !e.cash && !e.coproduct && !isSink(e.to);
   const isBelt = (n) => n && n.type === 'external' && n.kind === 'belt';
   const outEdges = new Map(graph.nodes.map((n) => [n.id, []]));
   for (const e of graph.edges) if (e.from !== e.to && outEdges.has(e.from)) outEdges.get(e.from).push(e);
