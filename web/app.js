@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-recirc-and-converge-2026-06-14z';
+const BUILD_STAMP = 'tighten-target-gap-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -472,12 +472,15 @@ function renderGraph(rawGraph) {
 
   // production-line containers (behind everything)
   const cg = document.createElementNS(SVGNS, 'g');
+  const clusterEls = []; // { members:[nodeId], els:[svg] } so hover can un-fade a box that holds a lit node
   (clusters || []).forEach((c, i) => {
     const col = c.belt ? 'var(--accent)' : CLUSTER_COLORS[i % CLUSTER_COLORS.length];
+    const els = [];
     const r = document.createElementNS(SVGNS, 'rect');
     r.setAttribute('x', c.x); r.setAttribute('y', c.y); r.setAttribute('width', c.w); r.setAttribute('height', c.h);
     r.setAttribute('rx', 10); r.setAttribute('class', c.belt ? 'cluster belt' : 'cluster'); r.setAttribute('style', `fill:${col};stroke:${col}`);
-    cg.appendChild(r);
+    cg.appendChild(r); els.push(r);
+    clusterEls.push({ members: c.members || [], els });
     const t = document.createElementNS(SVGNS, 'text');
     t.setAttribute('x', c.x + 10); t.setAttribute('y', c.y + 16); t.setAttribute('class', 'clusterlabel'); t.setAttribute('style', `fill:${col}`);
     // clickable label collapses the line into a single group node (belt isn't collapsible)
@@ -501,7 +504,7 @@ function renderGraph(rawGraph) {
         tx.setAttribute('x', c.x + 10); tx.setAttribute('y', c.y + dy); tx.setAttribute('class', 'clustersub'); tx.setAttribute('style', `fill:${col}`);
         tx.textContent = text;
         const ttl = document.createElementNS(SVGNS, 'title'); ttl.textContent = ttlText; tx.appendChild(ttl);
-        cg.appendChild(tx);
+        cg.appendChild(tx); els.push(tx);
       };
       subLine(30, `⬢ ${bp.K}× tiles${rateStr}`);
       subLine(44, `each: ${cellShort}${idleStr}`);
@@ -515,7 +518,7 @@ function renderGraph(rawGraph) {
       hit.addEventListener('click', (ev) => { ev.stopPropagation(); collapsed.add(c.key); savePrefs(); renderGraph(lastGraph); });
       cg.appendChild(hit);
     }
-    cg.appendChild(t);
+    cg.appendChild(t); els.push(t);
   });
   root.appendChild(cg);
 
@@ -695,28 +698,49 @@ function renderGraph(rawGraph) {
   for (const { g, from, tos } of trunkGroups) for (const to of tos) link(from, to, g, true); // trunks are fuel/fert
   // seen = material lineage (gates recursion); fbNodes = nodes touched only via a
   // 1-hop fuel/fert edge (highlighted, but never the seed of further recursion, so a
-  // feedback edge can't pre-empt a real material path to the same node).
-  const walk = (startId, adjMap, seen, fbNodes, edges) => {
+  // feedback edge can't pre-empt a real material path to the same node). suppliers =
+  // the fuel/fert SOURCE nodes feeding the lineage (fb nodes reached on the upstream
+  // walk); their whole line gets lit (see below). The downstream walk passes no
+  // supplier set, so the lines that merely BURN our fuel stay 1-hop, not fully lit.
+  const walk = (startId, adjMap, seen, fbNodes, edges, suppliers) => {
     const stack = [startId];
     while (stack.length) {
       for (const { id: nb, g, fb } of adjMap.get(stack.pop()) || []) {
         edges.add(g);
-        if (fb) { fbNodes.add(nb); continue; }
+        if (fb) { fbNodes.add(nb); if (suppliers) suppliers.add(nb); continue; }
         if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
       }
     }
   };
+  // node → its cluster box (for fully lighting a fuel/fert source line on hover)
+  const nodeToCluster = new Map();
+  for (const ce of clusterEls) for (const m of ce.members) nodeToCluster.set(m, ce);
   for (const [id, g] of nodeGroups) {
     g.addEventListener('mouseenter', () => {
       svg.classList.add('hovering');
       const seen = new Set([id]);
       const fbNodes = new Set();
       const edges = new Set();
-      walk(id, inAdj, seen, fbNodes, edges);   // everything that feeds this node
-      walk(id, outAdj, seen, fbNodes, edges);  // everything this node feeds
+      const suppliers = new Set();
+      walk(id, inAdj, seen, fbNodes, edges, suppliers); // everything that feeds this node (+ fuel/fert suppliers)
+      walk(id, outAdj, seen, fbNodes, edges, null);     // everything this node feeds (consumers stay 1-hop)
+      // A fuel/fert source line that powers the lineage lights in full — every node +
+      // its internal edges — so "here's the line making your fuel" reads as one unit
+      // instead of a lit box around faded guts. Bounded to that line: we light its
+      // members, never walk out of it into its OTHER consumers.
+      const litLines = new Set();
+      for (const s of suppliers) { const ce = nodeToCluster.get(s); if (ce) litLines.add(ce); }
+      for (const ce of litLines) {
+        const mem = new Set(ce.members);
+        for (const m of ce.members) fbNodes.add(m);
+        for (const { g: eg3, from, to } of edgeGroups) if (mem.has(from) && mem.has(to)) edges.add(eg3);
+        for (const { g: tg, from, tos } of trunkGroups) if (mem.has(from) && tos.length && tos.every((t) => mem.has(t))) edges.add(tg);
+      }
       for (const nid of seen) nodeGroups.get(nid)?.classList.add('hl');
       for (const nid of fbNodes) nodeGroups.get(nid)?.classList.add('hl');
       for (const eg2 of edges) eg2.classList.add('hl');
+      // keep a line's wrapper + header lit while any of its tiles is in focus
+      for (const ce of clusterEls) if (ce.members.some((m) => seen.has(m) || fbNodes.has(m))) for (const el of ce.els) el.classList.add('hl');
     });
     g.addEventListener('mouseleave', () => {
       svg.classList.remove('hovering');

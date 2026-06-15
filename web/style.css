@@ -110,13 +110,20 @@ main { display: flex; flex-direction: column; overflow: hidden; padding: 10px 12
 svg#graph { width: 100%; height: 100%; cursor: grab; }
 svg#graph:active { cursor: grabbing; }
 
-/* hover spotlight: dim everything except the hovered node, its edges & neighbours */
+/* hover spotlight: dim everything except the hovered node, its edges & neighbours.
+   The fade alone carries the focus — highlighted nodes/edges keep their own colours
+   (no accent recolouring), and the production-line boxes recede with everything else. */
 svg#graph.hovering .node { opacity: 0.18; transition: opacity .08s; }
 svg#graph.hovering .edge { opacity: 0.06; transition: opacity .08s; }
+svg#graph.hovering .cluster,
+svg#graph.hovering .clusterlabel,
+svg#graph.hovering .clustersub { opacity: 0.18; transition: opacity .08s; }
 svg#graph.hovering .node.hl { opacity: 1; }
 svg#graph.hovering .edge.hl { opacity: 1; }
-svg#graph.hovering .node.hl rect { stroke: var(--accent); stroke-width: 2; }
-svg#graph.hovering .edge.hl path { stroke-width: 2.4; stroke: var(--accent); }
+svg#graph.hovering .cluster.hl,
+svg#graph.hovering .clusterlabel.hl,
+svg#graph.hovering .clustersub.hl { opacity: 1; }
+svg#graph.hovering .edge.hl path { stroke-width: 2.4; }
 svg#graph.hovering .edge.hl text { fill: var(--ink); }
 .node { cursor: default; }
 
@@ -149,7 +156,7 @@ rect.cluster.belt { fill-opacity: 0.1; stroke-opacity: 0.7; stroke-dasharray: no
 .edge.heat text { fill: #c98a76; }
 .edge.nutrient path { stroke: #5aa37a; }   /* fertilizer → green */
 .edge.nutrient text { fill: #7cc09a; }
-.edge.cash path { stroke: #d4af37; stroke-dasharray: 5 3; }   /* coins → gold */
+.edge.cash path { stroke: #d4af37; }   /* coins → gold, solid like fuel/fert */
 .edge.cash text { fill: #e0c34d; }
 .edge.trunk path { stroke-width: 2.6; opacity: 0.95; }
 .edge.trunk text { font-size: 11px; font-weight: 600; }
