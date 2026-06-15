@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-trash-colocate-2026-06-14z';
+const BUILD_STAMP = 'composer-faned-visible-edges-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -458,7 +458,7 @@ function renderGraph(rawGraph) {
   svg.appendChild(root);
 
   const ENGINE = engineFor(layoutMode);
-  const { pos, edges: edgePts, recycle, clusters, trunks, trunkedEdges } = ENGINE.layout(graph, { nodeW: NODE_W, nodeH: NODE_H, orientation, clusters: showClusters });
+  const { pos, edges: edgePts, recycle, clusters, trunks, trunkedEdges } = ENGINE.layout(graph, { nodeW: NODE_W, nodeH: NODE_H, orientation, clusters: showClusters, utilEdges: utilEdgeMode });
 
   // map each node to its line's tile blueprint, so a node can show "2× per tile (8× total)"
   const tileByKey = new Map((clusters || []).filter((c) => c.key && c.tile).map((c) => [c.key, c.tile]));

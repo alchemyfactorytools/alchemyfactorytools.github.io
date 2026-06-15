@@ -908,6 +908,16 @@
     // SPREAD across it (fanned), ordered by the other endpoint's cross position, so a
     // node's several inputs/outputs don't all stack on its centre — a cauldron pulling
     // Chamomile + Powder + Linen now shows three distinct fan-in points.
+    //
+    // Only edges actually RENDERED as a border-to-border arrow get a fan slot. Fuel/fert/
+    // cash edges are drawn as the per-machine BANDS (utilEdges 'off') or aggregated TRUNKS
+    // ('trunk', the default) — NOT as face arrows — so counting them here reserved a phantom
+    // slot that shoved the real material arrow off-centre. They only draw as face arrows in
+    // 'all' mode; elsewhere they're excluded from the fan (their start/end fall back to the
+    // face centre, unused). A non-faced edge still gets start/end computed for any mode that
+    // does draw it (a non-trunked util edge in 'trunk' mode) — just at centre, not fanned.
+    const utilMode = o.utilEdges || 'trunk';
+    const facedAsArrow = (e) => !(e.heat || e.nutrient || e.cash) || utilMode === 'all';
     const crossC = (p) => (orientation === 'TB' ? p.x + NODE_W / 2 : p.y + NODE_H / 2);
     const sides = (a, b) => {
       if (orientation === 'TB') { const fwd = b.y >= a.y; return [fwd ? 'B' : 'T', fwd ? 'T' : 'B']; }
@@ -926,6 +936,7 @@
       if (!a || !b) continue;
       const [srcSide, dstSide] = sides(a, b);
       renderable.push({ e, a, b, srcSide, dstSide });
+      if (!facedAsArrow(e)) continue; // util edge drawn as band/trunk → no fan slot
       addFace(e.from, srcSide, ekey(e), crossC(b));
       addFace(e.to, dstSide, ekey(e), crossC(a));
     }
