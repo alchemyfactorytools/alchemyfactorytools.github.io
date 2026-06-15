@@ -37,6 +37,28 @@
     "heatPerBatch": "heatCost-per-item = heatPerSec * (recipe.baseTime / speedMult) / batchYield  — speedMult cancels for the machine's own draw, so faster factories do not save heat per item",
     "selfFuelLoops": "Loops like Charcoal-fired Charcoal production are solvable: net fuel output = gross heat produced - heat consumed by the production chain. The starfi5h calculator exposes gold-per-power (G/P) ratios for choosing the cheapest heat source."
   },
+  "steam": {
+    "description": "Tier 6 'Steam Power' heat-DISTRIBUTION layer (added ~v0.4.3/0.4.4; present in v0.5). NOT a craftable ingredient and NOT a new recipe input. It is an alternative way to DELIVER heat: fuel -> [Steam Boiler] -> steam -> (pipes) -> [Heating Pad] -> heat -> heating device sitting on the pad. Net effect is identical to direct furnace heating except more fuel-expensive; its only advantage is physical factory layout (piping, compact/vertical builds, centralized power), which this planner does not model.",
+    "steamBoiler": {
+      "tier": 6,
+      "role": "burns fuel to produce steam",
+      "outputSettingsPerHour": [600, 3000, 18000],
+      "fuelToSteamRatio": "not authoritatively documented; exact fuel draw per steam unit unverified"
+    },
+    "heatingPad": {
+      "footprint": "3x3 (some sources say 3x1); a device placed on top draws its heat from the pad",
+      "steamConsumptionPerHour": 60,
+      "idleOverhead": "high — community reports ~20x a furnace's idle draw, charged even when the device above is idle"
+    },
+    "steamPipes": "transport and store steam across floors with effectively unlimited throughput",
+    "efficiencyVsDirect": "LOSSY. Controlled community test (identical charcoal input): basic furnace produced 597 units vs steam path 360 units => steam delivers ~60% of direct-burn heat (~40% loss), plus the idle overhead above.",
+    "modelingDecision": "NOT wired into the LP optimizer or tile composer (decided 2026-06-14). Steam is strictly dominated on the only axis we score (fuel cost -> copper -> profit): it is always more expensive than direct furnace heating. Its sole benefit is floor-space/layout, a dimension this planner does not represent, so a steam option could only ever produce worse builds and would be dead code. Revisit ONLY if a footprint/layout-cost dimension is ever added to the model.",
+    "sources": [
+      "https://vortexgaming.io/en/postdetail/737649 (v0.4.4 Steam Power preview)",
+      "https://steamcommunity.com/app/3669570/discussions/0/798967892166053054/ (use-case + efficiency test)",
+      "https://www.youtube.com/watch?v=i0xnyIC8Mcg (Steam Engine & Heating Pad explained)"
+    ]
+  },
   "fertilizer": {
     "description": "Crops grown in Nursery/Seed Plot/World Tree Nursery consume nutrients (recipe.nutrientCost or item.nutrientCost). Fertilizer items carry items.nutrientValue, multiplied by fertMult from the Fertilizer Efficiency skill. Crop plots have maxFertility on items. Nursery crop recipes have no baseTime; growth is nutrient-driven.",
     "selfFertLoops": "Self-sustaining fertilizer loops (crops -> fertilizer -> crops) are solvable the same way as self-fuel; the calculator exposes gold-per-nutrient-value (G/V) ratios."
