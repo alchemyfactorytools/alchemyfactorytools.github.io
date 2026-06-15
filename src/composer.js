@@ -331,6 +331,19 @@ function makeComposer(db, cfg) {
   const COINS = new Set(['Copper Coin', 'Silver Coin', 'Gold Coin']);
   const opCostOf = (it) => { if (beltItems.has(it)) return 0; const s = solve(); return s.op.has(it) ? s.op.get(it) : Infinity; };
 
+  // "Carrier as material" merge. The rule "belt fuel/fert ≠ free material" stops a BELTED carrier
+  // from free-riding as a bulk ingredient. But when a recipe eats the carrier as material (Steel
+  // Ingot's Athanor eats Coke Powder as carbon) AND the carrier is PRODUCED in-build (no belt supply,
+  // beltCap 0), the dedicated carrier line already pays full production — so route the material draw
+  // to THAT line instead of rebuilding the same chain inside every consumer tile. One consolidated
+  // Coke Powder line feeds both fuel and material, rather than a fuel line plus a duplicate inline
+  // chain. Guard on beltCap 0: a belted carrier (e.g. Growth Potion @60) still must NOT merge.
+  const mergeMaterialInto = (it) => {
+    if (it === fuelItem && fuelHeatPerUnit > 0 && beltCapFor(fuelItem) === 0) return true;
+    if (it === fertCarrier && fertNutrientPerUnit > 0 && beltCapFor(fertCarrier) === 0) return true;
+    return false;
+  };
+
   // Build the sized subtree for `item` at `rate` items/min, accumulating utility/money draws into
   // `acc`. Replicated: each call returns a fresh subtree. `path` makes node ids unique across
   // replicas; `seen` guards the (provably-acyclic, but defensively bounded) recursion.
@@ -342,7 +355,7 @@ function makeComposer(db, cfg) {
   // otherwise build a private farm for (the Sand for Glass). The claimed draw is pushed to `coFeeds`
   // (`{ item, rate, consumerId }`) so compose-graph can wire the source tile → this consumer. Pass
   // coBudget = null to disable feeds (trash mode, and the unit/trunk probes, which don't participate).
-  function buildTree(item, rate, path, seen, acc, coBudget = null, coFeeds = null) {
+  function buildTree(item, rate, path, seen, acc, coBudget = null, coFeeds = null, allowMerge = true) {
     const id = path;
     if (beltItems.has(item)) return { id, item, source: 'belt', ratePerMin: rate, inputs: [] };
     const pick = solve().pick.get(item);
@@ -411,7 +424,14 @@ function makeComposer(db, cfg) {
           if (coFeeds && take > 1e-9) coFeeds.push({ item: inItem, rate: take, consumerId: id });
         }
       }
-      if (needRate > 1e-9) inputs.push(buildTree(inItem, needRate, `${path}>${inItem}`, seen2, acc, coBudget, coFeeds));
+      // Carrier-as-material merge: a produced fuel/fert carrier eaten as an ingredient is sourced from
+      // its dedicated trunk (recorded here, sized into the trunk in compose()), not rebuilt inline.
+      if (allowMerge && needRate > 1e-9 && mergeMaterialInto(inItem)) {
+        acc.carrierMaterial[inItem] = (acc.carrierMaterial[inItem] || 0) + needRate;
+        acc.carrierMaterialFeeds.push({ item: inItem, rate: needRate, consumerId: id });
+        continue;
+      }
+      if (needRate > 1e-9) inputs.push(buildTree(inItem, needRate, `${path}>${inItem}`, seen2, acc, coBudget, coFeeds, allowMerge));
     }
     const byproducts = {}; // co-products other than the primary → trash/surplus (v1: no cross-tile feed)
     for (const [out, q] of Object.entries(r.outputs || {})) {
@@ -441,7 +461,7 @@ function makeComposer(db, cfg) {
     for (const c of tile.inputs || []) measureCoSupply(c, into);
     return into;
   }
-  const freshAcc = () => ({ heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {} });
+  const freshAcc = () => ({ heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {}, carrierMaterial: {}, carrierMaterialFeeds: [] });
   const aggregateFeeds = (coFeeds) => {
     const m = new Map();
     for (const f of coFeeds) m.set(f.item, (m.get(f.item) || 0) + f.rate);
@@ -492,12 +512,18 @@ function makeComposer(db, cfg) {
     const coFeeds = []; // { item, rate, consumerId } — claimed cross-tile co-product draws (graph wiring)
     const tree = buildTree(target, rate, target, new Set(), acc, reuse ? new Map(coBudget) : null, coFeeds);
     const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
+    // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
+    // fires when beltCap 0), so it adds to the dedicated trunk's output AND draws self-heat/nutrient
+    // there — folded into the fixpoint below, sized into the trunk via splitTrunk(F+Mf), and the
+    // unit/trunk builds (which produce the carrier itself) pass allowMerge=false so they never merge.
+    const Mf = (fuelItem && acc.carrierMaterial[fuelItem]) || 0;
+    const Mg = (fertCarrier && acc.carrierMaterial[fertCarrier]) || 0;
 
     // unit draws: build each trunk at 1 carrier/min to read how much heat/nutrient it itself needs.
     const trunkUnit = (carrier) => {
       if (!carrier) return null;
-      const a = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {} };
-      buildTree(carrier, 1, `${carrier}#unit`, new Set(), a);
+      const a = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {}, carrierMaterial: {}, carrierMaterialFeeds: [] };
+      buildTree(carrier, 1, `${carrier}#unit`, new Set(), a, null, null, false);
       return { h: a.heatPerMin, n: a.nutrientPerMin };
     };
     const uFuel = fuelHeatPerUnit > 0 ? trunkUnit(fuelItem) : null;
@@ -512,8 +538,10 @@ function makeComposer(db, cfg) {
     let F = 0, G = 0;
     for (let i = 0; i < 24; i++) {
       const Pf = Math.max(0, F - fuelCap), Pg = Math.max(0, G - fertCap);
-      const totalHeat = heatMain + (uFuel ? Pf * uFuel.h : 0) + (uFert ? Pg * uFert.h : 0);
-      const totalNutrient = nutrientMain + (uFuel ? Pf * uFuel.n : 0) + (uFert ? Pg * uFert.n : 0);
+      // (Pf + Mf): the produced carrier the trunk makes is the fuel excess PLUS the merged material,
+      // and BOTH portions draw self-heat/nutrient (same coke chain), so both feed the fixpoint.
+      const totalHeat = heatMain + (uFuel ? (Pf + Mf) * uFuel.h : 0) + (uFert ? (Pg + Mg) * uFert.h : 0);
+      const totalNutrient = nutrientMain + (uFuel ? (Pf + Mf) * uFuel.n : 0) + (uFert ? (Pg + Mg) * uFert.n : 0);
       const nF = fuelHeatPerUnit > 0 ? totalHeat / fuelHeatPerUnit : 0;
       const nG = fertNutrientPerUnit > 0 ? totalNutrient / fertNutrientPerUnit : 0;
       if (Math.abs(nF - F) < 1e-9 && Math.abs(nG - G) < 1e-9) { F = nF; G = nG; break; }
@@ -526,14 +554,15 @@ function makeComposer(db, cfg) {
       if (!(total > 1e-9)) return null;
       const beltRateUsed = Math.min(total, cap);
       const prodRate = Math.max(0, total - cap);
-      const prodTile = prodRate > 1e-9 ? buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc) : null;
+      const prodTile = prodRate > 1e-9 ? buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc, null, null, false) : null;
       if (isFinite(cap) && cap > 0 && prodRate > 1e-9) {
         warnings.push(`Belt ${item} supplies ${cap.toFixed(1)}/min; this build needs ${total.toFixed(1)}/min ${tag} — composing the extra ${prodRate.toFixed(1)}/min.`);
       }
       return { item, rate: total, beltRate: beltRateUsed, prodRate, prodTile };
     };
-    const fuel = splitTrunk(fuelItem, F, fuelCap, 'fuel');
-    const fert = splitTrunk(fertCarrier, G, fertCap, 'fert');
+    // total trunk = fuel/fert demand + the merged carrier-as-material demand (Mf/Mg, all produced).
+    const fuel = splitTrunk(fuelItem, F + Mf, fuelCap, 'fuel');
+    const fert = splitTrunk(fertCarrier, G + Mg, fertCap, 'fert');
 
     const machineTotals = {};
     tallyMachines(tree, machineTotals);
@@ -552,7 +581,7 @@ function makeComposer(db, cfg) {
       coproductFeeds: aggregateFeeds(coFeeds),         // [{ item, rate }] co-product reused across tiles
       warnings,
     };
-    return { tree, fuel, fert, totals, coFeeds, summary };
+    return { tree, fuel, fert, totals, coFeeds, carrierMaterial: acc.carrierMaterialFeeds, summary };
   }
 
   return {

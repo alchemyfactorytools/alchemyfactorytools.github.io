@@ -145,13 +145,25 @@ function composeGraph(composed, db, cfg) {
   };
   if (composed.fuel && composed.fuel.prodTile) composed.fuel.prodTile._gid = walk(composed.fuel.prodTile);
   if (composed.fert && composed.fert.prodTile) composed.fert.prodTile._gid = walk(composed.fert.prodTile);
-  for (const s of trunkSources(composed.fuel, 'fuel')) for (const h of heatedNodes) {
+  const fuelSrcs = trunkSources(composed.fuel, 'fuel');
+  const fertSrcs = trunkSources(composed.fert, 'fert');
+  for (const s of fuelSrcs) for (const h of heatedNodes) {
     const r = h.fuelPerMin * s.share;
     if (r > EPS) edges.push({ from: s.id, to: h.id, item: composed.summary.fuelItem, ratePerMin: r, heat: true });
   }
-  for (const s of trunkSources(composed.fert, 'fert')) for (const n of nurseryNodes) {
+  for (const s of fertSrcs) for (const n of nurseryNodes) {
     const r = n.fertPerMin * s.share;
     if (r > EPS) edges.push({ from: s.id, to: n.id, item: composed.summary.fertItem, ratePerMin: r, nutrient: true });
+  }
+  // Carrier-as-material: a consumer that eats the PRODUCED carrier as an ingredient draws it from the
+  // SAME dedicated carrier line — a normal (blue) material edge, sharing the trunk's source(s) with
+  // the heat edges above — instead of having rebuilt the chain inline (composer.js mergeMaterialInto).
+  for (const f of composed.carrierMaterial || []) {
+    const srcs = f.item === composed.summary.fuelItem ? fuelSrcs : f.item === composed.summary.fertItem ? fertSrcs : [];
+    for (const s of srcs) {
+      const r = f.rate * s.share;
+      if (r > EPS) edges.push({ from: s.id, to: f.consumerId, item: f.item, ratePerMin: r });
+    }
   }
 
   // Phase 7 — cross-tile co-product feeds. compose() recorded each consumer's claimed draw in
