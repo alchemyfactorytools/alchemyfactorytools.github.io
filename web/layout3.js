@@ -346,11 +346,16 @@
     // A FUEL / FERTILIZER utility line emits its product (the carrier) on heat / nutrient edges,
     // which lineOutput excludes — so its material output is null (or a stray boundary edge) and it
     // never belt-tiles or shows a per-tile rate. Derive the line output from those support edges
-    // instead: the carrier is the edge's item, the rate is the total carried out of the box.
+    // instead: the carrier is the edge's item. The TOTAL output is everything the carrier leaves on,
+    // fuel AND material — a produced carrier can also be drawn as a bulk ingredient (Coke Powder into
+    // Steel Ingot), so summing only the heat edges undercounts the tile's real per-tile output.
     const utilOutput = (members, kind) => {
       const mset = new Set(members);
-      let rate = 0, item = null;
-      for (const e of graph.edges) if (e[kind] && mset.has(e.from) && !mset.has(e.to)) { rate += e.ratePerMin || 0; item = e.item; }
+      let item = null;
+      for (const e of graph.edges) if (e[kind] && mset.has(e.from) && !mset.has(e.to)) { item = e.item; break; }
+      if (!item) return null;
+      let rate = 0;
+      for (const e of graph.edges) if (e.item === item && mset.has(e.from) && !mset.has(e.to)) rate += e.ratePerMin || 0;
       return rate > 0 ? { item, rate } : null;
     };
     for (const c of clusters) {
@@ -359,47 +364,73 @@
         : lineOutput(c.members);
       c.outItem = out ? out.item : null;
       c.outRate = out ? out.rate : null;
+      // Terminal output machine(s): the member(s) that emit the line's product across the box
+      // boundary (the fuel line's Grinder→Coke Powder; a material line's final machine). Their
+      // saturated single-machine throughput defines a tile — a tile is built around whole output
+      // machines running at 100%, not the demand-throttled rate.
+      const mset = new Set(c.members);
+      const termIds = new Set();
+      if (c.outItem) for (const e of graph.edges) if (e.item === c.outItem && mset.has(e.from) && !mset.has(e.to)) termIds.add(e.from);
       // liquids are piped (effectively uncapped → cap 0 = no floor), solids ride a belt.
       const cap = c.outItem && liquidSet.has(c.outItem) ? 0 : beltSpeed;
-      c.tile = blueprint(c.members, nodeById, c.outRate, cap);
+      c.tile = blueprint(c.members, nodeById, c.outRate, cap, termIds);
     }
     return { clusterOf, clusters };
   }
 
-  // Tileable blueprint for a line: the integer-machine cell you stamp out, and how many
-  // copies. A tile is a REUSABLE MODULE that outputs one FULL BELT (transportCap/min) — we
-  // size each tile to saturate a belt even if THIS build needs less, because the surplus
-  // just backpressures (machines idle when buffers fill — build cost only, no extra input/
-  // fuel) and another build may want the full belt. So K = belts needed to cover demand =
-  // ceil(outRate / transportCap), and each machine count = ceil(load · transportCap /
-  // outRate) (the line scaled down to one belt's share). We do NOT minimise idle by
-  // over-tiling: 3 tiles of 240/min (720 capacity, backpressure to 600) beats 33 tiles of
-  // 18/min. Liquids are piped/uncapped (transportCap 0) → the whole line is ONE tile.
+  // Tileable blueprint for a line: the integer-machine cell you stamp out, and how many copies. A
+  // tile is a REUSABLE MODULE built around its TERMINAL OUTPUT MACHINE(S) running at 100% — we pack as
+  // many whole output machines as one belt can carry, size the feeders to keep them saturated, and
+  // stamp K tiles to cover demand. The per-tile output is that SATURATED machine throughput (not the
+  // demand-throttled flow): a stamped tile tells you what it CAN make, leaning into buffering — the
+  // line backpressures to meet actual demand (machines idle when buffers fill — build cost only, no
+  // extra input/fuel). Liquids are piped/uncapped (transportCap 0) → the whole line is ONE tile.
   // NURSERIES fold in via tileLoad (fractional plot count) like any other machine.
-  function blueprint(members, nodeById, outRate, transportCap) {
+  function blueprint(members, nodeById, outRate, transportCap, termIds) {
     // timed machines use machineCount × utilization; nurseries (utilization == null) use
     // the continuous tileLoad (fractional plot count) so they fold in too.
     const loadOf = (n) => (n.machineCount && n.utilization != null ? n.machineCount * n.utilization
       : (n.tileLoad != null ? n.tileLoad : null));
     const loads = members.map((m) => nodeById.get(m))
       .filter((n) => n && n.machine && loadOf(n) != null)
-      .map((n) => ({ label: n.label, machine: n.machine, load: loadOf(n) }));
+      .map((n) => ({ id: n.id, label: n.label, machine: n.machine, load: loadOf(n), rate: n.ratePerMin || 0 }));
     if (loads.length < 2) return null;
-    // belt-tiled only when the line outputs MORE than one belt; otherwise the whole line is
-    // a single tile (sub-belt lines and uncapped liquids both land here).
-    const beltTiles = transportCap > 0 && outRate > transportCap + 1e-6;
-    const K = beltTiles ? Math.min(200, Math.ceil(outRate / transportCap - 1e-6)) : 1;
-    const f = beltTiles ? transportCap / outRate : 1; // share of the whole line one tile is
-    let over = 0, total = 0;
-    const cell = loads.map((l) => {
-      const count = Math.max(1, Math.ceil(l.load * f - 1e-6));
-      const have = K * count;
-      over += have - l.load; total += have;
-      return { label: l.label, machine: l.machine, count };
-    });
-    // per-tile output: one belt for a multi-belt line, else the whole line's output.
-    const perTileOut = beltTiles ? transportCap : outRate;
-    return { K, cell, idle: total ? over / total : 0, total, perTileOut };
+    const mkCell = (K, f) => {
+      let over = 0, total = 0;
+      const cell = loads.map((l) => {
+        const count = Math.max(1, Math.ceil(l.load * f - 1e-6));
+        over += K * count - l.load; total += K * count;
+        return { label: l.label, machine: l.machine, count };
+      });
+      return { cell, over, total };
+    };
+    // Saturated single-machine output of the terminal stage: s = grossRate / machine-load (a node's
+    // ratePerMin is its gross production; load is its fractional saturated-machine count at demand).
+    const term = loads.filter((l) => termIds && termIds.has(l.id));
+    const termLoad = term.reduce((a, l) => a + l.load, 0);
+    const termRate = term.reduce((a, l) => a + l.rate, 0);
+    const s = termLoad > 1e-9 ? termRate / termLoad : 0;
+    if (!(s > 1e-9)) {
+      // fallback: terminal machine unidentifiable → the old demand-rate / belt-cap tiling.
+      const beltTiles = transportCap > 0 && outRate > transportCap + 1e-6;
+      const K = beltTiles ? Math.min(200, Math.ceil(outRate / transportCap - 1e-6)) : 1;
+      const { cell, over, total } = mkCell(K, beltTiles ? transportCap / outRate : 1);
+      return { K, cell, idle: total ? over / total : 0, total, perTileOut: beltTiles ? transportCap : outRate };
+    }
+    // whole terminal machines for the whole line, capped to one belt's worth per tile (≥1). K = the
+    // fewest tiles that keep each ≤ one belt; then spread the machines EVENLY across those K tiles
+    // (ceil(termTotal/K)) rather than filling each to the belt and stranding the last — minimal idle.
+    const termTotal = Math.max(1, Math.ceil(termLoad - 1e-6));
+    const perBelt = transportCap > 0 ? Math.max(1, Math.floor(transportCap / s + 1e-6)) : Infinity;
+    const K = Math.min(200, Math.max(1, Math.ceil(termTotal / perBelt - 1e-6)));
+    const tTerm = Math.max(1, Math.ceil(termTotal / K - 1e-6));
+    // feeders sized so a tile's terminal machines run at 100%: f = terminal machines per tile / total.
+    const { cell, total } = mkCell(K, tTerm / termLoad);
+    const perTileOut = Math.min(tTerm * s, transportCap > 0 ? transportCap : Infinity);
+    // idle = fraction of the tiles' SATURATED terminal capacity that backpressures to meet demand.
+    const satCap = K * tTerm * s;
+    const idle = satCap > 1e-9 ? Math.max(0, 1 - termRate / satCap) : 0;
+    return { K, cell, idle, total, perTileOut };
   }
 
   function layout(graph, opts) {
