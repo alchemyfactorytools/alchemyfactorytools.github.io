@@ -12,7 +12,7 @@
 
 'use strict';
 
-const { skillParams } = require('./config');
+const { skillParams, STEAM_EFFICIENCY } = require('./config');
 
 const EPS = 1e-6;
 
@@ -131,13 +131,17 @@ function composeGraph(composed, db, cfg) {
   // rate, the build PRODUCES the excess. Walk BOTH production sub-trunks BEFORE wiring (a sub-trunk
   // can hold consumers of the other carrier — the fert carrier's Clay cauldron burns fuel), then wire
   // each consumer's draw from the belt source and the production root in proportion to their share.
+  const steamOn = !!(cfg.steam && cfg.steam.enabled);
   const trunkSources = (trunk, tag) => {
     if (!trunk || !(trunk.rate > EPS)) return [];
     const srcs = [];
     if (trunk.beltRate > EPS) {
+      const steam = steamOn && tag === 'fuel'; // central steam supplies the heat trunk
       const id = `${trunk.item}#${tag}-belt`;
       const belt = beltNodeFields(trunk.item, trunk.beltRate);
-      addNode({ id, type: 'external', kind: 'belt', item: trunk.item, label: `Main belt: ${trunk.item}`, ratePerMin: trunk.beltRate, copperPerMin: 0, beltLanes: belt.beltLanes, beltSpeed: belt.beltSpeed, supplyRate: belt.supplyRate, badges: [] });
+      addNode({ id, type: 'external', kind: 'belt', item: trunk.item,
+        label: steam ? `Central steam (heat via ${trunk.item})` : `Main belt: ${trunk.item}`,
+        ratePerMin: trunk.beltRate, copperPerMin: 0, beltLanes: belt.beltLanes, beltSpeed: belt.beltSpeed, supplyRate: belt.supplyRate, badges: [] });
       srcs.push({ id, share: trunk.beltRate / trunk.rate });
     }
     if (trunk.prodTile) srcs.push({ id: trunk.prodTile._gid, share: trunk.prodRate / trunk.rate });
@@ -236,19 +240,46 @@ function composeGraph(composed, db, cfg) {
   // fuel/fert carrier — so only the BELT-supplied portion of a carrier is a separate free input,
   // valued at its sell price. Coins ARE the copper draw, so they're not added again (no double-count).
   const sellOf = (n) => (db.items[n] && db.items[n].sellPrice) || 0;
+  const profitMode = !!(cfg.composer && cfg.composer.profit);
   const revenuePerMin = sellOf(target) * composed.summary.ratePerMin;
-  let beltUtilCostPerMin = 0;
-  for (const tr of [composed.fuel, composed.fert]) {
-    if (tr && tr.beltRate > EPS) beltUtilCostPerMin += tr.beltRate * sellOf(tr.item);
+
+  let inputCostPerMin, beltUtilCostPerMin = 0;
+  if (profitMode) {
+    // PROFIT-MODE COST BASIS. The build-mode money line (copperPerMin) understates wildly in profit
+    // mode: profit mode picks grow+cauldron routes, and a grown crop has no copper input while a
+    // cauldron transmutes cheap inputs into high-value output for "free", so the external spend
+    // collapses toward zero (Luna read 75 c/unit → fake +92M profit). Use instead the composer's
+    // intrinsicValue(target): per-unit worth computed by recursing the build's canonical picks while
+    // flooring every item at its game cauldronCost, so it can't collapse and matches the codex's own
+    // cost breakdown. It already embeds heat/nutrient/sub-materials, so the fuel/fert trunks are NOT
+    // added separately (that would double-count, and the grow-route's nutrient draw is astronomical).
+    // Central steam's free/at-cost toggle therefore only moves the BUILD-mode profit number.
+    inputCostPerMin = (composed.summary.profitMaterialPerUnit || 0) * composed.summary.ratePerMin;
+  } else {
+    // BUILD-MODE COST BASIS. Profit/min = output sell value − everything that enters from the main
+    // belt. copperPerMin already covers all BOUGHT raws (incl. ore for a PRODUCED fuel/fert carrier),
+    // so only the BELT-supplied portion of a carrier is a separate free input, valued at sell price.
+    // Coins ARE the copper draw, so not added again (no double-count).
+    for (const tr of [composed.fuel, composed.fert]) {
+      if (!tr || !(tr.beltRate > EPS)) continue;
+      // Central steam supplies the fuel trunk: 'free' charges nothing, 'cost' charges the fuel it
+      // burns inflated by the ~40% conversion loss (÷ efficiency). Fert + non-steam fuel: sell price.
+      if (steamOn && tr === composed.fuel) {
+        if (cfg.steam.mode === 'cost') beltUtilCostPerMin += (tr.beltRate * sellOf(tr.item)) / STEAM_EFFICIENCY;
+      } else {
+        beltUtilCostPerMin += tr.beltRate * sellOf(tr.item);
+      }
+    }
+    inputCostPerMin = composed.summary.copperPerMin + beltUtilCostPerMin;
   }
-  const inputCostPerMin = composed.summary.copperPerMin + beltUtilCostPerMin;
   const profitPerMin = revenuePerMin - inputCostPerMin;
 
   const summary = {
     copperPerMin: composed.summary.copperPerMin,            // total money-line draw
     operatingCopperPerMin: composed.summary.operatingCopperPerMin,
     revenuePerMin,                                          // output item sell value / min
-    inputCostPerMin,                                        // copper buys + belt-supplied utility value
+    inputCostPerMin,                                        // build mode: copper buys + belt util; profit mode: intrinsic material value
+    costBasis: profitMode ? 'intrinsic' : 'belt',           // how inputCostPerMin was derived (drives the UI tooltip)
     beltUtilCostPerMin,                                     // belted fuel/fert value (subset of inputCost)
     profitPerMin,                                           // revenue − inputCost
     capitalPerMin: 0,                                        // composer doesn't amortize machine build (yet)

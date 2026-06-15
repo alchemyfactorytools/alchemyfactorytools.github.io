@@ -12,7 +12,7 @@
 const { tiers } = require('./tiers');
 const { makeItemCopperFloor } = require('./cost-floor');
 const { cauldronEligibility } = require('./cauldron');
-const { skillParams } = require('./config');
+const { skillParams, STEAM_EFFICIENCY } = require('./config');
 const { machineHeatPerRun } = require('./normalize');
 
 // Simplicity weights (copper-equivalent units). Deliberately MINIMAL to start (per user):
@@ -145,6 +145,11 @@ function makeComposer(db, cfg) {
   // no blowup. Solved once (lazily), then tileCost/canonicalPick are O(1) lookups.
   const cc = cfg.composer || {};
   const profitMode = !!cc.profit; // minimise true op cost + charge fuel/fert utilities (see solve())
+  // Central steam: heat comes from a centrally-plumbed steam supply, so the FUEL trunk is fully
+  // supplied (cap Infinity → no produced fuel trunk/furnaces/self-fuel) and the heat charge is
+  // either free or the fuel value ÷ STEAM_EFFICIENCY. Affects fuel only; fert is untouched.
+  const steamOn = !!(cfg.steam && cfg.steam.enabled);
+  const steamCost = steamOn && cfg.steam.mode === 'cost';
   const depthW = cc.depthW != null ? cc.depthW : DEPTH_W;
   const widthW = cc.widthW != null ? cc.widthW : WIDTH_W;
   const OP_W = cc.opW != null ? cc.opW : (profitMode ? PROFIT_OP_W : OP_W_DEFAULT);
@@ -205,6 +210,9 @@ function makeComposer(db, cfg) {
       const heatPerCarrier = (db.items[fuelItemC].heat || 0) * cParams.fuelMult;
       const fval = carrierOpValue(fuelItemC);
       if (heatPerCarrier > 0 && isFinite(fval) && fval > 0) fuelOpPerHeat = fval / heatPerCarrier;
+      // Central steam changes the per-heat charge the metric sees so picks don't avoid heat that
+      // is free (or over-pay for it): free → 0 (heat is free), cost → inflated by the steam loss.
+      if (steamOn) fuelOpPerHeat = steamCost ? fuelOpPerHeat / STEAM_EFFICIENCY : 0;
       // per-run heat for every non-cauldron recipe (static: machine + baseTime + speed), charged below
       if (fuelOpPerHeat > 0) for (const arr of producersOf.values()) for (const r of arr) {
         if (r._heatPerRun == null) r._heatPerRun = r.machine ? machineHeatPerRun(db.machines[r.machine], db.machines, r.baseTime || 0, cParams.speedMult) : 0;
@@ -369,7 +377,10 @@ function makeComposer(db, cfg) {
   // Coke Powder line feeds both fuel and material, rather than a fuel line plus a duplicate inline
   // chain. Guard on beltCap 0: a belted carrier (e.g. Growth Potion @60) still must NOT merge.
   const mergeMaterialInto = (it) => {
-    if (it === fuelItem && fuelHeatPerUnit > 0 && beltCapFor(fuelItem) === 0) return true;
+    // Under central steam the fuel trunk is steam-supplied (no production line), so there's no
+    // produced fuel line to merge material into — the material must be produced inline at real
+    // cost (steam delivers heat, not atoms). So fuel never merges when steamOn.
+    if (it === fuelItem && fuelHeatPerUnit > 0 && beltCapFor(fuelItem) === 0 && !steamOn) return true;
     if (it === fertCarrier && fertNutrientPerUnit > 0 && beltCapFor(fertCarrier) === 0) return true;
     return false;
   };
@@ -563,7 +574,9 @@ function makeComposer(db, cfg) {
     // Only the PRODUCED part (Pf, Pg) burns fuel / draws fert (the belt supply doesn't), so just the
     // produced part feeds back in the fixpoint. cap = Infinity (belted, no rate) ⇒ all belt, no
     // feedback; cap = 0 (not belted) ⇒ all produced, full feedback.
-    const fuelCap = fuelItem ? beltCapFor(fuelItem) : 0;
+    // Central steam fully supplies the fuel trunk (cap Infinity) → produced part Pf = 0, so no fuel
+    // production line / furnaces / self-fuel loops; heat is drawn from the central steam source.
+    const fuelCap = steamOn && fuelItem ? Infinity : (fuelItem ? beltCapFor(fuelItem) : 0);
     const fertCap = fertCarrier ? beltCapFor(fertCarrier) : 0;
     let F = 0, G = 0;
     for (let i = 0; i < 24; i++) {
@@ -611,10 +624,49 @@ function makeComposer(db, cfg) {
       coproductFeeds: aggregateFeeds(coFeeds),         // [{ item, rate }] co-product reused across tiles
       warnings,
     };
+    summary.profitMaterialPerUnit = intrinsicValue(target); // honest per-unit cost for profit/min
     return { tree, fuel, fert, totals, coFeeds, carrierMaterial: acc.carrierMaterialFeeds, summary };
   }
 
+  // Intrinsic ("market") value of one unit — the trustworthy cost basis for profit-mode reporting.
+  // The op axis collapses through grow+cauldron chains (a grown crop draws no copper; a cauldron
+  // transmutes cheap inputs into a high-value output for "free"), so it can't price a build — Luna
+  // read 75 c/unit. Instead recurse via the SAME canonical picks the build uses, but FLOOR every
+  // item at its game-assigned cauldronCost (what the game charges for it as a cauldron input), so
+  // transmutation can never drive an item below its intrinsic worth. Primitive intermediates settle
+  // at their cauldronCost (Gold Ingot 88,181, Moon Tear 96,678 — matching the codex); assembled
+  // relics accrue their full input sum above the floor (Luna ≈ 14M, not its 187k filler value).
+  const intrinsicMemo = new Map();
+  function intrinsicValue(item, stack) {
+    if (intrinsicMemo.has(item)) return intrinsicMemo.get(item);
+    const it = db.items[item];
+    const cc = it && it.cauldronCost != null ? it.cauldronCost : null;
+    const isRelic = !!(it && it.category === 'Relic');
+    if (stack && stack.has(item)) return cc != null ? cc : 0; // cycle → intrinsic value
+    let v;
+    if (beltItems.has(item)) v = it && it.buyPrice != null ? it.buyPrice : (cc || 0);
+    else if (buyable(item)) v = (it && it.buyPrice) || 0;       // raws: what you actually pay
+    else if (cc != null && !isRelic) v = cc;                   // trust the game's intrinsic value, STOP
+    else { // relic (deflated cauldronCost) or no cauldronCost: expand via the build's canonical pick
+      const pick = solve().pick.get(item) || null;
+      if (!pick) v = cc != null ? cc : 0;
+      else if (pick.source === 'mint') v = (it && it.sellPrice != null ? it.sellPrice : (cc || 0));
+      else if (pick.source === 'buy' || pick.source === 'belt') v = (it && it.buyPrice != null ? it.buyPrice : (cc || 0));
+      else { // recipe | cauldron — sum the (intrinsic-valued) inputs; relics never read below filler value
+        const ins = (pick.recipe && pick.recipe.inputs) || {};
+        const outQ = (pick.recipe && pick.recipe.outputs && pick.recipe.outputs[item]) || 1;
+        const s2 = new Set(stack || []); s2.add(item);
+        let asm = 0;
+        for (const [inp, q] of Object.entries(ins)) asm += q * intrinsicValue(inp, s2);
+        v = cc != null ? Math.max(asm / outQ, cc) : asm / outQ;
+      }
+    }
+    intrinsicMemo.set(item, v);
+    return v;
+  }
+
   return {
+    intrinsicValue,
     // tileCost = the selection metric (build + OP_W·op + waste of the chosen recipe). buildCost /
     // opCost expose the two axes separately (opCost is copper per unit of output → ×rate = per-min).
     tileCost: (item) => { if (beltItems.has(item)) return 0; const s = solve(); return s.score.has(item) ? s.score.get(item) : Infinity; },

@@ -134,6 +134,22 @@
         </section>
 
         <section>
+          <h2>Central steam <small>(composer only)</small></h2>
+          <label class="check"><input type="checkbox" id="useSteam"> Use centrally-plumbed steam for all heat</label>
+          <label id="steamModeRow" style="display:none">Steam cost
+            <select id="steamMode">
+              <option value="free" selected>Free — assume steam is just plumbed in</option>
+              <option value="cost">At cost — charge fuel + ~40% steam loss</option>
+            </select>
+          </label>
+          <p class="hint">Assumes Steam Boilers + Heating Pads supply heat factory-wide, so the build
+            drops its fuel production, furnaces, and self-fuel loops — heating machines draw from a
+            single central steam source instead. <b>Free</b> treats steam as a free utility (heat costs
+            nothing in profit/min); <b>At cost</b> charges the fuel it burns inflated by steam's ~60%
+            efficiency. Fuel used as a material ingredient is still produced normally.</p>
+        </section>
+
+        <section>
           <h2>Craft fuel / fertilizer</h2>
           <label class="check"><input type="checkbox" id="selfFuel" checked> Allow crafting fuel (self-fuel loops)</label>
           <label class="check"><input type="checkbox" id="selfFert" checked> Allow crafting fertilizer (self-fert loops)</label>

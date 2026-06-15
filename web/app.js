@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'sidebar-reorg-advanced-2026-06-15m';
+const BUILD_STAMP = 'profit-cost-intrinsic-2026-06-15o';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -78,8 +78,9 @@ async function init() {
   loadPrefs();
   updateDispatchUI(); // reflect a restored rateUnit (show/hide the dispatch row + live readout)
   updateSolverUI();   // hide the LP-only tuning block when the composer is selected (it ignores them)
+  updateSteamUI();    // reveal the steam free/at-cost selector if "Use steam" was restored on
   // persist any sidebar field edit (typing the output/rate, toggling a checkbox, …)
-  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); });
+  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); updateSteamUI(); });
   $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
   // Switching INTO dispatch mode with a non-dispatchable item selected clears it (so you're not
   // left targeting an item with no contract). Only on the mode switch — not per keystroke, which
@@ -157,6 +158,7 @@ function buildConfig() {
   if (trash.length) cfg.byproducts.perItem = Object.fromEntries(trash.map((i) => [i, 'trash']));
   cfg.selfFuel = $('selfFuel').checked;
   cfg.selfFert = $('selfFert').checked;
+  cfg.steam = { enabled: $('useSteam').checked, mode: $('steamMode').value }; // composer: central steam for heat
   cfg.belt = beltSupply.map((b) => (b.rate == null ? { item: b.item } : { item: b.item, rate: b.rate }));
   cfg.machines.defaultCount = Number($('machines').value) || 1000;
   cfg.capital = { enabled: $('capital').checked }; // amortization knob removed; Model uses a fixed sane default
@@ -209,6 +211,12 @@ function requestBody() {
 function updateSolverUI() {
   const lp = $('lpOnly');
   if (lp) lp.style.display = $('solver').value === 'composer' ? 'none' : '';
+}
+
+// Central steam: reveal the free/at-cost selector only when the toggle is on.
+function updateSteamUI() {
+  const row = $('steamModeRow');
+  if (row) row.style.display = $('useSteam').checked ? '' : 'none';
 }
 
 // show/hide the dispatch day-length row and a live "= X/min · ~Y/day" readout.
@@ -307,7 +315,13 @@ function renderSummary(out, body) {
     const d = $('rateUnit').value === 'dispatch' ? dispatchInfo(body.item) : null;
     const revenue = d ? out.effectiveRate * (d.reward / d.unitsPerContract) : s.revenuePerMin;
     const profit = revenue - s.inputCostPerMin;
-    const title = `Revenue ${fmtCu(revenue)}/min (${d ? 'dispatch reward' : 'output sell value'}) − inputs ${fmtCu(s.inputCostPerMin)}/min (${fmtCu(out.copperPerMin)} buys${s.beltUtilCostPerMin > 0.01 ? ` + ${fmtCu(s.beltUtilCostPerMin)} belted fuel/fert` : ''})`;
+    // Input-cost breakdown depends on the basis the solver used. In profit/dispatch mode the build
+    // grows+cauldrons most inputs (near-zero external spend), so cost is the INTRINSIC material value
+    // of the ingredients (game cauldronCost); in build mode it's actual belt buys + belted fuel/fert.
+    const costDetail = s.costBasis === 'intrinsic'
+      ? 'intrinsic material value of ingredients'
+      : `${fmtCu(out.copperPerMin)} buys${s.beltUtilCostPerMin > 0.01 ? ` + ${fmtCu(s.beltUtilCostPerMin)} belted fuel/fert` : ''}`;
+    const title = `Revenue ${fmtCu(revenue)}/min (${d ? 'dispatch reward' : 'output sell value'}) − inputs ${fmtCu(s.inputCostPerMin)}/min (${costDetail})`;
     html += `<div class="stat" title="${esc(title)}">Profit <b class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit < 0 ? '−' : ''}${fmtCu(Math.abs(profit))}</b>/min</div>`;
   }
   if (s.capitalPerMin > 0.01) {

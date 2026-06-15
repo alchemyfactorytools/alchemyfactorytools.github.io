@@ -27,7 +27,7 @@ const contracts = require('./data/contracts.json'); // Dispatch Portal contract 
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'sidebar-reorg-advanced-2026-06-15m';
+const SERVER_STAMP = 'profit-cost-intrinsic-2026-06-15o';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);
@@ -144,6 +144,10 @@ async function solveRequest(body) {
 function composerSolve(item, rate, rateMode, cfg) {
   const { fuelItem, fertItem } = canonicalCarriers(db, cfg);
   cfg.canonical = { fuelItem, fertItem };
+  // Central steam (cfg.steam.enabled) is handled inside the composer: it forces the FUEL trunk's
+  // belt cap to Infinity so the fuel production trunk/furnaces/self-fuel loops collapse and heat is
+  // drawn from a central steam source, WITHOUT touching the fert trunk — important because the
+  // canonical fuel and fert carrier can be the same item (e.g. Panacea Potion is both).
   const comp = makeComposer(db, cfg);
   if (!Number.isFinite(comp.tileCost(item))) {
     return {

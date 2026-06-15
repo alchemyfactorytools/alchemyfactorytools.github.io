@@ -52,6 +52,16 @@ const DEFAULT_CONFIG = {
   // without the optimizer building a sub-factory for them.
   belt: [],
 
+  // Central steam (composer only). When enabled, heat is delivered from centrally-
+  // plumbed steam (Steam Boilers → pipes → Heating Pads) rather than per-line fuel:
+  // the canonical fuel carrier becomes an unlimited belt utility, so its production
+  // trunk, furnaces, and self-fuel loops collapse out of the build and heating machines
+  // draw from a single central steam source. Cost modes:
+  //   'free' — steam is treated as a free plumbed-in utility (heat contributes 0 cost)
+  //   'cost' — charge the fuel steam burns, inflated by the ~40% conversion loss
+  //            (per-heat cost ÷ STEAM_EFFICIENCY); see data/mechanics.json "steam".
+  steam: { enabled: false, mode: 'free' },
+
   // Machine capacity (DESIGN: capacity rows from day one; bounds amplifying loops).
   // counts: per-machine override; defaultCount applies to the rest.
   machines: { defaultCount: 50, counts: {} },
@@ -140,6 +150,12 @@ function alchemyMult(lvl) {
 const fuelMult = (lvl) => 1 + 0.1 * lvl;
 const fertMult = (lvl) => 1 + 0.1 * lvl;
 
+// Central-steam heat-delivery efficiency vs direct furnace burning. Empirical:
+// identical charcoal feed yielded 597 product via a furnace vs 360 via a steam pad
+// (360/597 ≈ 0.60). So steam needs ~1/0.6 the fuel for the same heat → "at cost"
+// mode charges per-heat fuel value ÷ STEAM_EFFICIENCY. See data/mechanics.json "steam".
+const STEAM_EFFICIENCY = 0.6;
+
 function skillParams(skills) {
   return {
     beltSpeed: beltSpeed(skills.logistics),
@@ -150,4 +166,4 @@ function skillParams(skills) {
   };
 }
 
-module.exports = { DEFAULT_CONFIG, resolveConfig, skillParams, beltSpeed, speedMult, alchemyMult, fuelMult, fertMult };
+module.exports = { DEFAULT_CONFIG, resolveConfig, skillParams, beltSpeed, speedMult, alchemyMult, fuelMult, fertMult, STEAM_EFFICIENCY };
