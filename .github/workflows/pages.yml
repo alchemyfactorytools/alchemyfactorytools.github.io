@@ -1,0 +1,56 @@
+# Build the static site (esbuild bundles the in-browser composer into dist/) and publish it to
+# GitHub Pages. This is the Actions-based Pages deploy (not deploy-from-branch) because the repo
+# keeps the full source/server/tests and only the built dist/ is published.
+#
+# One-time setup on the repo before the first run: Settings → Pages → Source → "GitHub Actions".
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+# Least-privilege token; id-token is required by actions/deploy-pages (OIDC).
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; let an in-flight deploy finish rather than cancel it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24 # active LTS
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build dist/
+        run: npm run build # node scripts/build-static.js → dist/ (bundle + assets + .nojekyll)
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
