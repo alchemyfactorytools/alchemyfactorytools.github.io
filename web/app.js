@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'layout-output-side-polish-2026-06-15r';
+const BUILD_STAMP = 'line-collapse-render-engine-2026-06-15s';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -383,9 +383,15 @@ function clearGraph() { $('graph').innerHTML = ''; lastGraph = null; }
 // Drill-down: fold each cluster in `collapsed` into a single "group" node. Members
 // are removed, their external edges rewired to the group node and merged. Pure
 // client-side transform of the solved graph — no re-solve, instant.
-function applyCollapse(graph) {
+function applyCollapse(graph, engine) {
   if (!COLLAPSE_ENABLED || !collapsed.size) return graph;
-  const ca = AlchLayout.assignClusters(graph);
+  // Cluster membership MUST come from the engine that actually rendered the boxes — the
+  // line headers the user clicked to collapse carry that engine's cluster keys (layout3's,
+  // in 2D-nested mode). Looking them up in the classic engine's clustering (which can group
+  // nodes differently, e.g. shared sub-assemblies / disposal sinks) means the collapse finds
+  // no matching cluster (click does nothing) or folds the wrong members. Mirror renderGraph's
+  // own clOf/tileByKey, which already key off the render engine.
+  const ca = (engine && engine.assignClusters ? engine : AlchLayout).assignClusters(graph);
   const byId = new Map(ca.clusters.map((c) => [c.id, c]));
   const active = [...collapsed].filter((id) => byId.has(id));
   if (!active.length) return graph;
@@ -555,8 +561,9 @@ function splitBaseGoods(graph) {
 
 function renderGraph(rawGraph) {
   lastGraph = rawGraph;
-  let graph = applyCollapse(rawGraph);
-  if (isLayout2ish(layoutMode) && engineFor(layoutMode) !== AlchLayout) graph = splitBaseGoods(graph);
+  const ENGINE = engineFor(layoutMode);
+  let graph = applyCollapse(rawGraph, ENGINE);
+  if (isLayout2ish(layoutMode) && ENGINE !== AlchLayout) graph = splitBaseGoods(graph);
   const svg = $('graph');
   svg.innerHTML = '';
   const defs = document.createElementNS(SVGNS, 'defs');
@@ -568,7 +575,6 @@ function renderGraph(rawGraph) {
   root.setAttribute('id', 'viewport');
   svg.appendChild(root);
 
-  const ENGINE = engineFor(layoutMode);
   const { pos, edges: edgePts, recycle, clusters, trunks, trunkedEdges } = ENGINE.layout(graph, { nodeW: NODE_W, nodeH: NODE_H, orientation, clusters: showClusters, utilEdges: utilEdgeMode });
 
   // map each node to its line's tile blueprint, so a node can show "2× per tile (8× total)"
