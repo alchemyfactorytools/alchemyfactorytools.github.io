@@ -992,7 +992,32 @@
     // face centre, unused). A non-faced edge still gets start/end computed for any mode that
     // does draw it (a non-trunked util edge in 'trunk' mode) — just at centre, not fanned.
     const utilMode = o.utilEdges || 'trunk';
-    const facedAsArrow = (e) => !(e.heat || e.nutrient || e.cash) || utilMode === 'all';
+    // A util (fuel/fert/cash) edge draws as a face ARROW only when it ISN'T absorbed into a
+    // trunk: mode 'all', or — in 'trunk' mode — an intra-line / unboxed-destination edge the
+    // trunking leaves individual (see the trunk predicate below). Those must claim a fan slot
+    // like any material edge; otherwise a line's own fuel feedback (the Grinder's Coke Powder
+    // routed back up to the Crucible it heats) lands dead-centre on the SAME face as the
+    // material edge and the two arrows stack. Mirror the trunk predicate here from the same
+    // cluster membership (computed before the box loop, so we can't read boxKeyOf/boxByKey yet).
+    const boxKeyOfFan = new Map();
+    for (const c of laneClusters) {
+      if (c.subClusters) for (const s of c.subClusters) for (const m of s.members) boxKeyOfFan.set(m, s.id);
+      else for (const m of c.members) boxKeyOfFan.set(m, c.id);
+    }
+    for (const c of utilLines) for (const m of c.members) boxKeyOfFan.set(m, c.id);
+    const boxedKeysFan = new Set(); // cluster keys that will actually get a box (≥2 positioned members)
+    {
+      const cnt = new Map();
+      for (const [m, key] of boxKeyOfFan) if (pos.get(m)) cnt.set(key, (cnt.get(key) || 0) + 1);
+      for (const [key, n] of cnt) if (n >= 2) boxedKeysFan.add(key);
+    }
+    const isTrunkedUtil = (e) => { const key = boxKeyOfFan.get(e.to); return key != null && boxedKeysFan.has(key) && boxKeyOfFan.get(e.from) !== key; };
+    const facedAsArrow = (e) => {
+      if (!(e.heat || e.nutrient || e.cash)) return true; // material: always a face arrow
+      if (utilMode === 'off') return false;               // util drawn as bands only
+      if (utilMode === 'all') return true;                // all util drawn as arrows
+      return !isTrunkedUtil(e);                            // trunk mode: faced iff not trunked
+    };
     const crossC = (p) => (orientation === 'TB' ? p.x + NODE_W / 2 : p.y + NODE_H / 2);
     const sides = (a, b) => {
       if (orientation === 'TB') { const fwd = b.y >= a.y; return [fwd ? 'B' : 'T', fwd ? 'T' : 'B']; }
