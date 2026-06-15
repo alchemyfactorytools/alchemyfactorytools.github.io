@@ -725,6 +725,32 @@
         laneClusters = best;
       }
     }
+    // Util (fuel/fert) lines that feed a SINGLE production line read cleanest on the OUTSIDE
+    // of that line: its trunk then enters from the diagram margin instead of being wedged
+    // between two production lines (the baryHint above centres util lines over their
+    // consumers, which ties a single-consumer line right next to it — often on the inner
+    // side). Only move it when its consumer is the OUTERMOST product on that side, so this is
+    // a pure shift to the margin past a line it already abuts — it can't introduce a crossing.
+    {
+      const cof = cluster.clusterOf;
+      const prodIds = new Set(products.map((c) => c.id));
+      for (const u of utilC) {
+        const mset = new Set(u.members);
+        const fed = new Set();
+        for (const e of graph.edges) { const b = cof.get(e.to); if (mset.has(e.from) && b != null && b !== u.id && prodIds.has(b)) fed.add(b); }
+        if (fed.size !== 1) continue; // multi-consumer util stays centred (its output reaches both sides)
+        const target = [...fed][0];
+        const prodOrder = laneClusters.filter((c) => prodIds.has(c.id));
+        const tIdx = prodOrder.findIndex((c) => c.id === target);
+        const side = tIdx === prodOrder.length - 1 ? 'after' : tIdx === 0 ? 'before' : null;
+        if (!side) continue; // consumer sits mid-pack → no clean outside, leave centred
+        const cur = laneClusters.indexOf(u);
+        if (cur < 0) continue;
+        laneClusters.splice(cur, 1);
+        const tPos = laneClusters.findIndex((c) => c.id === target);
+        laneClusters.splice(side === 'after' ? tPos + 1 : tPos, 0, u);
+      }
+    }
     const laneOf = new Map();
     laneClusters.forEach((c, i) => { c.lane = i; for (const m of c.members) laneOf.set(m, i); });
     const numLanes = laneClusters.length;
@@ -841,7 +867,21 @@
         parent.set(id, best);
       }
       for (const id of members) { const p = parent.get(id); if (p) childrenOf.get(p).push(id); }
-      for (const arr of childrenOf.values()) arr.sort((a, b) => (colIdx.get(a) ?? 0) - (colIdx.get(b) ?? 0));
+      // Which way does this lane's real output leave? Average the lane index of every
+      // cross-lane consumer its members feed. If they sit to the right (exitDir ≥ 0), the
+      // output-bearing children belong on the RIGHT (nearest their consumer), so a dead-end
+      // disposal sink (a trashed co-product like Salt's Sand → trash) must tuck to the LEFT —
+      // and vice-versa. Without this the stub can land between a real output and its consumer,
+      // raking the output edge clear across the tile.
+      let exitSum = 0, exitN = 0;
+      for (const id of members) for (const m of (down.get(id) || [])) { const lm = lane(m); if (lm !== l) { exitSum += lm; exitN++; } }
+      const sinksGoLeft = exitN ? (exitSum / exitN - l) >= 0 : true;
+      const isSinkId = (id) => { const t = (nodeById2(id) || {}).type; return t === 'surplus' || t === 'trash'; };
+      for (const arr of childrenOf.values()) arr.sort((a, b) => {
+        const sa = isSinkId(a) ? 1 : 0, sb = isSinkId(b) ? 1 : 0;
+        if (sa !== sb) return sinksGoLeft ? (sb - sa) : (sa - sb); // push sinks to the exit-opposite end
+        return (colIdx.get(a) ?? 0) - (colIdx.get(b) ?? 0);
+      });
       const roots = members.filter((m) => !parent.get(m));
       roots.sort((a, b) => rank.get(a) - rank.get(b) || (colIdx.get(a) ?? 0) - (colIdx.get(b) ?? 0));
       // post-order so a node's children are sized before it (iterative — chains can be deep)
