@@ -14,6 +14,7 @@
 
   <div class="layout" id="layout">
     <aside class="panel" id="controls">
+      <!-- PRIMARY: what to build, how, and go -->
       <section>
         <h2>Target</h2>
         <label>Output item
@@ -53,79 +54,8 @@
       </section>
 
       <section>
-        <h2>Cauldron</h2>
-        <label class="check"><input type="checkbox" id="cauldronEnabled" checked> Use cauldron formula</label>
-        <label>Input pool
-          <select id="pool">
-            <option value="unrestricted" selected>Unrestricted (any item)</option>
-            <option value="buyables">Buyables only (no farming)</option>
-            <option value="buyables+growables">Buyables + growables (buy or grow, no crafted inputs)</option>
-            <option value="easy">Easy inputs (buy / grow / 1-step craft)</option>
-            <option value="growables">Growables only (Nursery herbs)</option>
-          </select>
-        </label>
-        <label>Never cauldron these <small>(comma-separated)</small>
-          <input type="text" id="forbidCauldron" placeholder="e.g. Obsidian">
-        </label>
-        <label>Only cauldron these <small>(must have a cauldron target)</small>
-          <input type="text" id="forceCauldron" placeholder="e.g. Impure Copper Powder">
-        </label>
-        <label>Discourage cauldron→cauldron <small>(weight on feeding a cauldron's output into another)</small>
-          <select id="cauldronChain">
-            <option value="0" selected>Off — allow cauldron chains</option>
-            <option value="0.5">Light — prefer non-cauldron inputs</option>
-            <option value="1.5">Medium — avoid where reasonable</option>
-            <option value="4">Strong — chain only if far cheaper</option>
-          </select>
-        </label>
-      </section>
-
-      <section>
-        <h2>Allowed external inputs</h2>
-        <p class="hint">Leave empty to allow buying anything. Add items to restrict the
-          factory to a specific set of purchasable feedstock + coins.</p>
-        <div id="allowChips" class="chips"></div>
-        <input type="text" id="allowInput" list="buyables" placeholder="add an input…" autocomplete="off">
-        <datalist id="buyables"></datalist>
-      </section>
-
-      <section>
-        <h2>Byproducts</h2>
-        <label>Policy
-          <select id="byproducts">
-            <option value="reuse" selected>Reuse (credit downstream, discard surplus)</option>
-            <option value="sell">Sell (revenue offsets cost)</option>
-            <option value="trash">Trash (discard, no credit)</option>
-          </select>
-        </label>
-        <label>Trash only these <small>(comma-separated)</small>
-          <input type="text" id="byproductTrash" placeholder="e.g. Crude Silver Powder">
-        </label>
-      </section>
-
-      <section>
-        <h2>Main belt supply</h2>
-        <p class="hint">Items already arriving on your main belt — fuel, fertilizer,
-          coins, anything. Treated as free incoming supply (optionally capped at a
-          rate/min) instead of being crafted. A fertilizer's quality sets Nursery
-          grow speed; belt speed (Logistics skill) caps it.</p>
-        <div id="beltRows" class="belt-rows"></div>
-        <div class="belt-add">
-          <input type="text" id="beltItem" list="items" placeholder="item…" autocomplete="off">
-          <input type="number" id="beltRate" placeholder="/min (blank = ∞)" min="0" step="any">
-          <button id="beltAdd" class="secondary">Add</button>
-        </div>
-      </section>
-
-      <section>
-        <h2>Craft fuel / fertilizer</h2>
-        <label class="check"><input type="checkbox" id="selfFuel" checked> Allow crafting fuel (self-fuel loops)</label>
-        <label class="check"><input type="checkbox" id="selfFert" checked> Allow crafting fertilizer (self-fert loops)</label>
-      </section>
-
-      <section>
-        <h2>Capacity & capital</h2>
-        <label>Solver <small>(how the build is chosen)</small>
+        <h2>Solver</h2>
+        <label>Build method <small>(how the build is chosen)</small>
           <select id="solver">
             <option value="lp" selected>Optimizer — global min-copper (LP)</option>
             <option value="composer">Tile composer — deterministic simplest tiles</option>
@@ -133,52 +63,8 @@
         </label>
         <p class="hint">The <b>optimizer</b> finds the globally cheapest flow. The <b>tile composer</b>
           picks one canonical recipe per item and builds a replicated, self-contained tile tree —
-          fuel, fertilizer and coins as shared trunks — i.e. "what you'd actually build", not
-          cost-minimal. The Optimize-for / override / farm-penalty knobs below apply to the
-          optimizer only.</p>
-        <label>Optimize for <small>(cost ↔ easiest to build)</small>
-          <select id="buildability">
-            <option value="0" selected>Cheapest — pure min copper</option>
-            <option value="1">Balanced — waste up to 1× per-item cost</option>
-            <option value="5">Lean — waste up to 5× per-item cost</option>
-            <option value="1000">Simplest — easiest to build, cost barely matters</option>
-          </select>
-        </label>
-        <p class="hint">How much copper <b>per item</b> you'll waste for a simpler factory.
-          It finds the cheapest build, then within that budget picks the one that's
-          <b>easiest to build</b> — lowest total machine build cost (a bank of cheap Stone
-          Crushers beats a few Bronze-Bar Cauldrons), with fewer parallel lines as a
-          tie-break. Budget scales to the build's own cheapest per-item cost. "Simplest"
-          ignores running cost and takes the globally easiest-to-build factory (e.g. buy ore
-          → grind over a sprawling free-herb cauldron + fertilizer chain).</p>
-        <label>Override: ignore cost gaps under <small>(absolute copper per item — wins over the dropdown)</small>
-          <input type="number" id="costTolerance" value="0" min="0" step="any" placeholder="0 = use dropdown">
-        </label>
-        <p class="hint">Set an exact per-item waste budget instead of the dropdown's scaled
-          default. e.g. set it to 5 and a
-          1c-vs-4c-per-nail difference stops mattering — it'll pick a one-machine ore smelter
-          over a free-herb cauldron chain.</p>
-        <label>Machines per type <small>(capacity bound)</small>
-          <input type="number" id="machines" value="1000" min="1" step="1">
-        </label>
-        <label class="check"><input type="checkbox" id="capital" checked> Count machine build cost</label>
-        <p class="hint">Counts what each machine costs to build (including the Nursery plots
-          a low-quality fertilizer implies), so the planner won't pick a thousand-nursery
-          sprawl just because the materials are cheap. Use <b>Optimize for</b> above to trade
-          factory size against running cost.</p>
-        <label>Farm penalty <small>(extra build cost on Nurseries + Cauldrons)</small>
-          <select id="farmPenalty">
-            <option value="0">None — farm freely</option>
-            <option value="1">Light (2×)</option>
-            <option value="3" selected>Default (4×) — prefer bought-raw</option>
-            <option value="8">Heavy (9×) — avoid the farm</option>
-          </select>
-        </label>
-        <p class="hint">Free-grown herbs + a cheap Cauldron are the lowest-<i>copper</i> way to
-          make most materials, so the planner farms herbs and drags in a whole fertilizer line
-          to dodge buying ore. This marks up Nursery + Cauldron build cost so bought-raw refine
-          chains (Buy Limestone → grind → Sand) win for materials, while the Cauldron stays
-          available where it's genuinely needed.</p>
+          "what you'd actually build", not cost-minimal. Optimizer-only tuning knobs are hidden
+          under Advanced when the composer is selected (the composer ignores them).</p>
       </section>
 
       <section>
@@ -194,6 +80,114 @@
       </section>
 
       <button id="solve" class="primary">Solve ▶</button>
+
+      <!-- ADVANCED: secondary settings; LP-only knobs hide on the composer -->
+      <details id="advanced">
+        <summary>Advanced settings</summary>
+
+        <section>
+          <h2>Cauldron</h2>
+          <label class="check"><input type="checkbox" id="cauldronEnabled" checked> Use cauldron formula</label>
+          <label>Input pool
+            <select id="pool">
+              <option value="unrestricted" selected>Unrestricted (any item)</option>
+              <option value="buyables">Buyables only (no farming)</option>
+              <option value="buyables+growables">Buyables + growables (buy or grow, no crafted inputs)</option>
+              <option value="easy">Easy inputs (buy / grow / 1-step craft)</option>
+              <option value="growables">Growables only (Nursery herbs)</option>
+            </select>
+          </label>
+          <label>Never cauldron these <small>(comma-separated)</small>
+            <input type="text" id="forbidCauldron" placeholder="e.g. Obsidian">
+          </label>
+          <label>Only cauldron these <small>(must have a cauldron target)</small>
+            <input type="text" id="forceCauldron" placeholder="e.g. Impure Copper Powder">
+          </label>
+        </section>
+
+        <section>
+          <h2>Byproducts</h2>
+          <label>Policy
+            <select id="byproducts">
+              <option value="reuse" selected>Reuse (credit downstream, discard surplus)</option>
+              <option value="sell">Sell (revenue offsets cost)</option>
+              <option value="trash">Trash (discard, no credit)</option>
+            </select>
+          </label>
+          <label>Trash only these <small>(comma-separated)</small>
+            <input type="text" id="byproductTrash" placeholder="e.g. Crude Silver Powder">
+          </label>
+        </section>
+
+        <section>
+          <h2>Main belt supply</h2>
+          <p class="hint">Items already arriving on your main belt — fuel, fertilizer,
+            coins, anything. Treated as free incoming supply (optionally capped at a
+            rate/min) instead of being crafted. A fertilizer's quality sets Nursery
+            grow speed; belt speed (Logistics skill) caps it.</p>
+          <div id="beltRows" class="belt-rows"></div>
+          <div class="belt-add">
+            <input type="text" id="beltItem" list="items" placeholder="item…" autocomplete="off">
+            <input type="number" id="beltRate" placeholder="/min (blank = ∞)" min="0" step="any">
+            <button id="beltAdd" class="secondary">Add</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Craft fuel / fertilizer</h2>
+          <label class="check"><input type="checkbox" id="selfFuel" checked> Allow crafting fuel (self-fuel loops)</label>
+          <label class="check"><input type="checkbox" id="selfFert" checked> Allow crafting fertilizer (self-fert loops)</label>
+        </section>
+
+        <!-- Optimizer-only: the tile composer ignores every control in here, so it's hidden on composer -->
+        <div id="lpOnly">
+          <section>
+            <h2>Optimizer (LP) tuning</h2>
+            <p class="hint">These affect the LP optimizer only — the tile composer ignores them.</p>
+            <label>Optimize for <small>(cost ↔ easiest to build)</small>
+              <select id="buildability">
+                <option value="0" selected>Cheapest — pure min copper</option>
+                <option value="1">Balanced — waste up to 1× per-item cost</option>
+                <option value="5">Lean — waste up to 5× per-item cost</option>
+                <option value="1000">Simplest — easiest to build, cost barely matters</option>
+              </select>
+            </label>
+            <label>Override: ignore cost gaps under <small>(absolute copper per item — wins over the dropdown)</small>
+              <input type="number" id="costTolerance" value="0" min="0" step="any" placeholder="0 = use dropdown">
+            </label>
+            <label>Discourage cauldron→cauldron <small>(weight on feeding a cauldron's output into another)</small>
+              <select id="cauldronChain">
+                <option value="0" selected>Off — allow cauldron chains</option>
+                <option value="0.5">Light — prefer non-cauldron inputs</option>
+                <option value="1.5">Medium — avoid where reasonable</option>
+                <option value="4">Strong — chain only if far cheaper</option>
+              </select>
+            </label>
+            <label>Farm penalty <small>(extra build cost on Nurseries + Cauldrons)</small>
+              <select id="farmPenalty">
+                <option value="0">None — farm freely</option>
+                <option value="1">Light (2×)</option>
+                <option value="3" selected>Default (4×) — prefer bought-raw</option>
+                <option value="8">Heavy (9×) — avoid the farm</option>
+              </select>
+            </label>
+            <label>Machines per type <small>(capacity bound)</small>
+              <input type="number" id="machines" value="1000" min="1" step="1">
+            </label>
+            <label class="check"><input type="checkbox" id="capital" checked> Count machine build cost</label>
+          </section>
+
+          <section>
+            <h2>Allowed external inputs <small>(optimizer only)</small></h2>
+            <p class="hint">Leave empty to allow buying anything. Add items to restrict the
+              factory to a specific set of purchasable feedstock + coins.</p>
+            <div id="allowChips" class="chips"></div>
+            <input type="text" id="allowInput" list="buyables" placeholder="add an input…" autocomplete="off">
+            <datalist id="buyables"></datalist>
+          </section>
+        </div>
+      </details>
+
       <button id="exportDot" class="secondary">Copy Graphviz DOT</button>
       <button id="copySettings" class="secondary">Copy settings (for debugging)</button>
     </aside>

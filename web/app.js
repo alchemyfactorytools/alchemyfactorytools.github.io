@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-profit-mode-2026-06-15l';
+const BUILD_STAMP = 'sidebar-reorg-advanced-2026-06-15m';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -77,8 +77,9 @@ async function init() {
   $('version').textContent = 'dataset 0.5.0.4471 · DB v41';
   loadPrefs();
   updateDispatchUI(); // reflect a restored rateUnit (show/hide the dispatch row + live readout)
+  updateSolverUI();   // hide the LP-only tuning block when the composer is selected (it ignores them)
   // persist any sidebar field edit (typing the output/rate, toggling a checkbox, …)
-  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); });
+  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); });
   $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
   // Switching INTO dispatch mode with a non-dispatchable item selected clears it (so you're not
   // left targeting an item with no contract). Only on the mode switch — not per keystroke, which
@@ -201,6 +202,13 @@ function requestBody() {
     config.composer = { ...(config.composer || {}), profit: true };
   }
   return { item: $('item').value.trim(), rate, rateMode, config };
+}
+
+// The LP-only tuning knobs do nothing on the tile composer, so hide them when it's selected —
+// leaving Advanced with only the settings that affect the chosen solver.
+function updateSolverUI() {
+  const lp = $('lpOnly');
+  if (lp) lp.style.display = $('solver').value === 'composer' ? 'none' : '';
 }
 
 // show/hide the dispatch day-length row and a live "= X/min · ~Y/day" readout.
