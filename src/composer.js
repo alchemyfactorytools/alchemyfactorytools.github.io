@@ -200,11 +200,51 @@ function makeComposer(db, cfg) {
       if (profitMode && beltCapFor(item) > 0) return db.items[item] && db.items[item].sellPrice || 0;
       return prodOp;
     };
-    let fertOpPerNutrient = 0;
-    if (fertItem && fertNutrientValue) {
-      const fval = carrierOpValue(fertItem);
-      if (isFinite(fval) && fval > 0) fertOpPerNutrient = fval / fertNutrientValue;
+    // Nutrient pricing (per-crop, throughput-aware). A grown crop is NEVER free — it costs the
+    // nutrient consumed to grow it, priced at the cost-per-nutrient of the fertilizer you'd actually
+    // use for THAT crop. You fertilise each crop with the CHEAPEST fertilizer that still grows it at
+    // full belt speed: the nursery's grow rate is min(60·maxFertility/nutrientCost, beltSpeed), so a
+    // fert sustains full speed iff maxFertility ≥ nutrientCost·beltSpeed/60. Below that the plot is
+    // fert-throttled to a crawl (Chamomile on Basic Fert = 1/min vs 60/min on Growth Potion), so a
+    // cheaper-but-weaker fert isn't a real option; a stronger one (Panacea on a low-tier crop) is
+    // needless. This mirrors the game's tier design — the sustaining fert unlocks at ~the crop's tier
+    // (Chamomile t6 ↔ Growth Potion t6). Each fert's own cost-per-nutrient is circular (it contains
+    // grown crops), so solve the coupled FIXPOINT at a STABLE op weight (OP_W_DEFAULT, NOT the profit
+    // metric's OP_W) so profit-mode op-minimisation can't route a carrier through a degenerate
+    // "grow everything for free" path and collapse the price to 0. Bought-raw inputs (Growth Potion's
+    // clay←Logs, brine←Rock Salt) anchor every fert above zero, so the fixpoint is positive and finite.
+    const fertList = Object.entries(db.items)
+      .filter(([n, it]) => it.nutrientValue > 0 && it.maxFertility > 0 && tierOk(n))
+      .map(([n, it]) => ({ item: n, nv: it.nutrientValue, mf: it.maxFertility }));
+    const strongest = fertList.reduce((a, f) => (!a || f.mf > a.mf ? f : a), null); // best-effort if none sustain
+    const cpnOf = (f, s) => {
+      if (profitMode && beltCapFor(f.item) > 0) return ((db.items[f.item] && db.items[f.item].sellPrice) || 0) / f.nv; // belted → forgone sale
+      const op = s.op.get(f.item);
+      return (isFinite(op) && op > 0) ? op / f.nv : Infinity;
+    };
+    // copper per nutrient for a crop needing `nc`: cheapest fert that sustains it at full belt speed.
+    const rateFn = (cpn) => (nc) => {
+      if (!(nc > 0) || !fertList.length) return 0;
+      const need = (nc * cParams.beltSpeed) / 60; // maxFertility required for full belt speed
+      let best = Infinity;
+      for (const f of fertList) if (f.mf >= need) { const c = cpn.get(f.item); if (c < best) best = c; }
+      if (isFinite(best)) return best;
+      const sc = strongest ? cpn.get(strongest.item) : 0; // none sustain → strongest available (throttled)
+      return isFinite(sc) ? sc : 0;
+    };
+    let cpn = new Map(fertList.map((f) => [f.item, 0]));
+    for (let i = 0; i < 16 && fertList.length; i++) {
+      const s = relax(items, rateFn(cpn), 0, OP_W_DEFAULT);
+      const next = new Map(); let changed = false;
+      for (const f of fertList) {
+        const v = cpnOf(f, s); const vv = isFinite(v) ? v : 0;
+        next.set(f.item, vv);
+        if (Math.abs(vv - cpn.get(f.item)) > 1e-9 * (1 + vv)) changed = true;
+      }
+      cpn = next;
+      if (!changed) break;
     }
+    const fertOpPerNutrient = rateFn(cpn); // FUNCTION: a crop's nutrientCost → copper/nutrient
     let fuelOpPerHeat = 0;
     if (profitMode && fuelItemC && db.items[fuelItemC]) {
       const heatPerCarrier = (db.items[fuelItemC].heat || 0) * cParams.fuelMult;
@@ -218,14 +258,13 @@ function makeComposer(db, cfg) {
         if (r._heatPerRun == null) r._heatPerRun = r.machine ? machineHeatPerRun(db.machines[r.machine], db.machines, r.baseTime || 0, cParams.speedMult) : 0;
       }
     }
-    solved = (fertOpPerNutrient > 0 || fuelOpPerHeat > 0) ? relax(items, fertOpPerNutrient, fuelOpPerHeat) : pass1;
-    solved.fertOpPerNutrient = fertOpPerNutrient;
+    solved = (fertList.length || fuelOpPerHeat > 0) ? relax(items, fertOpPerNutrient, fuelOpPerHeat) : pass1;
     return solved;
   }
 
   // One min-score fixpoint relaxation tracking build & op separately. fertOpPerNutrient prices
   // a nursery's nutrient draw on the op axis (0 disables it, for pass 1).
-  function relax(items, fertOpPerNutrient, fuelOpPerHeat = 0) {
+  function relax(items, fertOpPerNutrient, fuelOpPerHeat = 0, opW = OP_W) {
     const build = new Map();
     const op = new Map();
     const score = new Map();
@@ -238,7 +277,7 @@ function makeComposer(db, cfg) {
     for (const it of items) {
       if (beltItems.has(it)) { build.set(it, 0); op.set(it, 0); score.set(it, 0); pick.set(it, { source: 'belt' }); continue; }
       const lf = leaf(it);
-      if (lf) { build.set(it, lf.build); op.set(it, lf.op); score.set(it, lf.build + OP_W * lf.op); pick.set(it, { source: lf.source }); }
+      if (lf) { build.set(it, lf.build); op.set(it, lf.op); score.set(it, lf.build + opW * lf.op); pick.set(it, { source: lf.source }); }
     }
 
     // cauldron input scratch (refreshed each pass): flat build/op arrays so the hot triple loop
@@ -255,7 +294,7 @@ function makeComposer(db, cfg) {
       for (const it of items) {
         if (beltItems.has(it)) continue; // fixed free leaf
         const lf = leaf(it);
-        let bestS = lf ? lf.build + OP_W * lf.op : Infinity;
+        let bestS = lf ? lf.build + opW * lf.op : Infinity;
         let bestB = lf ? lf.build : Infinity;
         let bestO = lf ? lf.op : Infinity;
         let bestPick = lf ? { source: lf.source } : null;
@@ -271,7 +310,7 @@ function makeComposer(db, cfg) {
             oSum += (r.inputs[inp] / prim) * oo;  // op: qty-scaled copper per unit of output
           }
           if (!ok) continue;
-          if (r.nutrientCost) oSum += (r.nutrientCost / prim) * fertOpPerNutrient; // fertilizer drain
+          if (r.nutrientCost) oSum += (r.nutrientCost / prim) * (typeof fertOpPerNutrient === 'function' ? fertOpPerNutrient(r.nutrientCost) : fertOpPerNutrient); // fertilizer drain (per-crop rate)
           if (fuelOpPerHeat && r._heatPerRun) oSum += (r._heatPerRun / prim) * fuelOpPerHeat; // fuel/heat drain
           // Co-product waste: a recipe making the target AND other items dumps those (trash mode).
           // Penalize by dumped value per unit of target, so Rock Salt → Salt + Sand loses for Sand
@@ -283,7 +322,7 @@ function makeComposer(db, cfg) {
             if (isFinite(f)) coWaste += (q / prim) * f;
           }
           const b = depthW + widthW * Math.max(0, inputs.length - 1) + bSum;
-          const s = b + OP_W * oSum + coW * coWaste;
+          const s = b + opW * oSum + coW * coWaste;
           if (s < bestS) { bestS = s; bestB = b; bestO = oSum; bestPick = { source: 'recipe', recipe: r }; }
         }
 
@@ -310,7 +349,7 @@ function makeComposer(db, cfg) {
               else { distinct = 3; bSum = ba + bb + bk; oSum = oa + ob + okk; }
               if (fuelOpPerHeat) oSum += cauldron.compiled.targets[cauldron.compiled.outIdx[t]].heat * fuelOpPerHeat; // cauldron craft heat
               const b = depthW + widthW * (distinct - 1) + bSum;
-              const s = b + OP_W * oSum;
+              const s = b + opW * oSum;
               const costSum = cIn[a].cost + cIn[b2].cost + cIn[k].cost;
               const isBest = s < bestS
                 || (s === bestS && bestPick && bestPick.source === 'cauldron'
@@ -624,49 +663,10 @@ function makeComposer(db, cfg) {
       coproductFeeds: aggregateFeeds(coFeeds),         // [{ item, rate }] co-product reused across tiles
       warnings,
     };
-    summary.profitMaterialPerUnit = intrinsicValue(target); // honest per-unit cost for profit/min
     return { tree, fuel, fert, totals, coFeeds, carrierMaterial: acc.carrierMaterialFeeds, summary };
   }
 
-  // Intrinsic ("market") value of one unit — the trustworthy cost basis for profit-mode reporting.
-  // The op axis collapses through grow+cauldron chains (a grown crop draws no copper; a cauldron
-  // transmutes cheap inputs into a high-value output for "free"), so it can't price a build — Luna
-  // read 75 c/unit. Instead recurse via the SAME canonical picks the build uses, but FLOOR every
-  // item at its game-assigned cauldronCost (what the game charges for it as a cauldron input), so
-  // transmutation can never drive an item below its intrinsic worth. Primitive intermediates settle
-  // at their cauldronCost (Gold Ingot 88,181, Moon Tear 96,678 — matching the codex); assembled
-  // relics accrue their full input sum above the floor (Luna ≈ 14M, not its 187k filler value).
-  const intrinsicMemo = new Map();
-  function intrinsicValue(item, stack) {
-    if (intrinsicMemo.has(item)) return intrinsicMemo.get(item);
-    const it = db.items[item];
-    const cc = it && it.cauldronCost != null ? it.cauldronCost : null;
-    const isRelic = !!(it && it.category === 'Relic');
-    if (stack && stack.has(item)) return cc != null ? cc : 0; // cycle → intrinsic value
-    let v;
-    if (beltItems.has(item)) v = it && it.buyPrice != null ? it.buyPrice : (cc || 0);
-    else if (buyable(item)) v = (it && it.buyPrice) || 0;       // raws: what you actually pay
-    else if (cc != null && !isRelic) v = cc;                   // trust the game's intrinsic value, STOP
-    else { // relic (deflated cauldronCost) or no cauldronCost: expand via the build's canonical pick
-      const pick = solve().pick.get(item) || null;
-      if (!pick) v = cc != null ? cc : 0;
-      else if (pick.source === 'mint') v = (it && it.sellPrice != null ? it.sellPrice : (cc || 0));
-      else if (pick.source === 'buy' || pick.source === 'belt') v = (it && it.buyPrice != null ? it.buyPrice : (cc || 0));
-      else { // recipe | cauldron — sum the (intrinsic-valued) inputs; relics never read below filler value
-        const ins = (pick.recipe && pick.recipe.inputs) || {};
-        const outQ = (pick.recipe && pick.recipe.outputs && pick.recipe.outputs[item]) || 1;
-        const s2 = new Set(stack || []); s2.add(item);
-        let asm = 0;
-        for (const [inp, q] of Object.entries(ins)) asm += q * intrinsicValue(inp, s2);
-        v = cc != null ? Math.max(asm / outQ, cc) : asm / outQ;
-      }
-    }
-    intrinsicMemo.set(item, v);
-    return v;
-  }
-
   return {
-    intrinsicValue,
     // tileCost = the selection metric (build + OP_W·op + waste of the chosen recipe). buildCost /
     // opCost expose the two axes separately (opCost is copper per unit of output → ×rate = per-min).
     tileCost: (item) => { if (beltItems.has(item)) return 0; const s = solve(); return s.score.has(item) ? s.score.get(item) : Infinity; },

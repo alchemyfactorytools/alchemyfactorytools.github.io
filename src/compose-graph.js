@@ -245,16 +245,14 @@ function composeGraph(composed, db, cfg) {
 
   let inputCostPerMin, beltUtilCostPerMin = 0;
   if (profitMode) {
-    // PROFIT-MODE COST BASIS. The build-mode money line (copperPerMin) understates wildly in profit
-    // mode: profit mode picks grow+cauldron routes, and a grown crop has no copper input while a
-    // cauldron transmutes cheap inputs into high-value output for "free", so the external spend
-    // collapses toward zero (Luna read 75 c/unit → fake +92M profit). Use instead the composer's
-    // intrinsicValue(target): per-unit worth computed by recursing the build's canonical picks while
-    // flooring every item at its game cauldronCost, so it can't collapse and matches the codex's own
-    // cost breakdown. It already embeds heat/nutrient/sub-materials, so the fuel/fert trunks are NOT
-    // added separately (that would double-count, and the grow-route's nutrient draw is astronomical).
-    // Central steam's free/at-cost toggle therefore only moves the BUILD-mode profit number.
-    inputCostPerMin = (composed.summary.profitMaterialPerUnit || 0) * composed.summary.ratePerMin;
+    // PROFIT-MODE COST BASIS = the build's real recipe cost (composer op axis): copper per unit of
+    // output propagated through the canonical recipes down to bought raws, charging the genuinely-
+    // ongoing inputs — fertilizer NUTRIENT (priced per-crop at its cheapest sustaining fert) and fuel/
+    // heat — but NOT one-time seeds or machine build. operatingCopperPerMin = op(target)·rate. This is
+    // the true per-minute operating cost; it diverges (lower) from market valuations like the codex,
+    // which amortize one-time seed cost into per-unit cost. The op axis no longer collapses to ~0 on
+    // grow+cauldron routes now that nutrient is charged at a non-zero fixpoint (see composer.js).
+    inputCostPerMin = composed.summary.operatingCopperPerMin;
   } else {
     // BUILD-MODE COST BASIS. Profit/min = output sell value − everything that enters from the main
     // belt. copperPerMin already covers all BOUGHT raws (incl. ore for a PRODUCED fuel/fert carrier),
