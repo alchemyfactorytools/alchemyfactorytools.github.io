@@ -110,6 +110,8 @@ function renderSvg(graph, { title = '', orientation = 'LR' } = {}) {
     const bands = [];
     if (n.fuelItem && n.fuelPerMin > 0) bands.push({ fill: '#5a2f2f', tx: '#f0c9c0', t: `🔥 ${fmt(n.fuelPerMin)} ${n.fuelItem}/min` });
     if (n.fertItem && n.fertPerMin > 0) bands.push({ fill: '#2f4a36', tx: '#bfe3c8', t: `🌱 ${fmt(n.fertPerMin)} ${n.fertItem}/min` });
+    // items a recipe loops back into the same machine — flagged so a raw co-output isn't read as orphaned
+    if (n.recirc) for (const rc of n.recirc) bands.push({ fill: '#2c3a4a', tx: '#b9cfe6', t: `♻ ${fmt(rc.ratePerMin)} ${rc.item}/min recirculated` });
     if (bands.length) {
       const bh = 17;
       const cid = 'clip' + esc(n.id).replace(/[^a-z0-9]/gi, '');

@@ -98,6 +98,9 @@ function composeGraph(composed, db, cfg) {
       fuelPerMin: tile.fuelPerMin || 0,
       fertItem: tile.fertPerMin > 0 ? composed.summary.fertItem : null,
       fertPerMin: tile.fertPerMin || 0,
+      // items the recipe loops back into itself — shown as a "↻ recirculated" band so a
+      // raw co-output (e.g. the Athanor's 3 Iron Ingot) doesn't read as an orphaned output.
+      recirc: (tile.recirc && tile.recirc.length) ? tile.recirc : null,
       copperPerMin: 0,
       badges: [],
     });

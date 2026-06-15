@@ -135,6 +135,8 @@ svg#graph.hovering .edge.hl text { fill: var(--ink); }
 .node .fueltext { fill: #f0c9c0; font-size: 10px; }
 .node .fertband { fill: #2f4a36; }
 .node .ferttext { fill: #bfe3c8; font-size: 10px; }
+.node .recircband { fill: #2c3a4a; }
+.node .recircbandtext { fill: #b9cfe6; font-size: 10px; }
 rect.cluster { fill-opacity: 0.06; stroke-opacity: 0.5; stroke-width: 1.2; stroke-dasharray: 2 4; }
 rect.cluster.belt { fill-opacity: 0.1; stroke-opacity: 0.7; stroke-dasharray: none; }
 .clusterlabel { font-size: 12px; font-weight: 700; }

@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'composer-faned-visible-edges-2026-06-14z';
+const BUILD_STAMP = 'composer-recirc-and-converge-2026-06-14z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -672,6 +672,10 @@ function renderGraph(rawGraph) {
     let bandIdx = 0;
     if (n.fuelItem && n.fuelPerMin > 0) drawBand('fuelband', `🔥 ${fmt(n.fuelPerMin)} ${clip(n.fuelItem, 26)}/min`, bandIdx++);
     if (n.fertItem && n.fertPerMin > 0) drawBand('fertband', `🌱 ${fmt(n.fertPerMin)} ${clip(n.fertItem, 26)}/min`, bandIdx++);
+    // co-products a recipe loops back into the same machine (raw in ∩ out) — net inputs
+    // already cover them, so there's nothing to route; the band just says "this output
+    // recirculates, not an unhandled byproduct".
+    if (n.recirc) for (const rc of n.recirc) drawBand('recircband', `♻ ${fmt(rc.ratePerMin)} ${clip(rc.item, 24)}/min recirculated`, bandIdx++);
     g.appendChild(makeTitle(n));
     root.appendChild(g);
   }

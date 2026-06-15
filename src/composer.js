@@ -77,21 +77,28 @@ function makeComposer(db, cfg) {
   const netRecipe = (r) => {
     const inputs = { ...(r.inputs || {}) };
     const outputs = { ...(r.outputs || {}) };
+    // recirc[k] = the amount of an item a recipe both consumes AND produces, i.e. the
+    // portion that loops back into the SAME machine and never leaves it. Netting hides
+    // it (it cancels out of inputs/outputs), so a user who knows the raw recipe sees an
+    // output with no destination. We carry it so the tile can flag "↻ N recirculated".
+    const recirc = {};
     for (const k of Object.keys(outputs)) {
       if (inputs[k] == null) continue;
+      const loop = Math.min(inputs[k], outputs[k]);
+      if (loop > 0) recirc[k] = loop;
       const net = outputs[k] - inputs[k];
       delete inputs[k]; delete outputs[k];
       if (net > 0) outputs[k] = net;
       else if (net < 0) inputs[k] = -net;
     }
-    return { inputs, outputs };
+    return { inputs, outputs, recirc };
   };
 
   // recipes producing each item (tier-gated), with their primary/co outputs
   const producersOf = new Map();
   for (const [id, r] of Object.entries(db.recipes)) {
     if (!tierOk(r.id != null ? (db.items[r.id] ? r.id : id) : id)) { /* gate by outputs below */ }
-    const { inputs, outputs } = netRecipe(r);
+    const { inputs, outputs, recirc } = netRecipe(r);
     // skip currency mints (Bank Portal: copper → coin, zero inputs) — currency is valued at its
     // copper-equivalent (sellPrice) as a leaf, not crafted ~free via a depth stage. (Nurseries
     // are also zero-input but produce herbs, not currency, so they stay.)
@@ -101,7 +108,7 @@ function makeComposer(db, cfg) {
     if (Object.keys(inputs).some((i) => !tierOk(i))) continue;
     for (const out of Object.keys(outputs)) {
       if (!producersOf.has(out)) producersOf.set(out, []);
-      producersOf.get(out).push({ id, ...r, inputs, outputs }); // netted I/O overrides raw
+      producersOf.get(out).push({ id, ...r, inputs, outputs, recirc }); // netted I/O overrides raw
     }
   }
 
@@ -411,11 +418,18 @@ function makeComposer(db, cfg) {
       if (out === item) continue;
       byproducts[out] = q * yieldMult * runsPerMin;
     }
+    // Items the recipe loops back into itself (raw in ∩ out). Net inputs already account
+    // for them, so they need no upstream supply — but surface the rate so the tile can
+    // show "↻ N/min recirculated" instead of leaving the raw co-output looking orphaned.
+    const recirc = [];
+    for (const [out, q] of Object.entries(r.recirc || {})) {
+      if (q * runsPerMin > 1e-9) recirc.push({ item: out, ratePerMin: q * runsPerMin });
+    }
     return {
       id, item, source: pick.source, machine, recipe: r,
       ratePerMin: rate, runsPerMin, machineCount, tileLoad, nurseryNote,
       heatPerMin, fuelPerMin, nutrientPerMin, fertPerMin,
-      byproducts, inputs,
+      byproducts, recirc, inputs,
     };
   }
 
