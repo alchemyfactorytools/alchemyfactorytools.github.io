@@ -623,6 +623,73 @@
       }
       laneClusters = order;
     }
+    // Convergence-aware refinement. The lane-crossing metric above can't see the fan-in
+    // to a final producer: all its feeder edges share that one endpoint, so the interleave
+    // test never flags them. Yet a SHALLOW feeder line whose output sweeps down to the
+    // product passes straight over — and draws behind — a DEEPER sibling line's box (Mars:
+    // Copper Bearing's 3-deep output crossed the Steel Gear box). Count those crossings
+    // from lane order + terminal depth alone (no positions needed): feeder A's output
+    // crosses line B's box when B sits between A and the product's barycentre lane AND B
+    // terminates deeper than A (B's box lies in A's downward sweep). When the current order
+    // has any, permute the product lanes WITHIN THEIR EXISTING SLOTS (shared/util boxes stay
+    // put) for an order that removes them — tie-broken by the lane-edge crossings above. We
+    // only adopt a strict convergence improvement, so already-clean graphs never move.
+    {
+      const cof = cluster.clusterOf;
+      const demandIds = new Set(graph.nodes.filter((n) => n.type === 'demand').map((n) => n.id));
+      const finalRank = new Map(); // final-producer id → its rank
+      for (const e of graph.edges) if (demandIds.has(e.to) && rank.has(e.from)) finalRank.set(e.from, rank.get(e.from));
+      const productIds = new Set(products.map((c) => c.id));
+      const conv = []; // converging product lines: { id, rank: terminal rank, prod }
+      const seenConv = new Set();
+      for (const e of graph.edges) {
+        if (e.heat || e.nutrient || e.cash) continue;
+        const a = cof.get(e.from);
+        if (a != null && productIds.has(a) && finalRank.has(e.to) && !seenConv.has(a)) {
+          seenConv.add(a); conv.push({ id: a, rank: rank.get(a), prod: e.to });
+        }
+      }
+      const termRank = new Map(products.map((c) => [c.id, rank.get(c.id)]));
+      // lane-edge crossings (same interleave metric as above) for tie-breaking
+      const laneEdges = [];
+      for (const e of graph.edges) { const a = cof.get(e.from), b = cof.get(e.to); if (a != null && b != null && a !== b) laneEdges.push([a, b]); }
+      const laneCross = (ord) => {
+        const ix = new Map(ord.map((c, i) => [c.id, i]));
+        const segs = laneEdges.map(([a, b]) => [ix.has(a) ? ix.get(a) : -1, ix.has(b) ? ix.get(b) : -1]).filter(([a, b]) => a >= 0 && b >= 0);
+        let x = 0;
+        for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if ((segs[i][0] - segs[j][0]) * (segs[i][1] - segs[j][1]) < 0) x++;
+        return x;
+      };
+      const convCross = (ord) => {
+        const ix = new Map(ord.map((c, i) => [c.id, i]));
+        const lanesByProd = new Map();
+        for (const cv of conv) { if (!lanesByProd.has(cv.prod)) lanesByProd.set(cv.prod, []); lanesByProd.get(cv.prod).push(ix.get(cv.id)); }
+        const bar = new Map(); for (const [p, ls] of lanesByProd) bar.set(p, ls.reduce((a, b) => a + b, 0) / ls.length);
+        let x = 0;
+        for (const cv of conv) {
+          const ai = ix.get(cv.id), b = bar.get(cv.prod), R = finalRank.get(cv.prod);
+          for (const c2 of products) {
+            if (c2.id === cv.id) continue;
+            const bi = ix.get(c2.id), rB = termRank.get(c2.id);
+            if (bi > Math.min(ai, b) && bi < Math.max(ai, b) && rB > cv.rank && rB < R) x++;
+          }
+        }
+        return x;
+      };
+      if (conv.length > 1 && products.length <= 7 && convCross(laneClusters) > 0) {
+        const slots = []; // positions in laneClusters currently holding a product
+        laneClusters.forEach((c, i) => { if (products.includes(c)) slots.push(i); });
+        const permute = (arr) => arr.length <= 1 ? [arr.slice()] : arr.flatMap((x, i) => permute(arr.slice(0, i).concat(arr.slice(i + 1))).map((p) => [x, ...p]));
+        let best = laneClusters, bestKey = [convCross(laneClusters), laneCross(laneClusters)];
+        for (const perm of permute(products)) {
+          const cand = laneClusters.slice();
+          slots.forEach((pos, j) => { cand[pos] = perm[j]; });
+          const key = [convCross(cand), laneCross(cand)];
+          if (key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1])) { best = cand; bestKey = key; }
+        }
+        laneClusters = best;
+      }
+    }
     const laneOf = new Map();
     laneClusters.forEach((c, i) => { c.lane = i; for (const m of c.members) laneOf.set(m, i); });
     const numLanes = laneClusters.length;
