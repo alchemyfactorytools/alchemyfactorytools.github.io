@@ -760,6 +760,75 @@
         laneClusters.splice(side === 'after' ? tPos + 1 : tPos, 0, u);
       }
     }
+    // Rate-weighted lateral compaction. Everything above orders lanes to minimise the COUNT
+    // of edge crossings — a metric that is blind to both flow rate and terminal depth, so it
+    // treats a 480/min Coke-Powder feed into a deep Athanor exactly like a 5/min trickle and
+    // never sees the long heavy edge that rakes across the whole diagram. baryHint also parks
+    // a multi-consumer util line at the UNWEIGHTED centroid of its consumers, even when one
+    // consumer dominates the flow. Here we re-order the lanes to minimise total rate-weighted
+    // horizontal edge length Σ rate·|laneA − laneB| (cash edges — the belt's money to every
+    // buy node — are uniform noise and excluded). This pulls a util line beside its dominant
+    // consumer and sits heavy producer/consumer pairs adjacent. Loose (unclustered) endpoints
+    // — e.g. the final-assembly target that renders at its feeders' barycentre — are scored at
+    // the rate-weighted mean lane of their clustered neighbours, so converging product heads
+    // stay compact too. Hard-capped at the current crossing count (never trades a crossing for
+    // length) and tie-broken to keep util lines near their centroid (no gratuitous mirror flip).
+    // The rate-weighted length is only a PROXY — it cannot see an edge that rakes straight THROUGH
+    // a line's box (curved routing + within-lane offsets defeat any lane/rank estimate), so a
+    // shorter-length order can still render worse. We therefore only PROPOSE a reorder here and
+    // verify it for real at the end of layout(): re-render both orders and keep the proposal only
+    // if it STRICTLY reduces edges passing through boxes. __forceLaneOrder is that verify render.
+    let laneCandidateIds = null;
+    if (o.__forceLaneOrder) {
+      const byId = new Map(laneClusters.map((c) => [c.id, c]));
+      laneClusters = o.__forceLaneOrder.map((id) => byId.get(id)).filter(Boolean);
+    } else if (laneClusters.length > 1 && laneClusters.length <= 8) {
+      const cof = cluster.clusterOf;
+      const we = []; // {a,b: cluster id or null; from,to: node id; w: rate}
+      const looseNb = new Map(); // loose node id -> [{c: cluster id, w}]
+      const laneEdgesAll = [];
+      for (const e of graph.edges) {
+        const a = cof.get(e.from), b = cof.get(e.to);
+        if (a != null && b != null && a !== b) laneEdgesAll.push([a, b]);
+        if (e.cash || e.from === e.to || a === b) continue;
+        we.push({ a: a == null ? null : a, b: b == null ? null : b, from: e.from, to: e.to, w: e.ratePerMin || 0 });
+        if (a == null && b != null) { if (!looseNb.has(e.from)) looseNb.set(e.from, []); looseNb.get(e.from).push({ c: b, w: e.ratePerMin || 0 }); }
+        if (b == null && a != null) { if (!looseNb.has(e.to)) looseNb.set(e.to, []); looseNb.get(e.to).push({ c: a, w: e.ratePerMin || 0 }); }
+      }
+      const crossOf = (ord) => {
+        const ix = new Map(ord.map((c, i) => [c.id, i]));
+        const segs = laneEdgesAll.map(([a, b]) => [ix.has(a) ? ix.get(a) : -1, ix.has(b) ? ix.get(b) : -1]).filter(([a, b]) => a >= 0 && b >= 0);
+        let x = 0;
+        for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if ((segs[i][0] - segs[j][0]) * (segs[i][1] - segs[j][1]) < 0) x++;
+        return x;
+      };
+      const wlenOf = (ord) => {
+        const ix = new Map(ord.map((c, i) => [c.id, i]));
+        const vlane = (id) => { const nb = looseNb.get(id); if (!nb) return null; let sw = 0, sm = 0; for (const { c, w } of nb) { const li = ix.get(c); if (li != null) { sw += w; sm += w * li; } } return sw > 0 ? sm / sw : null; };
+        let s = 0;
+        for (const e of we) {
+          const la = e.a != null ? ix.get(e.a) : vlane(e.from);
+          const lb = e.b != null ? ix.get(e.b) : vlane(e.to);
+          if (la != null && lb != null) s += e.w * Math.abs(la - lb);
+        }
+        return s;
+      };
+      const utilIds = new Set(utilC.map((c) => c.id));
+      const pre = new Map(laneClusters.map((c, i) => [c.id, i]));
+      const disp = (ord, ids) => { let s = 0; ord.forEach((c, i) => { if (!ids || ids.has(c.id)) s += Math.abs(i - pre.get(c.id)); }); return s; };
+      const permute = (arr) => arr.length <= 1 ? [arr.slice()] : arr.flatMap((x, i) => permute(arr.slice(0, i).concat(arr.slice(i + 1))).map((p) => [x, ...p]));
+      const cap = crossOf(laneClusters); // never exceed the crossing count the passes above achieved
+      let best = laneClusters, bestKey = [wlenOf(laneClusters), 0, 0];
+      for (const perm of permute(laneClusters)) {
+        if (crossOf(perm) > cap) continue;
+        const key = [wlenOf(perm), disp(perm, utilIds), disp(perm, null)];
+        if (key[0] < bestKey[0] - 1e-6 ||
+            (Math.abs(key[0] - bestKey[0]) <= 1e-6 && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))) {
+          best = perm; bestKey = key;
+        }
+      }
+      if (best !== laneClusters) laneCandidateIds = best.map((c) => c.id); // propose; the verify step adopts it
+    }
     const laneOf = new Map();
     laneClusters.forEach((c, i) => { c.lane = i; for (const m of c.members) laneOf.set(m, i); });
     const numLanes = laneClusters.length;
@@ -1286,7 +1355,41 @@
       if (rf != null && rt != null && rt < rf) recycle.add(e.from + '\t' + e.to);
     }
 
-    return { pos, edges, recycle, clusters: clusterBoxes, trunks, trunkedEdges, width, height, orientation, nodeW: NODE_W, nodeH: NODE_H };
+    // Verify metric for the lateral-compaction proposal above: total FLOW of edges whose centre-to-
+    // centre segment cuts through a line box that holds NEITHER endpoint (cash is banded, not a
+    // raking line, so it's excluded). Weighted by rate because a 480/min trunk slicing across a line
+    // is a real eyesore while a 4/min trickle is barely visible — a raw count would call the user's
+    // "fuel beside its heavy consumer" order worse (more thin rakes) than the status quo (one fat
+    // one). Real rendered box rects + real positions, so it sees what a lane/rank estimate can't.
+    const segHitsRect = (ax, ay, bx, by, rx, ry, rw, rh) => {
+      const X2 = rx + rw, Y2 = ry + rh;
+      if (Math.max(ax, bx) < rx || Math.min(ax, bx) > X2 || Math.max(ay, by) < ry || Math.min(ay, by) > Y2) return false;
+      const inside = (x, y) => x >= rx && x <= X2 && y >= ry && y <= Y2;
+      if (inside(ax, ay) || inside(bx, by)) return true;
+      const si = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+        const d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3); if (Math.abs(d) < 1e-9) return false;
+        const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
+        const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+        return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+      };
+      return si(ax, ay, bx, by, rx, ry, X2, ry) || si(ax, ay, bx, by, X2, ry, X2, Y2) || si(ax, ay, bx, by, X2, Y2, rx, Y2) || si(ax, ay, bx, by, rx, Y2, rx, ry);
+    };
+    let __boxCross = 0;
+    for (const e of graph.edges) {
+      if (e.from === e.to || e.cash) continue;
+      const pa = pos.get(e.from), pb = pos.get(e.to); if (!pa || !pb) continue;
+      const ax = pa.x + pa.w / 2, ay = pa.y + pa.h / 2, bx = pb.x + pb.w / 2, by = pb.y + pb.h / 2;
+      for (const box of clusterBoxes) {
+        if (!box.members || box.belt) continue;
+        if (box.members.indexOf(e.from) >= 0 || box.members.indexOf(e.to) >= 0) continue;
+        if (segHitsRect(ax, ay, bx, by, box.x, box.y, box.w, box.h)) __boxCross += (e.ratePerMin || 0) + 1;
+      }
+    }
+    if (laneCandidateIds && !o.__forceLaneOrder) {
+      const candL = layout(graph, Object.assign({}, o, { __forceLaneOrder: laneCandidateIds }));
+      if (candL.__boxCross < __boxCross - 1e-6) return candL; // adopt the reorder only if it cuts less flow across boxes
+    }
+    return { pos, edges, recycle, clusters: clusterBoxes, trunks, trunkedEdges, width, height, orientation, nodeW: NODE_W, nodeH: NODE_H, __boxCross };
   }
 
   // Smooth cubic link between a start and end anchor (horizontal tangents in LR,
