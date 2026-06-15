@@ -131,10 +131,14 @@ test('Phase 7: co-product feed wires source → consumer and conserves material'
   assert.ok(sandFed <= sandRouted + 1e-6, 'co-fed Sand never exceeds the co-product supply');
 });
 
-test('Phase 7: trash mode keeps co-products as trash sinks (no feed edges)', () => {
+test('Phase 7: trash mode still reuses within-tile, then trashes the unclaimed surplus', () => {
   const trashCfg = resolveConfig({ maxTier: 6, byproducts: { mode: 'trash' }, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } });
   const g = composeGraph(makeComposer(db, trashCfg).compose('Saturn', 1), db, trashCfg);
-  assert.equal(g.edges.filter((e) => e.coproduct).length, 0, 'no co-feed edges in trash mode');
-  assert.ok(g.nodes.some((n) => n.type === 'surplus' && /Sand/.test(n.label)), 'Sand is trashed');
+  // Within-tile co-product reuse is always on, even in trash mode: the Sand thrown off making Saturn's
+  // Salt feeds its Glass demand, so co-feed edges appear here too. byproducts.mode governs only the
+  // UNCLAIMED surplus — Saturn over-produces Sand, so the leftover beyond the reused amount is still
+  // trashed. (Older behaviour, now retired: trash mode trashed ALL co-products and drew no feed edges.)
+  assert.ok(g.edges.filter((e) => e.coproduct).length > 0, 'within-tile co-feed edges appear in trash mode');
+  assert.ok(g.nodes.some((n) => n.type === 'surplus' && /Sand/.test(n.label)), 'the unclaimed surplus Sand is still trashed');
   assert.equal(g.summary.validation.length, 0);
 });

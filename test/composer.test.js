@@ -179,32 +179,50 @@ test('Phase 3: same-item recirculation is netted (Steel Ingot returns 3 of its 4
   const iron = kid(steel, 'Iron Ingot');
   assert.equal(iron.ratePerMin, 30);                 // net 1 Iron Ingot/Steel, NOT 120 (4× raw)
   assert.ok(!('Iron Ingot' in (steel.byproducts || {})), 'recirculated Iron Ingot is netted, not waste');
-  // Coke Powder is genuinely consumed (4/craft, none returned) → stays at 120/min.
-  assert.equal(kid(steel, 'Coke Powder').ratePerMin, 120);
+  // The contrast: the returned Iron Ingot is recorded as recirculation (3/craft × 30 = 90/min) and
+  // netted out of the build, while Coke Powder is genuinely consumed (4/craft, none returned) so it
+  // never appears as recirculation. (Coke is the fuel carrier here, so its 120/min material draw is
+  // produced by the fuel trunk — the carrier-as-material merge — not as an inline child.)
+  const recircOf = (item) => (steel.recirc || []).find((x) => x.item === item);
+  assert.equal(recircOf('Iron Ingot') && recircOf('Iron Ingot').ratePerMin, 90, 'Iron Ingot recirculates 3/craft');
+  assert.ok(!recircOf('Coke Powder'), 'Coke Powder is genuinely consumed, not recirculated');
 });
 
-test('nursery fertilizer is charged on the op axis (free fert → grown herb op is ~0)', () => {
+test('nursery fertilizer is charged on the op axis (a grown crop is never free)', () => {
   const comp = composer();
-  // Redcurrant is grown; its op is the fertilizer it burns (nutrientCost × fert cost/nutrient) > 0.
+  // Redcurrant is grown; its op is the nutrient it burns, priced at the cost-per-nutrient of the
+  // cheapest fertilizer that sustains it at belt speed (nutrientCost × fert cost/nutrient) > 0.
   assert.ok(comp.opCost('Redcurrant') > 0, 'grown herb should carry a fertilizer operating cost');
-  // With no canonical fert carrier, there is nothing to price the nutrient against → grow op is 0.
+  // That price is derived from the fertilizers in the item DB (anchored above zero by their bought
+  // raws), NOT from the configured canonical fert CARRIER — so dropping the carrier neither zeroes
+  // the cost nor changes it. (Older behaviour, now retired: no carrier → nothing to price → op 0.)
   const noFert = makeComposer(db, resolveConfig({ maxTier: 6, canonical: { fuelItem: 'Coke Powder' } }));
-  assert.equal(noFert.opCost('Redcurrant'), 0);
+  assert.ok(noFert.opCost('Redcurrant') > 0, 'grown herb op stays positive with no canonical fert carrier');
+  assert.equal(noFert.opCost('Redcurrant'), comp.opCost('Redcurrant'), 'nutrient price is carrier-independent');
 });
 
-test('Phase 7: reuse mode feeds a co-product into matching demand (Saturn Sand → fewer farms)', () => {
-  // Saturn = Shaper{Salt, Brick, Glass}. Its Salt comes from Stone Crusher{Rock Salt} → 100 Salt +
-  // 100 Sand co-product, and its Glass needs Sand. Reuse routes that Sand into the Glass demand, so
-  // dedicated Sand farms (Grinders) shrink; trash mode builds them all and dumps the co-product.
+test('Phase 7: within-tile co-product reuse feeds a co-product into matching demand (Saturn Sand), independent of byproducts.mode', () => {
+  // Saturn = Shaper{Salt, Brick, Glass}. Its Salt comes from Stone Crusher{Rock Salt} → Salt +
+  // Sand co-product, and its Glass needs Sand. Within-tile reuse routes that Sand straight into the
+  // Glass demand instead of grinding dedicated Sand for it. This reuse is ALWAYS on — decoupled from
+  // byproducts.mode (which the composer no longer reads; it now governs only UNCLAIMED surplus, and
+  // Saturn's Sand is fully claimed). So 'reuse' and 'trash' compose identically here. (Older
+  // behaviour, now retired: trash mode disabled the feed and ground every grain of Sand itself.)
   const reuse = composer({ byproducts: { mode: 'reuse' } }).compose('Saturn', 1);
   const trash = composer({ byproducts: { mode: 'trash' } }).compose('Saturn', 1);
-  assert.ok(reuse.summary.machineTotals.Grinder < trash.summary.machineTotals.Grinder,
-    'reuse builds fewer Sand grinders than trash');
-  const fed = reuse.summary.coproductFeeds.find((f) => f.item === 'Sand');
-  assert.ok(fed && fed.rate > 1, 'Sand is fed across tiles in reuse mode');
-  assert.equal(trash.summary.coproductFeeds.length, 0, 'trash mode feeds nothing');
-  // Money line drops too: 600/min of Sand no longer needs its bought Stone.
-  assert.ok(reuse.summary.copperPerMin < trash.summary.copperPerMin, 'reuse spends less (free co-product)');
-  // The co-fed amount never exceeds the gross co-product supply (Stone Crusher makes 600 Sand here).
-  assert.ok(fed.rate <= 600 + 1e-6, 'feed bounded by genuine co-production');
+
+  // The Sand co-product is fed across steps in BOTH modes. Claiming it (buildTree) is the same code
+  // path that drops the consumer's dedicated production, so a populated feed IS the farm saving —
+  // and it can never exceed the gross co-supply (Stone Crusher throws off 600 Sand/min here).
+  for (const [name, r] of [['reuse', reuse], ['trash', trash]]) {
+    const fed = r.summary.coproductFeeds.find((f) => f.item === 'Sand');
+    assert.ok(fed && fed.rate > 1, `Sand is fed across tiles in ${name} mode`);
+    assert.ok(fed.rate <= 600 + 1e-6, `feed bounded by genuine co-production in ${name} mode`);
+  }
+
+  // Always-on reuse ⇒ a fully-claimed co-product composes identically in both modes: same farms, same spend.
+  assert.equal(reuse.summary.machineTotals.Grinder, trash.summary.machineTotals.Grinder,
+    'within-tile reuse runs in trash mode too → identical Sand grinder count');
+  assert.equal(reuse.summary.copperPerMin, trash.summary.copperPerMin,
+    'within-tile reuse runs in trash mode too → identical spend');
 });
