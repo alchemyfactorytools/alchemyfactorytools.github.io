@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'toolbar-fit-2026-06-15z';
+const BUILD_STAMP = (typeof window !== 'undefined' && window.__BUILD__) || 'dev'; // git sha, injected by build-stamp.js
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -72,6 +72,8 @@ async function init() {
     dispatchList.appendChild(o);
   }
   $('version').textContent = 'dataset 0.5.0.4471 · DB v41';
+  const buildEl = $('buildSha'); if (buildEl) buildEl.textContent = BUILD_STAMP;
+  const gvEl = $('fGameVer'); if (gvEl && window.AlchSolver && AlchSolver.db) gvEl.textContent = 'v' + AlchSolver.db.gameVersion;
   loadPrefs();
   updateDispatchUI(); // reflect a restored rateUnit (show/hide the dispatch row + live readout)
   updateSolverUI();   // hide the LP-only tuning block when the composer is selected (it ignores them)

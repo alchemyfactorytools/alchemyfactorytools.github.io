@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "build:bundle": "esbuild web/solver.entry.js --bundle --format=iife --global-name=AlchSolver --platform=browser --outfile=web/solver.bundle.js",
+    "build:bundle": "node scripts/build-stamp.js web/build-stamp.js && esbuild web/solver.entry.js --bundle --format=iife --global-name=AlchSolver --platform=browser --outfile=web/solver.bundle.js",
     "build": "node scripts/build-static.js",
     "serve": "npm run build:bundle && node server.js",
     "validate": "node scripts/validate.js",

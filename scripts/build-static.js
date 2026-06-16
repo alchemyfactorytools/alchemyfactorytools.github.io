@@ -12,6 +12,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
+const { gitStamp } = require('./build-stamp');
 
 const root = path.join(__dirname, '..');
 const web = path.join(root, 'web');
@@ -37,6 +38,9 @@ esbuild.buildSync({
 for (const f of ['index.html', 'style.css', 'layout3.js', 'app.js']) {
   fs.copyFileSync(path.join(web, f), path.join(dist, f));
 }
+
+// 2b) Build id (git sha) — the footer / "Copy settings" read it via window.__BUILD__.
+fs.writeFileSync(path.join(dist, 'build-stamp.js'), `window.__BUILD__ = ${JSON.stringify(gitStamp())};\n`);
 
 // 3) .nojekyll so GitHub Pages serves the assets as-is (no Jekyll build step).
 fs.writeFileSync(path.join(dist, '.nojekyll'), '');

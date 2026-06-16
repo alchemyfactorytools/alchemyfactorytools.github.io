@@ -22,6 +22,7 @@
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  display: flex; flex-direction: column; height: 100vh; overflow: hidden;
 }
 header {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -32,9 +33,17 @@ h1 .muted { color: var(--muted); font-weight: 400; font-size: 14px; }
 .version { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 
-.layout { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 49px); transition: grid-template-columns .15s; }
+.layout { display: grid; grid-template-columns: 320px 1fr; flex: 1; min-height: 0; transition: grid-template-columns .15s; }
 .layout.collapsed { grid-template-columns: 0 1fr; }
 .layout.collapsed .panel { padding: 0; overflow: hidden; border-right: none; }
+.attribution {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 12px;
+  padding: 6px 18px; background: var(--panel); border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 11px; line-height: 1.5;
+}
+.attribution a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.attribution a:hover { color: var(--ink); }
+.attribution .build { margin-left: auto; font-variant-numeric: tabular-nums; opacity: 0.85; }
 #sidebarToggle { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-size: 14px; padding: 2px 8px; margin-right: 6px; }
 #sidebarToggle:hover { border-color: var(--accent); }
 .panel {
