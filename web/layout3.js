@@ -796,6 +796,7 @@
       laneClusters = o.__forceLaneOrder.map((id) => byId.get(id)).filter(Boolean);
     } else if (laneClusters.length > 1 && laneClusters.length <= 8) {
       const cof = cluster.clusterOf;
+      const utilIds = new Set(utilC.map((c) => c.id));
       const we = []; // {a,b: cluster id or null; from,to: node id; w: rate}
       const looseNb = new Map(); // loose node id -> [{c: cluster id, w}]
       const laneEdgesAll = [];
@@ -803,6 +804,13 @@
         const a = cof.get(e.from), b = cof.get(e.to);
         if (a != null && b != null && a !== b) laneEdgesAll.push([a, b]);
         if (e.cash || e.from === e.to || a === b) continue;
+        // A util (fuel/fert) line's lateral position should be driven by where it DISTRIBUTES
+        // its output, not by what supplies it. A heavy heat/nutrient feed INTO a util line
+        // (the Fuel line's Charcoal Powder heating the Fertilizer crucibles, ~142/min) would
+        // otherwise dominate this length metric and park the util box beside its supplier
+        // instead of centred over its own consumers. Drop edges whose DESTINATION is a util
+        // line from the weighted-length term — they still count toward the crossing cap.
+        if (utilIds.has(b)) continue;
         we.push({ a: a == null ? null : a, b: b == null ? null : b, from: e.from, to: e.to, w: e.ratePerMin || 0 });
         if (a == null && b != null) { if (!looseNb.has(e.from)) looseNb.set(e.from, []); looseNb.get(e.from).push({ c: b, w: e.ratePerMin || 0 }); }
         if (b == null && a != null) { if (!looseNb.has(e.to)) looseNb.set(e.to, []); looseNb.get(e.to).push({ c: a, w: e.ratePerMin || 0 }); }
@@ -825,7 +833,6 @@
         }
         return s;
       };
-      const utilIds = new Set(utilC.map((c) => c.id));
       const pre = new Map(laneClusters.map((c, i) => [c.id, i]));
       const disp = (ord, ids) => { let s = 0; ord.forEach((c, i) => { if (!ids || ids.has(c.id)) s += Math.abs(i - pre.get(c.id)); }); return s; };
       const permute = (arr) => arr.length <= 1 ? [arr.slice()] : arr.flatMap((x, i) => permute(arr.slice(0, i).concat(arr.slice(i + 1))).map((p) => [x, ...p]));
