@@ -109,7 +109,12 @@ function makeComposer(db, cfg) {
     // copper-equivalent (sellPrice) as a leaf, not crafted ~free via a depth stage. (Nurseries
     // are also zero-input but produce herbs, not currency, so they stay.)
     if (Object.keys(outputs).every((o) => db.items[o] && db.items[o].category === 'Currency')) continue;
-    // gate: skip recipes whose machine or any input/output is above tier
+    // gate: skip recipes whose machine or any input/output is above tier. The machine check is
+    // load-bearing for grown crops — herbs (Sage t3, Flax t2) carry an explicit item tier BELOW
+    // the Nursery (t4) that grows them, and tiers.js never overrides an explicit tier, so gating
+    // by output tier alone lets a sub-tier Nursery through. (The Cauldron is gated the same way
+    // at cauldronOn below.)
+    if (maxTier != null && r.machine && T.machineTier(r.machine) > maxTier) continue;
     if (Object.keys(outputs).some((o) => !tierOk(o))) continue;
     if (Object.keys(inputs).some((i) => !tierOk(i))) continue;
     for (const out of Object.keys(outputs)) {
