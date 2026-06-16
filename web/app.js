@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'seedplot-tiergate-lanepack-2026-06-15x';
+const BUILD_STAMP = 'fuel-line-furnaces-2026-06-15y';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -620,7 +620,10 @@ function renderGraph(rawGraph) {
       const rateStr = perTile ? ` · ${fmt(perTile)}${c.outItem ? ' ' + c.outItem : ''}/min/tile` : '';
       const idleStr = bp.idle > 0.2 ? ` (${Math.round(bp.idle * 100)}% idle)` : '';
       const cellStr = bp.cell.map((x) => `${x.count}× ${x.label} (${x.machine})`).join(' + ');
-      const ttlText = `Tileable: build ${bp.K} identical tiles, each one = ${cellStr}. ${Math.round(bp.idle * 100)}% of machine capacity idles (build cost only — backpressure means no extra input/fuel).`;
+      const ttlText = (bp.K > 1
+        ? `Tileable: build ${bp.K} identical tiles, each one = ${cellStr}. `
+        : `Single tile (output ≤ one belt): ${cellStr}. `)
+        + `${Math.round(bp.idle * 100)}% of machine capacity idles (build cost only — backpressure means no extra input/fuel).`;
       // line 2 = tile count + per-tile output; line 3 = the cell (its own line so the long
       // machine list doesn't stretch the header sideways across the canvas).
       const subLine = (dy, text) => {
@@ -630,8 +633,14 @@ function renderGraph(rawGraph) {
         const ttl = document.createElementNS(SVGNS, 'title'); ttl.textContent = ttlText; tx.appendChild(ttl);
         cg.appendChild(tx); els.push(tx);
       };
-      subLine(30, `⬢ ${bp.K}× tiles${rateStr}${idleStr}`);
-      subLine(44, `each: ${cellShort}`);
+      if (bp.K > 1) {
+        subLine(30, `⬢ ${bp.K}× tiles${rateStr}${idleStr}`);
+        subLine(44, `each: ${cellShort}`);
+      } else {
+        // single tile = the whole line; skip the "1× tiles" framing
+        subLine(30, `⬢ ${perTile ? `${fmt(perTile)}${c.outItem ? ' ' + c.outItem : ''}/min` : 'single tile'}${idleStr}`);
+        subLine(44, cellShort);
+      }
     }
     if (COLLAPSE_ENABLED && c.key && !c.belt) {
       t.style.cursor = 'pointer';
@@ -798,6 +807,8 @@ function renderGraph(rawGraph) {
     };
     let bandIdx = 0;
     if (n.fuelItem && n.fuelPerMin > 0) drawBand('fuelband', `🔥 ${fmt(n.fuelPerMin)} ${clip(n.fuelItem, 26)}/min`, bandIdx++);
+    // heating devices: the furnaces that host this box's heated machines (it slots into them).
+    if (n.furnaces) drawBand('fuelband', `🏭 ${n.furnaces}× ${clip(n.furnaceItem, 24)}`, bandIdx++);
     if (n.fertItem && n.fertPerMin > 0) drawBand('fertband', `🌱 ${fmt(n.fertPerMin)} ${clip(n.fertItem, 26)}/min`, bandIdx++);
     // co-products a recipe loops back into the same machine (raw in ∩ out) — net inputs
     // already cover them, so there's nothing to route; the band just says "this output
@@ -881,6 +892,7 @@ function makeTitle(n) {
   if (n.machineCount && n.utilization != null) txt += `\n${n.machineCount}× ${n.machine} at ${Math.round(n.utilization * 100)}% utilization\n${fmt(n.ratePerMin)} runs/min`;
   else if (n.machineCount) txt += `\n${n.machineCount}× ${n.machine}\n${fmt(n.ratePerMin)}/min`;
   if (n.nurseryNote) txt += `\n${n.nurseryNote}`;
+  if (n.furnaces) txt += `\nhosted in ${n.furnaces}× ${n.furnaceItem} (heating device)`;
   if (n.badges?.length) txt += `\n[${n.badges.join(', ')}]`;
   t.textContent = txt;
   return t;

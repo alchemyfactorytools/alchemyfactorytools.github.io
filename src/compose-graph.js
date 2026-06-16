@@ -80,6 +80,12 @@ function composeGraph(composed, db, cfg) {
     // recipe / cauldron process node
     const utilization = tile.machineCount && tile.tileLoad != null && tile.nurseryNote == null
       ? tile.tileLoad / tile.machineCount : null; // nurseries are plot-count (null), like flowgraph
+    // heating devices: a heated machine slots into a parent furnace (Stone Furnace etc.). Surface
+    // how many this box needs so the diagram shows the heat generators, not just the heated machines.
+    const fmach = tile.machine ? db.machines[tile.machine] : null;
+    const furn = fmach && fmach.parent ? db.machines[fmach.parent] : null;
+    const furnaceCount = furn && furn.slots && fmach.slotsRequired && tile.machineCount
+      ? Math.ceil(tile.machineCount * fmach.slotsRequired / furn.slots - 1e-9) : 0;
     addNode({
       id: tile.id,
       type: 'process',
@@ -96,6 +102,8 @@ function composeGraph(composed, db, cfg) {
       // supply bands (and the trunk edges, wired after the walk)
       fuelItem: tile.fuelPerMin > 0 ? composed.summary.fuelItem : null,
       fuelPerMin: tile.fuelPerMin || 0,
+      furnaces: furnaceCount || null,
+      furnaceItem: furnaceCount ? fmach.parent : null,
       fertItem: tile.fertPerMin > 0 ? composed.summary.fertItem : null,
       fertPerMin: tile.fertPerMin || 0,
       // items the recipe loops back into itself — shown as a "↻ recirculated" band so a
@@ -147,7 +155,10 @@ function composeGraph(composed, db, cfg) {
     if (trunk.prodTile) srcs.push({ id: trunk.prodTile._gid, share: trunk.prodRate / trunk.rate });
     return srcs;
   };
-  if (composed.fuel && composed.fuel.prodTile) composed.fuel.prodTile._gid = walk(composed.fuel.prodTile);
+  // Self-fueling line (target IS the fuel carrier): the fuel trunk's prodTile is the SAME object as
+  // the main tree — reuse its already-walked root id rather than re-walking (which would duplicate
+  // every node/edge). The fuel edges below then loop from the line's root → its own heated machines.
+  if (composed.fuel && composed.fuel.prodTile) composed.fuel.prodTile._gid = composed.fuel.prodTile === composed.tree ? rootId : walk(composed.fuel.prodTile);
   if (composed.fert && composed.fert.prodTile) composed.fert.prodTile._gid = walk(composed.fert.prodTile);
   const fuelSrcs = trunkSources(composed.fuel, 'fuel');
   const fertSrcs = trunkSources(composed.fert, 'fert');

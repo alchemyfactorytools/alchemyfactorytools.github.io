@@ -429,7 +429,12 @@
     // (ceil(termTotal/K)) rather than filling each to the belt and stranding the last — minimal idle.
     const termTotal = Math.max(1, Math.ceil(termLoad - 1e-6));
     const perBelt = transportCap > 0 ? Math.max(1, Math.floor(transportCap / s + 1e-6)) : Infinity;
-    const K = Math.min(200, Math.max(1, Math.ceil(termTotal / perBelt - 1e-6)));
+    // Cap tiles by the NET output belt count — never split a line into more tiles than its external
+    // output needs belts. A self-fueling line's terminal machines run at GROSS (incl. self-fuel that
+    // never leaves the line), so termTotal/perBelt over-tiles a line whose deliverable output is ≤ one
+    // belt (a Charcoal Powder fuel line: 60 net = 1 belt, but 7 gross Grinders would otherwise → 2 tiles).
+    const netBelts = transportCap > 0 ? Math.max(1, Math.ceil(outRate / transportCap - 1e-6)) : Infinity;
+    const K = Math.min(200, Math.max(1, Math.ceil(termTotal / perBelt - 1e-6)), netBelts);
     const tTerm = Math.max(1, Math.ceil(termTotal / K - 1e-6));
     // feeders sized so a tile's terminal machines run at 100%: f = terminal machines per tile / total.
     const { cell, total } = mkCell(K, tTerm / termLoad);

@@ -565,6 +565,19 @@ function makeComposer(db, cfg) {
     return into;
   }
 
+  // Heated machines slot into a parent furnace (the heat generator / "heating device"): a Stone
+  // Furnace has `slots`; a Crucible needs slotsRequired 3, a Kiln 6. Sum the slots each furnace
+  // type must host so compose() can count the PHYSICAL furnaces = ceil(slotsUsed / slots). Furnaces
+  // are shared across heated machine types (one Stone Furnace can hold a Kiln + a Crucible).
+  function tallyFurnaceSlots(tile, into) {
+    const m = tile.machine && tile.machineCount ? machines[tile.machine] : null;
+    if (m && m.parent && m.slotsRequired && machines[m.parent] && machines[m.parent].slots) {
+      into[m.parent] = (into[m.parent] || 0) + tile.machineCount * m.slotsRequired;
+    }
+    for (const c of tile.inputs || []) tallyFurnaceSlots(c, into);
+    return into;
+  }
+
   // compose(target, rate) → { tree, fuel, fert, totals, summary }. Builds the replicated material
   // tree, then sizes the three shared trunks. Fuel/fert/money draws are LINEAR in rate (pre-ceil),
   // and the fuel/fert carriers THEMSELVES draw heat/nutrient (a Growth-Potion fert tile is heated;
@@ -573,6 +586,28 @@ function makeComposer(db, cfg) {
   // resolved rates. Money has no such feedback (buying doesn't cost heat), so it's a plain sum.
   function compose(target, rate) {
     solve();
+
+    // Trunk unit draws + belt caps (independent of the main tree) — computed up front because the
+    // self-fueling-line collapse must know GROSS before building anything.
+    const trunkUnit = (carrier) => {
+      if (!carrier) return null;
+      const a = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {}, carrierMaterial: {}, carrierMaterialFeeds: [] };
+      buildTree(carrier, 1, `${carrier}#unit`, new Set(), a, null, null, false);
+      return { h: a.heatPerMin, n: a.nutrientPerMin };
+    };
+    const uFuel = fuelHeatPerUnit > 0 ? trunkUnit(fuelItem) : null;
+    const uFert = fertNutrientPerUnit > 0 ? trunkUnit(fertCarrier) : null;
+    const fuelCap = steamOn && fuelItem ? Infinity : (fuelItem ? beltCapFor(fuelItem) : 0);
+    const fertCap = fertCarrier ? beltCapFor(fertCarrier) : 0;
+    // Self-fueling line: when the TARGET *is* the fuel carrier, one over-producing line feeds its own
+    // heated machines — no separate fuel trunk (the target line and the trunk would otherwise be two
+    // copies of the same item). kf = fuel burned per carrier unit produced (uFuel.h/fuelHeatPerUnit);
+    // GROSS = rate/(1-kf), NET out = rate, self-fuel = GROSS-rate looped back to its own furnaces.
+    // kf<1 ⇒ the carrier nets positive fuel (else it can't self-sustain → fall back to the normal path).
+    // Skipped under central steam or a belt cap, where the heat is sourced elsewhere.
+    const kf = uFuel && fuelHeatPerUnit > 0 ? uFuel.h / fuelHeatPerUnit : 0;
+    const selfFuelLine = !!(fuelItem && target === fuelItem && !steamOn && !(fuelCap > 0) && kf > 1e-9 && kf < 1 - 1e-9);
+    const grossRate = selfFuelLine ? rate / (1 - kf) : rate;
 
     // Phase 7 — WITHIN-TILE co-product reuse (ALWAYS on, including trash mode). A co-product offsets
     // dedicated production of the same item elsewhere in the SAME tree: the Sand thrown off making
@@ -587,7 +622,7 @@ function makeComposer(db, cfg) {
     {
       let prev = null;
       for (let i = 0; i < 8; i++) {
-        const probe = buildTree(target, rate, target, new Set(), freshAcc(), new Map(coBudget), null);
+        const probe = buildTree(target, grossRate, target, new Set(), freshAcc(), new Map(coBudget), null);
         const measured = measureCoSupply(probe, new Map());
         if (prev && mapsClose(measured, prev)) break;
         prev = measured; coBudget = measured;
@@ -596,7 +631,7 @@ function makeComposer(db, cfg) {
 
     const acc = freshAcc();
     const coFeeds = []; // { item, rate, consumerId } — claimed cross-tile co-product draws (graph wiring)
-    const tree = buildTree(target, rate, target, new Set(), acc, new Map(coBudget), coFeeds);
+    const tree = buildTree(target, grossRate, target, new Set(), acc, new Map(coBudget), coFeeds);
     const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
     // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
     // fires when beltCap 0), so it adds to the dedicated trunk's output AND draws self-heat/nutrient
@@ -605,24 +640,12 @@ function makeComposer(db, cfg) {
     const Mf = (fuelItem && acc.carrierMaterial[fuelItem]) || 0;
     const Mg = (fertCarrier && acc.carrierMaterial[fertCarrier]) || 0;
 
-    // unit draws: build each trunk at 1 carrier/min to read how much heat/nutrient it itself needs.
-    const trunkUnit = (carrier) => {
-      if (!carrier) return null;
-      const a = { heatPerMin: 0, nutrientPerMin: 0, copperPerMin: 0, mintedCoins: {}, carrierMaterial: {}, carrierMaterialFeeds: [] };
-      buildTree(carrier, 1, `${carrier}#unit`, new Set(), a, null, null, false);
-      return { h: a.heatPerMin, n: a.nutrientPerMin };
-    };
-    const uFuel = fuelHeatPerUnit > 0 ? trunkUnit(fuelItem) : null;
-    const uFert = fertNutrientPerUnit > 0 ? trunkUnit(fertCarrier) : null;
-
     // Belt rate caps: belt supplies up to its rate (free utility), the build PRODUCES the rest.
     // Only the PRODUCED part (Pf, Pg) burns fuel / draws fert (the belt supply doesn't), so just the
     // produced part feeds back in the fixpoint. cap = Infinity (belted, no rate) ⇒ all belt, no
     // feedback; cap = 0 (not belted) ⇒ all produced, full feedback.
     // Central steam fully supplies the fuel trunk (cap Infinity) → produced part Pf = 0, so no fuel
     // production line / furnaces / self-fuel loops; heat is drawn from the central steam source.
-    const fuelCap = steamOn && fuelItem ? Infinity : (fuelItem ? beltCapFor(fuelItem) : 0);
-    const fertCap = fertCarrier ? beltCapFor(fertCarrier) : 0;
     let F = 0, G = 0;
     for (let i = 0; i < 24; i++) {
       const Pf = Math.max(0, F - fuelCap), Pg = Math.max(0, G - fertCap);
@@ -662,13 +685,32 @@ function makeComposer(db, cfg) {
       return { item, rate: total, beltRate: beltRateUsed, prodRate, prodTile };
     };
     // total trunk = fuel/fert demand + the merged carrier-as-material demand (Mf/Mg, all produced).
-    const fuel = splitTrunk(fuelItem, F + Mf, fuelCap, 'fuel');
+    // Self-fueling line: the target line IS the fuel source (built at GROSS above), so there is no
+    // separate fuel trunk — point the trunk at the target tree itself; compose-graph then wires the
+    // heat edges as a self-loop (line output → its own furnaces). The NET belt output is `rate`.
+    const fuel = selfFuelLine
+      ? { item: fuelItem, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFuelLine: true, netRate: rate, selfFuel: grossRate - rate }
+      : splitTrunk(fuelItem, F + Mf, fuelCap, 'fuel');
     const fert = splitTrunk(fertCarrier, G + Mg, fertCap, 'fert');
 
     const machineTotals = {};
     tallyMachines(tree, machineTotals);
-    if (fuel && fuel.prodTile) tallyMachines(fuel.prodTile, machineTotals);
-    if (fert && fert.prodTile) tallyMachines(fert.prodTile, machineTotals);
+    // Skip the fuel trunk's prodTile when it IS the main tree (self-fueling line) — else we'd
+    // double-count the single line's machines.
+    if (fuel && fuel.prodTile && fuel.prodTile !== tree) tallyMachines(fuel.prodTile, machineTotals);
+    if (fert && fert.prodTile && fert.prodTile !== tree) tallyMachines(fert.prodTile, machineTotals);
+    // Heating devices: count the parent furnaces that host the heated machines (slot-packed),
+    // so the build shows e.g. "2× Stone Furnace" behind the 4 Crucibles. The leftover slots in
+    // the last (partial) furnace are the source of the "awkward count" — they still get built.
+    const furnaceSlots = {};
+    tallyFurnaceSlots(tree, furnaceSlots);
+    if (fuel && fuel.prodTile && fuel.prodTile !== tree) tallyFurnaceSlots(fuel.prodTile, furnaceSlots);
+    if (fert && fert.prodTile && fert.prodTile !== tree) tallyFurnaceSlots(fert.prodTile, furnaceSlots);
+    const furnaces = {};
+    for (const [fname, used] of Object.entries(furnaceSlots)) {
+      const fc = Math.ceil(used / machines[fname].slots - 1e-9);
+      if (fc > 0) { furnaces[fname] = fc; machineTotals[fname] = (machineTotals[fname] || 0) + fc; }
+    }
 
     const totals = { heatPerMin: heatMain, nutrientPerMin: nutrientMain, fuelPerMin: F, fertPerMin: G, copperPerMin: acc.copperPerMin, mintedCoins: acc.mintedCoins };
     const summary = {
@@ -676,6 +718,7 @@ function makeComposer(db, cfg) {
       operatingCopperPerMin: opCostOf(target) * rate, // opCost × rate — the per-min material drain
       copperPerMin: acc.copperPerMin,                  // total copper drawn from the money line
       machineTotals,
+      furnaces,                                        // { "Stone Furnace": 2 } — heating devices hosting the heated machines
       fuelItem, fertItem: fertCarrier,
       fuelPerMin: F, fertPerMin: G,
       mintedCoins: acc.mintedCoins,                    // coins/min minted → must link to the belt money line
