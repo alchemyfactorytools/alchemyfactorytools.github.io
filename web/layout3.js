@@ -1210,15 +1210,20 @@
         if (!ins.length) continue;
         const c = ins.reduce((s, q) => s + crossCtr(q), 0) / ins.length;
         const newLead = c - span / 2;
-        // Centre on the inputs even when the row is shared — the old guard bailed whenever ANY
-        // node sat in this flow row, even one in a distant lane (a fuel tower's same-depth node)
-        // the centred producer never overlaps, leaving it stranded in the far unclustered band.
-        // Only skip if the centred position would actually COLLIDE with a same-row neighbour.
-        const r = rank.get(id);
+        // Centre on the inputs even when the row is shared — only skip if the centred position
+        // would actually COLLIDE with a same-row neighbour. "Same row" = same FLOW position, NOT
+        // same rank: spineDrop drops the product/demand spine rows below the top-pinned util
+        // boxes, so a util line's output node and a deep demand can share a rank yet sit in
+        // completely different flow rows. Comparing rank stranded the target whenever a util
+        // line's output happened to land at its rank (Linen Rope: the demand collided with
+        // Basic Fertilizer#fert sitting two screens above it). Compare actual flow instead.
+        const myFlow = orientation === 'TB' ? p.y : p.x;
         let collides = false;
         for (const oid of pos.keys()) {
-          if (oid === id || rank.get(oid) !== r) continue;
-          const ol = lead(pos.get(oid));
+          if (oid === id) continue;
+          const op = pos.get(oid);
+          if (Math.abs((orientation === 'TB' ? op.y : op.x) - myFlow) > 1) continue;
+          const ol = lead(op);
           if (newLead < ol + span + GAP_CROSS && ol < newLead + span + GAP_CROSS) { collides = true; break; }
         }
         if (collides) continue;
