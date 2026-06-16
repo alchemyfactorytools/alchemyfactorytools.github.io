@@ -17,7 +17,7 @@
       <!-- PRIMARY: what to build, how, and go -->
       <section>
         <h2>Target</h2>
-        <label>Unlock tier <small>(limits recipes + the output list to your tier)</small>
+        <label>Unlock tier <span class="info" data-tip="Limits recipes + the output list to your tier">i</span>
           <select id="maxTier">
             <option value="">All unlocked</option>
             <option value="1">Tier 1</option>
@@ -31,7 +31,7 @@
             <option value="9">Tier 9</option>
           </select>
         </label>
-        <label class="cap">Output <small>(pick a product, set a rate or # of machines — add more for one shared factory)</small></label>
+        <label class="cap">Output <span class="info" data-tip="Pick a product, set a rate or # of machines — add more for one shared factory">i</span></label>
         <!-- Each target is a two-row block: the product picker (tier-filtered <select>) on top, then
              "@ qty unit". The first is required; "+ add target" appends more (Tile composer only — they
              share the fuel/fert trunks + surplus co-products). -->
@@ -52,7 +52,7 @@
         <div id="extraTargets" class="target-rows"></div>
         <button type="button" id="addTarget" class="secondary add-target">+ add target</button>
         <p class="hint" id="multiHint" style="display:none">Extra targets build side by side, sharing fuel, fertilizer, and surplus co-products. <b>Tile composer only.</b></p>
-        <label id="dispatchRow" style="display:none">Dispatch day length <small>(min, base 16 — raised by potion-belt level)</small>
+        <label id="dispatchRow" style="display:none">Dispatch day length <span class="info" data-tip="Minutes, base 16 — raised by potion-belt level">i</span>
           <input type="number" id="dispatchDayLen" value="16" min="1" step="any">
           <p class="hint" id="dispatchHint"></p>
         </label>
@@ -61,7 +61,7 @@
 
       <section>
         <h2>Solver</h2>
-        <label>Build method <small>(how the build is chosen)</small>
+        <label>Build method <span class="info" data-tip="How the build is chosen">i</span>
           <select id="solver">
             <option value="lp">Optimizer — global min-copper (LP)</option>
             <option value="composer" selected>Tile composer — deterministic simplest tiles</option>
@@ -90,12 +90,12 @@
       <section>
         <h2>Skills</h2>
         <div class="skills-grid">
-          <label>Factory<input type="number" id="sk_factory" value="0" min="0" step="1"></label>
-          <label>Logistics<input type="number" id="sk_logistics" value="0" min="0" step="1"></label>
-          <label>Alchemy<input type="number" id="sk_alchemy" value="0" min="0" step="1"></label>
-          <label>Fuel<input type="number" id="sk_fuel" value="0" min="0" step="1"></label>
-          <label>Fertilizer<input type="number" id="sk_fertilizer" value="0" min="0" step="1"></label>
-          <label>Negotiation<input type="number" id="sk_negotiation" value="0" min="0" step="1"><small>dispatch caps</small></label>
+          <label>Factory <span class="info" data-tip="Machine crafting speed: +25% per level (first 12, then +5%). Faster machines → fewer needed.">i</span><input type="number" id="sk_factory" value="0" min="0" step="1"></label>
+          <label>Logistics <span class="info" data-tip="Belt capacity: 60/min base, +15 per level (first 12, then +3). Also caps Nursery grow speed.">i</span><input type="number" id="sk_logistics" value="0" min="0" step="1"></label>
+          <label>Alchemy <span class="info" data-tip="Cauldron / alchemy output yield: +6–10% per level (more at higher levels).">i</span><input type="number" id="sk_alchemy" value="0" min="0" step="1"></label>
+          <label>Fuel <span class="info" data-tip="Heat per unit of fuel: +10% per level. Hotter fuel → less burned.">i</span><input type="number" id="sk_fuel" value="0" min="0" step="1"></label>
+          <label>Fertilizer <span class="info" data-tip="Nutrient potency per unit of fertilizer: +10% per level. Less fert per plot.">i</span><input type="number" id="sk_fertilizer" value="0" min="0" step="1"></label>
+          <label>Negotiation <span class="info" data-tip="Dispatch quota: raises each Dispatch Portal's daily max by +25% per level. Only affects '× dispatch' targets.">i</span><input type="number" id="sk_negotiation" value="0" min="0" step="1"></label>
         </div>
       </section>
 
@@ -117,10 +117,10 @@
               <option value="growables">Growables only (Nursery herbs)</option>
             </select>
           </label>
-          <label>Never cauldron these <small>(comma-separated)</small>
+          <label>Never cauldron these <span class="info" data-tip="Comma-separated item names">i</span>
             <input type="text" id="forbidCauldron" placeholder="e.g. Obsidian">
           </label>
-          <label>Only cauldron these <small>(must have a cauldron target)</small>
+          <label>Only cauldron these <span class="info" data-tip="Must have a cauldron target">i</span>
             <input type="text" id="forceCauldron" placeholder="e.g. Impure Copper Powder">
           </label>
         </section>
@@ -134,7 +134,7 @@
               <option value="trash">Trash (discard, no credit)</option>
             </select>
           </label>
-          <label>Trash only these <small>(comma-separated)</small>
+          <label>Trash only these <span class="info" data-tip="Comma-separated item names">i</span>
             <input type="text" id="byproductTrash" placeholder="e.g. Crude Silver Powder">
           </label>
         </section>
@@ -166,7 +166,7 @@
           <section>
             <h2>Optimizer (LP) tuning</h2>
             <p class="hint">These affect the LP optimizer only — the tile composer ignores them.</p>
-            <label>Optimize for <small>(cost ↔ easiest to build)</small>
+            <label>Optimize for <span class="info" data-tip="Trade cost against ease of building (cost ↔ easiest to build)">i</span>
               <select id="buildability">
                 <option value="0" selected>Cheapest — pure min copper</option>
                 <option value="1">Balanced — waste up to 1× per-item cost</option>
@@ -174,10 +174,10 @@
                 <option value="1000">Simplest — easiest to build, cost barely matters</option>
               </select>
             </label>
-            <label>Override: ignore cost gaps under <small>(absolute copper per item — wins over the dropdown)</small>
+            <label>Override: ignore cost gaps under <span class="info" data-tip="Absolute copper per item — wins over the dropdown above">i</span>
               <input type="number" id="costTolerance" value="0" min="0" step="any" placeholder="0 = use dropdown">
             </label>
-            <label>Discourage cauldron→cauldron <small>(weight on feeding a cauldron's output into another)</small>
+            <label>Discourage cauldron→cauldron <span class="info" data-tip="Weight on feeding a cauldron's output into another">i</span>
               <select id="cauldronChain">
                 <option value="0" selected>Off — allow cauldron chains</option>
                 <option value="0.5">Light — prefer non-cauldron inputs</option>
@@ -185,7 +185,7 @@
                 <option value="4">Strong — chain only if far cheaper</option>
               </select>
             </label>
-            <label>Farm penalty <small>(extra build cost on Nurseries + Cauldrons)</small>
+            <label>Farm penalty <span class="info" data-tip="Extra build cost on Nurseries + Cauldrons">i</span>
               <select id="farmPenalty">
                 <option value="0">None — farm freely</option>
                 <option value="1">Light (2×)</option>
@@ -193,7 +193,7 @@
                 <option value="8">Heavy (9×) — avoid the farm</option>
               </select>
             </label>
-            <label>Machines per type <small>(capacity bound)</small>
+            <label>Machines per type <span class="info" data-tip="Capacity bound — max machines of each type">i</span>
               <input type="number" id="machines" value="1000" min="1" step="1">
             </label>
             <label class="check"><input type="checkbox" id="capital" checked> Count machine build cost</label>
