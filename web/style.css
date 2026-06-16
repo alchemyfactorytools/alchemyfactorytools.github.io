@@ -71,7 +71,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
    option label like "dispatch quota" never overflows the sidebar instead of widening the row. */
 .rate-row input { flex: 0 1 90px; min-width: 0; }
 .rate-row select { flex: 1 1 auto; min-width: 0; }
-.skills-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.skills-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 .skills-grid label { gap: 2px; }
 .skills-grid input { width: 100%; }
 .hint { font-size: 11px; color: var(--muted); margin: 0; }
