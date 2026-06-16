@@ -25,7 +25,7 @@ const contracts = require('./data/contracts.json'); // Dispatch Portal contract 
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can
 // prove whether the browser and the running server agree on the code version.
-const SERVER_STAMP = 'fuel-line-furnaces-2026-06-15y';
+const SERVER_STAMP = 'toolbar-fit-2026-06-15z';
 const SERVER_STARTED = new Date().toISOString();
 
 const PORT = Number(process.argv[2] ?? 8347);

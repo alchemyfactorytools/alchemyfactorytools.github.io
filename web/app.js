@@ -2,7 +2,7 @@
 
 // Bump on every app.js change. Echoed by "Copy settings" and compared against the
 // server's stamp (/api/items) so a stale-asset mismatch is obvious in a bug report.
-const BUILD_STAMP = 'fuel-line-furnaces-2026-06-15y';
+const BUILD_STAMP = 'toolbar-fit-2026-06-15z';
 
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -905,8 +905,14 @@ function fitView() {
   const bb = vp.getBBox();
   const svg = $('graph'); const w = svg.clientWidth, h = svg.clientHeight;
   if (!bb.width || !bb.height) return;
-  const k = Math.min(w / (bb.width + 60), h / (bb.height + 60), 1.4);
-  viewState = { k, x: (w - bb.width * k) / 2 - bb.x * k, y: (h - bb.height * k) / 2 - bb.y * k };
+  // Reserve space for the floating toolbar + legend (top-left, z-index 2) so the initial fit
+  // doesn't park the diagram underneath them. Measured from the element since it wraps to two
+  // rows on narrow panels; the diagram is then fit + centred in the area BELOW it.
+  const tb = document.querySelector('.graph-toolbar');
+  const topPad = tb ? tb.offsetTop + tb.offsetHeight + 8 : 16;
+  const availH = Math.max(40, h - topPad);
+  const k = Math.min(w / (bb.width + 60), availH / (bb.height + 60), 1.4);
+  viewState = { k, x: (w - bb.width * k) / 2 - bb.x * k, y: topPad + (availH - bb.height * k) / 2 - bb.y * k };
   applyView();
 }
 (function setupPanZoom() {
