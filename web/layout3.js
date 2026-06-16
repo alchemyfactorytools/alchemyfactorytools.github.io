@@ -1075,6 +1075,7 @@
       if (e.heat || e.nutrient || e.cash || e.from === e.to) continue;
       if ((nodeMap.get(e.to) || {}).type === 'demand') demandFanIn.set(e.to, (demandFanIn.get(e.to) || 0) + 1);
     }
+    let didCompact = false; // set by the 2D compaction pass below (after positions are known)
     const pos = new Map();
     cols.forEach((c, r) => {
       if (!c) return;
@@ -1091,6 +1092,53 @@
         else pos.set(n.id, { x: flow, y: cross, w: NODE_W, h: NODE_H });
       }
     });
+
+    // 2D COMPACTION (vertical nesting). A util (fuel/fert) line is pinned to the top, with the
+    // product/shared spine dropped `spineDrop` (≥2) rows below it, so a util line never overlaps
+    // a product line in flow — it can slide along the cross-axis to share a product's band,
+    // reclaiming the dead space a narrow, deep product line leaves above it (the lone target
+    // whose Fertilizer line floated off to the side with the first column empty). Slide each
+    // util line toward the rate-weighted centre of the consumers it FEEDS — measured from the
+    // FINAL positions, so an unclustered consumer (e.g. the target's own producer) is read where
+    // it actually renders, not at a stale lane estimate. LEFT-only (never widens) and skylined
+    // past any earlier-placed util line it overlaps in flow, processed left-to-right so the
+    // skyline can only restore toward the original packing, never past it. It only PROPOSES the
+    // move: the verify at the end re-renders flat and keeps it only if it didn't drag more flow
+    // across boxes — a column that looks empty can still carry a long belt/money edge down to a
+    // deep purchase, and dropping a util box onto that edge is the overlap we must reject.
+    if (!o.__noCompact) {
+      const caxis = orientation === 'TB' ? 'x' : 'y', faxis = orientation === 'TB' ? 'y' : 'x';
+      const cdim = orientation === 'TB' ? NODE_W : NODE_H, fdim = orientation === 'TB' ? NODE_H : NODE_W;
+      const utilCs = cluster.clusters.filter(isUtil).map((c) => {
+        const mem = (c.members || []).filter((m) => pos.get(m));
+        if (!mem.length) return null;
+        const ps = mem.map((m) => pos.get(m));
+        return { id: c.id, mem, cMin: Math.min(...ps.map((p) => p[caxis])), cMax: Math.max(...ps.map((p) => p[caxis])),
+          fMin: Math.min(...ps.map((p) => p[faxis])), fMax: Math.max(...ps.map((p) => p[faxis] + fdim)) };
+      }).filter(Boolean).sort((a, b) => a.cMin - b.cMin);
+      const memberOf = new Map();
+      for (const u of utilCs) for (const m of u.mem) memberOf.set(m, u.id);
+      const placed = [];
+      for (const u of utilCs) {
+        const width = u.cMax - u.cMin + cdim;
+        let sw = 0, sc = 0; // rate-weighted centre of the consumers this line feeds
+        for (const e of graph.edges) {
+          if (e.cash || e.from === e.to || memberOf.get(e.from) !== u.id) continue;
+          if (memberOf.get(e.to) === u.id) continue;
+          const pt = pos.get(e.to); if (!pt) continue;
+          const w = e.ratePerMin || 0; sw += w; sc += w * (pt[caxis] + cdim / 2);
+        }
+        let left = sw > 0 ? Math.min(u.cMin, Math.max(0, sc / sw - width / 2)) : u.cMin; // left-only
+        for (const p of placed) { // clear any earlier-placed util line we overlap in flow
+          if (!(u.fMax < p.fMin || p.fMax < u.fMin) && left < p.left + p.width + LANE_GAP && left + width > p.left) {
+            left = Math.max(left, p.left + p.width + LANE_GAP);
+          }
+        }
+        const delta = left - u.cMin;
+        if (Math.abs(delta) > 1e-6) { didCompact = true; for (const m of u.mem) pos.get(m)[caxis] += delta; }
+        placed.push({ left, width, fMin: u.fMin, fMax: u.fMax });
+      }
+    }
 
     // utility bands: lay each fuel/fertilizer line as a horizontal strip (in TB) /
     // vertical strip (in LR) just under the belt, members ordered by their internal
@@ -1440,22 +1488,39 @@
       };
       return si(ax, ay, bx, by, rx, ry, X2, ry) || si(ax, ay, bx, by, X2, ry, X2, Y2) || si(ax, ay, bx, by, X2, Y2, rx, Y2) || si(ax, ay, bx, by, rx, Y2, rx, ry);
     };
-    let __boxCross = 0;
+    // __boxCross drives the lane-REORDER verify and excludes cash edges (they fan from the belt
+    // to every purchase, so counting them would swamp the signal). __boxCrossAll adds cash back
+    // in and drives the COMPACTION verify, where a long money edge crossing a slid util box is
+    // exactly the overlap we must catch.
+    let __boxCross = 0, __boxCrossAll = 0;
     for (const e of graph.edges) {
-      if (e.from === e.to || e.cash) continue;
+      if (e.from === e.to) continue;
       const pa = pos.get(e.from), pb = pos.get(e.to); if (!pa || !pb) continue;
       const ax = pa.x + pa.w / 2, ay = pa.y + pa.h / 2, bx = pb.x + pb.w / 2, by = pb.y + pb.h / 2;
       for (const box of clusterBoxes) {
         if (!box.members || box.belt) continue;
         if (box.members.indexOf(e.from) >= 0 || box.members.indexOf(e.to) >= 0) continue;
-        if (segHitsRect(ax, ay, bx, by, box.x, box.y, box.w, box.h)) __boxCross += (e.ratePerMin || 0) + 1;
+        if (segHitsRect(ax, ay, bx, by, box.x, box.y, box.w, box.h)) {
+          const w = (e.ratePerMin || 0) + 1;
+          __boxCrossAll += w;
+          if (!e.cash) __boxCross += w;
+        }
       }
     }
+    let chosen = { pos, edges, recycle, clusters: clusterBoxes, trunks, trunkedEdges, width, height, orientation, nodeW: NODE_W, nodeH: NODE_H, __boxCross, __boxCrossAll };
     if (laneCandidateIds && !o.__forceLaneOrder) {
       const candL = layout(graph, Object.assign({}, o, { __forceLaneOrder: laneCandidateIds }));
-      if (candL.__boxCross < __boxCross - 1e-6) return candL; // adopt the reorder only if it cuts less flow across boxes
+      if (candL.__boxCross < chosen.__boxCross - 1e-6) chosen = candL; // adopt the reorder only if it cuts less flow across boxes
     }
-    return { pos, edges, recycle, clusters: clusterBoxes, trunks, trunkedEdges, width, height, orientation, nodeW: NODE_W, nodeH: NODE_H, __boxCross };
+    // Compaction verify: the vertical-nesting slide can drop a util box onto a long belt/money
+    // edge running down its target column (a column that looked empty wasn't). Re-render flat
+    // (no compaction) and fall back to it only if the slide dragged STRICTLY more flow across
+    // boxes — so a clean slide (its target column truly free) is kept.
+    if (didCompact && !o.__noCompact && !o.__forceLaneOrder) {
+      const flat = layout(graph, Object.assign({}, o, { __noCompact: true }));
+      if (flat.__boxCrossAll < chosen.__boxCrossAll - 1e-6) chosen = flat;
+    }
+    return chosen;
   }
 
   // Smooth cubic link between a start and end anchor (horizontal tangents in LR,

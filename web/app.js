@@ -842,7 +842,12 @@ function renderGraph(rawGraph) {
     path.setAttribute('marker-end', 'url(#arrow)');
     g.appendChild(path);
     const m = ENGINE.edgeMid(eo);
-    const label = `${e.coproduct ? '♻ ' : ''}${e.item} ${fmt(e.ratePerMin)}`;
+    // Split the flow per-tile + total when the PRODUCER is a tiled line (K>1), matching the
+    // node sub-lines — "Flax 180 per tile · 360 total". A single producer keeps the bare total.
+    const fromTile = tileByKey.get(clOf.get(e.from));
+    const eK = fromTile && fromTile.K > 1 ? fromTile.K : 1;
+    const rateStr = eK > 1 ? `${fmt(e.ratePerMin / eK)} per tile · ${fmt(e.ratePerMin)} total` : `${fmt(e.ratePerMin)}`;
+    const label = `${e.coproduct ? '♻ ' : ''}${e.item} ${rateStr}`;
     for (const cls of ['bg', '']) {
       const t = document.createElementNS(SVGNS, 'text');
       t.setAttribute('x', m.x); t.setAttribute('y', m.y - 3);
@@ -914,17 +919,23 @@ function renderGraph(rawGraph) {
       t.textContent = badgeText;
       g.appendChild(t);
     }
-    // sub-line carries machine count + utilization + throughput together
+    // sub-line carries machine count + throughput (utilization is a separate corner flag below)
     const subY = titleLines.length === 2 ? 50 : 37;
     const sub = document.createElementNS(SVGNS, 'text');
     sub.setAttribute('x', 10); sub.setAttribute('y', subY); sub.setAttribute('class', 'sub');
     let subText = '';
+    let subClip = 40; // node-width budget; the tiled split below carries four numbers, so it gets more
     if (n.kind === 'group') subText = `${n.collapsedCount} steps${n.blueprint ? ` · ⬢ ${n.blueprint.K}× cell` : ''}${n.machineCount ? ` · ${n.machineCount} machines` : ''} — click to expand`;
-    // tiled line: lead with the per-tile count, then the total to build (machine name is
-    // already in the promoted header) — "2× per tile · 8× total · 100/min".
-    else if (pt) subText = `${pt.perTile}× per tile · ${pt.total}× total${n.utilization != null ? ` (${Math.round(n.utilization * 100)}%)` : ''} · ${fmt(n.ratePerMin)}/min`;
-    else if (n.machineCount && n.utilization != null) subText = `${n.machineCount}× ${promote ? '' : n.machine + ' '}(${Math.round(n.utilization * 100)}%) · ${fmt(n.ratePerMin)}/min`;
-    else if (n.machineCount) subText = `${n.machineCount}× ${promote ? '' : n.machine + ' '}· ${fmt(n.ratePerMin)}/min`; // nursery: plot count, no time-util
+    // tiled line (K>1): pair each machine count with its throughput at that scope so the rate
+    // is unambiguous — "3× 180/min per tile · 6× 360/min total". ratePerMin is the line total;
+    // the per-tile rate is that split across the K identical tiles. Single-tile lines (K=1)
+    // fall through: per-tile == total there, so the plain machine-count branch reads cleaner.
+    else if (pt && pt.K > 1) {
+      const perTileRate = n.ratePerMin / pt.K;
+      subText = `${pt.perTile}× ${fmt(perTileRate)}/min per tile · ${pt.total}× ${fmt(n.ratePerMin)}/min total`;
+      subClip = 46; // four numbers, digit/symbol-heavy — fits the 260px node (utilization moved to the corner flag)
+    }
+    else if (n.machineCount) subText = `${n.machineCount}× ${promote ? '' : n.machine + ' '}· ${fmt(n.ratePerMin)}/min`; // utilization moved to the bottom-left corner flag below
     else if (n.machine) subText = `${n.machine} · ${fmt(n.ratePerMin)}/min`;
     else if (n.kind === 'belt' && n.supplyRate != null) subText = `${fmt(n.ratePerMin)}/min drawn · ${fmt(n.supplyRate)}/min belt supply${n.beltLanes ? ` · ${n.beltLanes} belt${n.beltLanes > 1 ? 's' : ''}` : ''}`;
     else if (n.kind === 'belt' && n.beltLanes) subText = `${fmt(n.ratePerMin)}/min · ${n.beltLanes} belt${n.beltLanes > 1 ? 's' : ''} @ ${fmt(n.beltSpeed)}/min`;
@@ -933,7 +944,7 @@ function renderGraph(rawGraph) {
     else if (n.type === 'resource') subText = `${fmt(n.ratePerMin)}/min → ${n.consumerCount} machines`;
     else if (n.type === 'surplus') subText = `${fmt(n.ratePerMin)}/min`;
     else if (n.type === 'trash') subText = `${fmt(n.ratePerMin)}/min wasted`;
-    sub.textContent = clip(subText, 40);
+    sub.textContent = clip(subText, subClip);
     g.appendChild(sub);
     // heat/nutrient a machine draws from the pool — shown only on count-less
     // nodes (Nursery crops) where the sub-line is short enough to not collide
@@ -978,6 +989,16 @@ function renderGraph(rawGraph) {
     // already cover them, so there's nothing to route; the band just says "this output
     // recirculates, not an unhandled byproduct".
     if (n.recirc) for (const rc of n.recirc) drawBand('recircband', `♻ ${fmt(rc.ratePerMin)} ${clip(rc.item, 24)}/min recirculated`, bandIdx++);
+    // Utilization flag: surfaced only when a machine/tile runs notably under capacity (<90%),
+    // so the common fully-loaded case shows nothing. Lives top-right on the title row — the
+    // bottom-left collides with the fuel/fert bands, and the title row's right side is always
+    // free on process nodes (they carry no badge), so it reads as a clean status chip there.
+    if (n.utilization != null && Math.round(n.utilization * 100) < 90) {
+      const u = document.createElementNS(SVGNS, 'text');
+      u.setAttribute('x', NODE_W - 8); u.setAttribute('y', 18); u.setAttribute('text-anchor', 'end'); u.setAttribute('class', 'util');
+      u.textContent = `⚙ ${Math.round(n.utilization * 100)}%`;
+      g.appendChild(u);
+    }
     g.appendChild(makeTitle(n));
     root.appendChild(g);
   }

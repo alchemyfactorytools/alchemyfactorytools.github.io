@@ -171,6 +171,7 @@ svg#graph.hovering .edge.hl text { fill: var(--ink); }
 .node .sub { fill: var(--muted); font-size: 10.5px; }
 .node .count { fill: var(--accent); font-weight: 700; font-size: 12px; }
 .node .draw { fill: var(--muted); font-size: 10px; }
+.node .util { fill: var(--warn); font-size: 10px; font-weight: 600; }
 .node .fuelband { fill: var(--resource); }
 .node .fueltext { fill: #f0c9c0; font-size: 10px; }
 .node .fertband { fill: #2f4a36; }
