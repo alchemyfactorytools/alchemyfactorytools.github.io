@@ -10,3 +10,6 @@ _split.tmp.js
 web/solver.bundle.js
 web/build-stamp.js
 dist/
+
+# session handoff notes (local working doc, not version-controlled)
+HANDOFF.md

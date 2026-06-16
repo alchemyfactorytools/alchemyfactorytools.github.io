@@ -811,6 +811,17 @@
         // instead of centred over its own consumers. Drop edges whose DESTINATION is a util
         // line from the weighted-length term — they still count toward the crossing cap.
         if (utilIds.has(b)) continue;
+        // ...and symmetrically, a util line's OUTPUT edges (fert/fuel → the product nurseries it
+        // feeds) must not drive the PRODUCT lane order. A shared util line feeding two products has
+        // shorter total cross-axis length sitting BETWEEN them, so this metric used to splay the two
+        // products to opposite ends with the util wedged in the middle (Bandage 1754 wide; Soap 1166)
+        // and a dead bottom-centre. But a util line's real lateral position is set by the 2D
+        // compaction below — it slides freely along the cross-axis regardless of its lane index — so
+        // its edge lengths are meaningless here. Dropping them lets the metric be driven by product↔
+        // product / product↔assembler edges, minimised when the products sit ADJACENT and the
+        // compaction then nests the shared util ABOVE both (Bandage → 1069, Soap → 881). They still
+        // count toward the crossing cap.
+        if (utilIds.has(a)) continue;
         we.push({ a: a == null ? null : a, b: b == null ? null : b, from: e.from, to: e.to, w: e.ratePerMin || 0 });
         if (a == null && b != null) { if (!looseNb.has(e.from)) looseNb.set(e.from, []); looseNb.get(e.from).push({ c: b, w: e.ratePerMin || 0 }); }
         if (b == null && a != null) { if (!looseNb.has(e.to)) looseNb.set(e.to, []); looseNb.get(e.to).push({ c: a, w: e.ratePerMin || 0 }); }
@@ -1515,7 +1526,17 @@
     let chosen = { pos, edges, recycle, clusters: clusterBoxes, trunks, trunkedEdges, width, height, orientation, nodeW: NODE_W, nodeH: NODE_H, __boxCross, __boxCrossAll };
     if (laneCandidateIds && !o.__forceLaneOrder) {
       const candL = layout(graph, Object.assign({}, o, { __forceLaneOrder: laneCandidateIds }));
-      if (candL.__boxCross < chosen.__boxCross - 1e-6) chosen = candL; // adopt the reorder only if it cuts less flow across boxes
+      // Adopt the reorder if it cuts more flow across boxes, OR — when it ties on box-rakes — if it
+      // renders strictly NARROWER. The narrow-tiebreak is what lands the products-adjacent order
+      // above: both the spread and the compact order rake 0 flow through boxes, so a strict-rake
+      // test alone would keep the wide spread. Guard the tiebreak with __boxCrossAll (cash-inclusive)
+      // so a narrower order whose compaction drops a util box onto a long belt→purchase money edge
+      // — invisible to __boxCross but real in __boxCrossAll — is still rejected (Iron Nails T4).
+      const cutsLess = candL.__boxCross < chosen.__boxCross - 1e-6;
+      const tieNarrower = Math.abs(candL.__boxCross - chosen.__boxCross) <= 1e-6
+        && candL.__boxCrossAll <= chosen.__boxCrossAll + 1e-6
+        && candL.width < chosen.width - 1e-6;
+      if (cutsLess || tieNarrower) chosen = candL;
     }
     // Compaction verify: the vertical-nesting slide can drop a util box onto a long belt/money
     // edge running down its target column (a column that looked empty wasn't). Re-render flat
