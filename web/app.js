@@ -20,7 +20,7 @@ function savePrefs() {
     if (TRANSIENT_FIELDS.has(el.id)) continue;
     fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
   }
-  const prefs = { fields, belt: beltSupply, allowed: [...allowed], orientation, showClusters, utilEdgeMode, layoutMode, collapsed: [...collapsed] };
+  const prefs = { fields, belt: beltSupply, extraTargets, allowed: [...allowed], orientation, showClusters, utilEdgeMode, layoutMode, collapsed: [...collapsed] };
   try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore quota/private mode */ }
 }
 function loadPrefs() {
@@ -37,6 +37,11 @@ function loadPrefs() {
   if (prefs.skills) for (const s of SKILLS) if (prefs.skills[s] != null) $('sk_' + s).value = prefs.skills[s];
   if (prefs.maxTier != null && $('maxTier')) $('maxTier').value = prefs.maxTier;
   if (Array.isArray(prefs.belt)) { beltSupply.length = 0; beltSupply.push(...prefs.belt); renderBelt(); }
+  if (Array.isArray(prefs.extraTargets)) {
+    extraTargets.length = 0;
+    for (const t of prefs.extraTargets) extraTargets.push({ item: t.item || '', rate: t.rate != null ? t.rate : 1, rateMode: t.rateMode || 'machines' });
+    renderTargets();
+  }
   if (Array.isArray(prefs.allowed)) { allowed.clear(); prefs.allowed.forEach((n) => allowed.add(n)); renderChips(); }
   if (prefs.orientation === 'LR' || prefs.orientation === 'TB') orientation = prefs.orientation;
   $('orientToggle').textContent = orientation === 'LR' ? '⇄ Horizontal' : '⇅ Vertical';
@@ -46,6 +51,63 @@ function loadPrefs() {
   else if (typeof prefs.showUtilEdges === 'boolean') utilEdgeMode = prefs.showUtilEdges ? 'all' : 'off';
   $('utilEdgeToggle').textContent = UTIL_MODE_LABEL[utilEdgeMode];
   if (Array.isArray(prefs.collapsed)) { collapsed.clear(); prefs.collapsed.forEach((k) => collapsed.add(k)); }
+}
+
+// Output-picker options: targetable (craftable, non-raw, non-currency) items at or below the current
+// Unlock tier, grouped by category. Shared by the primary + every extra target <select>.
+function outputGroups() {
+  const sel = $('maxTier').value;
+  const maxTier = sel === '' ? Infinity : Number(sel);
+  const groups = new Map();
+  for (const it of CATALOG) {
+    if (!it.targetable) continue;                        // craftable, non-raw, non-currency only
+    if (it.tier != null && it.tier > maxTier) continue;  // above your unlock tier
+    if (!groups.has(it.category)) groups.set(it.category, []);
+    groups.get(it.category).push(it.name);
+  }
+  return groups;
+}
+// Fill a product <select> with the tier-gated options (optgroups by category), preserving the current
+// pick. If the pick is no longer in range (tier lowered), it's kept as a flagged option, not dropped.
+function fillOutputSelect(sel, selected) {
+  const groups = outputGroups();
+  sel.innerHTML = '';
+  const ph = document.createElement('option'); ph.value = ''; ph.textContent = 'Select a product…';
+  sel.appendChild(ph);
+  let found = false;
+  for (const [cat, names] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const og = document.createElement('optgroup'); og.label = cat;
+    for (const n of names.sort()) {
+      const o = document.createElement('option'); o.value = n; o.textContent = n;
+      if (n === selected) { o.selected = true; found = true; }
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+  if (selected && !found) {
+    const o = document.createElement('option'); o.value = selected; o.textContent = `${selected} (above tier)`; o.selected = true;
+    sel.appendChild(o);
+  }
+}
+// Dispatch mode (primary picker only): the product list narrows to items with a dispatch contract.
+function fillDispatchSelect(sel, selected) {
+  sel.innerHTML = '';
+  const ph = document.createElement('option'); ph.value = ''; ph.textContent = 'Select a dispatch item…';
+  sel.appendChild(ph);
+  for (const c of CATALOG.filter((c) => c.dispatch)) {
+    const o = document.createElement('option'); o.value = c.name; o.textContent = c.name;
+    if (c.name === selected) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+// Repopulate the primary product picker (dispatch list in dispatch mode, else the tier-gated output
+// list) and re-fill every extra target row's picker at the current tier.
+function rebuildOutputs() {
+  const item = $('item');
+  if (!item) return;
+  if ($('rateUnit').value === 'dispatch') fillDispatchSelect(item, item.value);
+  else fillOutputSelect(item, item.value);
+  renderTargets();
 }
 
 // ---------- bootstrap ----------
@@ -64,30 +126,33 @@ async function init() {
     o.value = it.name;
     buyList.appendChild(o);
   }
-  // dispatch-only datalist: the item picker narrows to dispatchable items in dispatch mode.
-  const dispatchList = $('dispatchItems');
-  for (const it of items.filter((x) => x.dispatch)) {
-    const o = document.createElement('option');
-    o.value = it.name;
-    dispatchList.appendChild(o);
-  }
   $('version').textContent = 'dataset 0.5.0.4471 · DB v41';
   const buildEl = $('buildSha'); if (buildEl) buildEl.textContent = BUILD_STAMP;
   const gvEl = $('fGameVer'); if (gvEl && window.AlchSolver && AlchSolver.db) gvEl.textContent = 'v' + AlchSolver.db.gameVersion;
+  // Populate the product picker BEFORE restoring prefs (so a saved selection can stick to a real
+  // option), then again AFTER (to re-filter to the restored Unlock tier). Dispatch items are filled
+  // on demand by rebuildOutputs when the rate unit is "dispatch", so there's no dispatch datalist.
+  rebuildOutputs();
   loadPrefs();
+  rebuildOutputs();
   updateDispatchUI(); // reflect a restored rateUnit (show/hide the dispatch row + live readout)
   updateSolverUI();   // hide the LP-only tuning block when the composer is selected (it ignores them)
   updateSteamUI();    // reveal the steam free/at-cost selector if "Use steam" was restored on
+  updateMultiUI();    // show the multi-target hint + hide "add target" in dispatch mode
   // persist any sidebar field edit (typing the output/rate, toggling a checkbox, …)
-  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); updateSteamUI(); });
+  $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); updateSteamUI(); updateMultiUI(); });
   $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
   // Switching INTO dispatch mode with a non-dispatchable item selected clears it (so you're not
   // left targeting an item with no contract). Only on the mode switch — not per keystroke, which
   // would erase partial typing. Validation + the filtered datalist handle the rest.
   $('rateUnit').addEventListener('change', () => {
     if ($('rateUnit').value === 'dispatch' && !dispatchInfo($('item').value.trim())) $('item').value = '';
+    rebuildOutputs();   // swap the product picker between dispatch items and the tier-gated output list
     updateDispatchUI();
+    updateMultiUI();
   });
+  // changing the unlock tier re-filters the output picker (items above the tier drop out)
+  $('maxTier').addEventListener('change', rebuildOutputs);
 }
 
 // ---------- allowed-inputs chips ----------
@@ -137,6 +202,78 @@ $('beltAdd').onclick = () => {
   beltSupply.push({ item, rate: Number.isFinite(rate) ? rate : null });
   $('beltItem').value = ''; $('beltRate').value = '';
   renderBelt();
+  savePrefs();
+};
+
+// ---------- extra output targets (composer multi-target) ----------
+// Outputs BEYOND the primary Target above. Each row carries its own item + qty + unit; the composer
+// builds one replicated tile tree per target, all sharing the fuel/fert trunks + co-product surplus.
+const extraTargets = []; // [{ item, rate, rateMode: 'min'|'sec'|'machines' }]
+function renderTargets() {
+  const box = $('extraTargets');
+  if (!box) return;
+  box.innerHTML = '';
+  extraTargets.forEach((t, i) => {
+    const block = document.createElement('div');
+    block.className = 'target';
+    const item = document.createElement('select');
+    item.className = 't-item';
+    fillOutputSelect(item, t.item || '');
+    item.addEventListener('change', () => { t.item = item.value; savePrefs(); });
+    const qty = document.createElement('div');
+    qty.className = 't-qty-row';
+    const at = document.createElement('span'); at.className = 'at'; at.textContent = '@';
+    const rate = document.createElement('input');
+    rate.type = 'number'; rate.className = 't-rate'; rate.min = '0'; rate.step = 'any'; rate.value = t.rate;
+    rate.addEventListener('input', () => { t.rate = Number(rate.value); savePrefs(); });
+    const unit = document.createElement('select');
+    unit.className = 't-unit';
+    for (const [v, label] of [['min', '/ min'], ['sec', '/ sec'], ['machines', '× machines']]) {
+      const o = document.createElement('option'); o.value = v; o.textContent = label;
+      if (v === t.rateMode) o.selected = true;
+      unit.appendChild(o);
+    }
+    unit.addEventListener('change', () => { t.rateMode = unit.value; savePrefs(); });
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 't-del'; del.title = 'Remove this target'; del.textContent = '×';
+    del.onclick = () => { extraTargets.splice(i, 1); renderTargets(); updateMultiUI(); savePrefs(); };
+    qty.append(at, rate, unit, del);
+    block.append(item, qty);
+    box.appendChild(block);
+  });
+}
+// Reveal the multi-target hint when extras exist; hide "add target" in dispatch mode (single-quota).
+function updateMultiUI() {
+  const dispatch = $('rateUnit').value === 'dispatch';
+  const has = extraTargets.length > 0;
+  const add = $('addTarget'); if (add) add.style.display = dispatch ? 'none' : '';
+  const hint = $('multiHint'); if (hint) hint.style.display = (!dispatch && has) ? '' : 'none';
+  const extras = $('extraTargets'); if (extras) extras.style.display = dispatch ? 'none' : '';
+  // the primary target is removable only when another target exists — never delete the last one
+  const delP = $('delPrimary'); if (delP) delP.style.display = (!dispatch && has) ? '' : 'none';
+}
+$('addTarget').onclick = () => {
+  // inherit the primary row's unit so "set primary to × machines, add row" keeps machines
+  const u = $('rateUnit').value;
+  const rateMode = (u === 'min' || u === 'sec' || u === 'machines') ? u : 'machines';
+  extraTargets.push({ item: '', rate: 1, rateMode });
+  renderTargets();
+  updateMultiUI();
+  savePrefs();
+};
+// Remove the PRIMARY target by promoting the first extra into its slot — the primary controls own the
+// canonical #item/#rate/#rateUnit ids (dispatch + persistence read them), so we shift rather than delete.
+// Only reachable when an extra exists (updateMultiUI hides the button otherwise), so the last target stays.
+$('delPrimary').onclick = () => {
+  if (!extraTargets.length) return;
+  const next = extraTargets.shift();
+  fillOutputSelect($('item'), next.item || '');
+  $('item').value = next.item || '';
+  $('rate').value = next.rate;
+  $('rateUnit').value = next.rateMode || 'min';
+  renderTargets();
+  updateDispatchUI();
+  updateMultiUI();
   savePrefs();
 };
 
@@ -202,7 +339,22 @@ function requestBody() {
     // dispatch runs continuously → optimise for profit (minimise true operating cost), not build ease.
     config.composer = { ...(config.composer || {}), profit: true };
   }
-  return { item: $('item').value.trim(), rate, rateMode, config };
+  const primary = { item: $('item').value.trim(), rate, rateMode };
+  // Extra targets (composer multi-target). Ignored in dispatch mode (a single quota). Each row carries
+  // its own unit: /sec → /min, "machines" stays a rateMode the composer sizes per target.
+  const targets = [primary];
+  if (unit !== 'dispatch') {
+    for (const t of extraTargets) {
+      if (!t.item) continue;
+      let r = Number(t.rate);
+      if (!(r > 0)) continue;
+      if (t.rateMode === 'sec') r *= 60;
+      targets.push({ item: t.item, rate: r, rateMode: t.rateMode === 'machines' ? 'machines' : 'rate' });
+    }
+  }
+  // `item`/`rate`/`rateMode` mirror the primary target so the single-target UI reads (dispatch,
+  // status, "pick an item" guards) keep working; `targets` drives the (possibly multi) solve.
+  return { item: primary.item, rate: primary.rate, rateMode: primary.rateMode, targets, config };
 }
 
 // The LP-only tuning knobs do nothing on the tile composer, so hide them when it's selected —
@@ -228,7 +380,6 @@ function updateDispatchUI() {
   if (opt) opt.hidden = !(isDispatch || dispatchInfo(name));
   // (b) in dispatch mode the item picker narrows to dispatchable items, and the quantity field is
   // hidden — saturating the quota has no count to pick (rate is fixed by item + Negotiation + day).
-  $('item').setAttribute('list', isDispatch ? 'dispatchItems' : 'items');
   $('rate').style.display = isDispatch ? 'none' : '';
   $('dispatchRow').style.display = isDispatch ? '' : 'none';
   const hint = $('dispatchHint');
@@ -259,6 +410,11 @@ async function solveBody(body) {
 async function solve() {
   const body = requestBody();
   if (!body.item) { setStatus('Pick an output item.', 'error'); return; }
+  const multi = body.targets.length > 1;
+  if (multi && body.config.solver !== 'composer') {
+    setStatus('Multiple targets need the Tile composer — switch Build method to "Tile composer".', 'error');
+    return;
+  }
   const dispatchUnit = $('rateUnit').value === 'dispatch';
   if (dispatchUnit && !dispatchInfo(body.item)) {
     setStatus(`No dispatch contract for "${body.item}". Dispatchable: ${dispatchNames().join(', ')}.`, 'error');
@@ -290,9 +446,15 @@ async function solve() {
   renderSummary(out, body);
   renderGraph(out.graph);
   $('explain').textContent = out.explainText || '';
-  let status = `Solved in ${out.cgRounds} CG round(s). ${fmtCu(out.copperPerItem)} per ${body.item}.`;
-  if (out.machineTarget) status = `Building ${out.machineTarget}× ${body.item} machine(s) = ${fmt(out.effectiveRate)}/min. ` + status;
-  if (dispatchUnit) status = `Saturating ${body.item} dispatch quota = ${fmt(body.rate)}/min (Neg L${Number($('sk_negotiation').value) || 0}, ${Number($('dispatchDayLen').value) || 16}-min day). ` + status;
+  let status;
+  if (multi && out.targets) {
+    const list = out.targets.map((t) => `${t.machines ? t.machines + '× ' : ''}${t.item} ${fmt(t.rate)}/min`).join(' + ');
+    status = `Built ${out.targets.length} targets: ${list}. ${fmtCu(out.copperPerItem)}/item avg, ${fmtCu(out.copperPerMin)}/min total.`;
+  } else {
+    status = `Solved in ${out.cgRounds} CG round(s). ${fmtCu(out.copperPerItem)} per ${body.item}.`;
+    if (out.machineTarget) status = `Building ${out.machineTarget}× ${body.item} machine(s) = ${fmt(out.effectiveRate)}/min. ` + status;
+    if (dispatchUnit) status = `Saturating ${body.item} dispatch quota = ${fmt(body.rate)}/min (Neg L${Number($('sk_negotiation').value) || 0}, ${Number($('dispatchDayLen').value) || 16}-min day). ` + status;
+  }
   setStatus(status, 'ok');
   if (out.warnings?.length) {
     $('status').insertAdjacentHTML('beforeend', out.warnings.map((w) => `<span class="warn">⚠ ${esc(w)}</span>`).join(''));

@@ -584,8 +584,11 @@ function makeComposer(db, cfg) {
   // a fuel tile may be too) — a small coupled fixpoint. We solve it on the scalar draw rates using
   // each trunk's unit draw (its draw per 1 carrier/min), then build the final trunks once at the
   // resolved rates. Money has no such feedback (buying doesn't cost heat), so it's a plain sum.
-  function compose(target, rate) {
+  function compose(targetsArg, rateArg) {
     solve();
+    // Accept compose('Item', rate) [back-compat] OR compose([{ item, rate }, …]) [target forest].
+    const targets = typeof targetsArg === 'string' ? [{ item: targetsArg, rate: rateArg }] : targetsArg.slice();
+    const single = targets.length === 1;
 
     // Trunk unit draws + belt caps (independent of the main tree) — computed up front because the
     // self-fueling-line collapse must know GROSS before building anything.
@@ -604,10 +607,28 @@ function makeComposer(db, cfg) {
     // copies of the same item). kf = fuel burned per carrier unit produced (uFuel.h/fuelHeatPerUnit);
     // GROSS = rate/(1-kf), NET out = rate, self-fuel = GROSS-rate looped back to its own furnaces.
     // kf<1 ⇒ the carrier nets positive fuel (else it can't self-sustain → fall back to the normal path).
-    // Skipped under central steam or a belt cap, where the heat is sourced elsewhere.
+    // Skipped under central steam or a belt cap, where the heat is sourced elsewhere. This collapse is
+    // a SINGLE-target affair — producing the fuel carrier alongside other targets is rejected upstream
+    // (composerSolve), so a multi-target forest never self-fuels.
     const kf = uFuel && fuelHeatPerUnit > 0 ? uFuel.h / fuelHeatPerUnit : 0;
-    const selfFuelLine = !!(fuelItem && target === fuelItem && !steamOn && !(fuelCap > 0) && kf > 1e-9 && kf < 1 - 1e-9);
-    const grossRate = selfFuelLine ? rate / (1 - kf) : rate;
+    const selfFuelLine = !!(single && fuelItem && targets[0].item === fuelItem && !steamOn && !(fuelCap > 0) && kf > 1e-9 && kf < 1 - 1e-9);
+    const rateOf = (t) => (selfFuelLine ? t.rate / (1 - kf) : t.rate); // gross build rate per target
+    const rate = single ? targets[0].rate : null;        // NET rate — back-compat scalar for summary/fuel
+    const grossRate = single ? rateOf(targets[0]) : null; // back-compat scalar (== rate unless self-fueling)
+
+    // Carrier-as-target (multi-target): a target that IS the fuel/fert carrier gets NO separate tree —
+    // its net output demand (Df / Dg) folds into the shared trunk, which already over-produces for the
+    // whole build's heat/nutrient + its own self-heat. That one trunk line then feeds BOTH the heated
+    // machines AND this target's demand sink (wired in compose-graph). Folds only when the carrier is
+    // produced from scratch (cap 0), not steam-supplied, and — for fuel — can self-sustain (0<kf<1);
+    // otherwise it stays an ordinary tree. SINGLE-target carrier keeps the self-fuel collapse (grossRate).
+    let Df = 0, Dg = 0;
+    const carrierTargets = new Set();
+    if (!single) for (const t of targets) {
+      if (fuelItem && t.item === fuelItem && !steamOn && fuelCap === 0 && kf > 1e-9 && kf < 1 - 1e-9) { Df += t.rate; carrierTargets.add(t.item); }
+      else if (fertCarrier && t.item === fertCarrier && fertCap === 0) { Dg += t.rate; carrierTargets.add(t.item); }
+    }
+    const buildTargets = carrierTargets.size ? targets.filter((t) => !carrierTargets.has(t.item)) : targets;
 
     // Phase 7 — WITHIN-TILE co-product reuse (ALWAYS on, including trash mode). A co-product offsets
     // dedicated production of the same item elsewhere in the SAME tree: the Sand thrown off making
@@ -622,8 +643,9 @@ function makeComposer(db, cfg) {
     {
       let prev = null;
       for (let i = 0; i < 8; i++) {
-        const probe = buildTree(target, grossRate, target, new Set(), freshAcc(), new Map(coBudget), null);
-        const measured = measureCoSupply(probe, new Map());
+        // Probe ALL targets into one shared budget so the measured co-supply is the whole forest's.
+        const pacc = freshAcc(); const pb = new Map(coBudget); const measured = new Map();
+        for (const t of buildTargets) measureCoSupply(buildTree(t.item, rateOf(t), t.item, new Set(), pacc, pb, null), measured);
         if (prev && mapsClose(measured, prev)) break;
         prev = measured; coBudget = measured;
       }
@@ -631,7 +653,12 @@ function makeComposer(db, cfg) {
 
     const acc = freshAcc();
     const coFeeds = []; // { item, rate, consumerId } — claimed cross-tile co-product draws (graph wiring)
-    const tree = buildTree(target, grossRate, target, new Set(), acc, new Map(coBudget), coFeeds);
+    // Forest: each target → its own replicated subtree, ALL sharing one acc (heat / nutrient / money /
+    // carrier-material draws sum across the whole build) and one coBudget/coFeeds pool (a co-product
+    // thrown off by one target's line offsets another target's demand). The shared fuel/fert/money
+    // trunks below are sized from the combined acc — so the targets share utilities + surplus.
+    const trees = buildTargets.map((t) => ({ item: t.item, rate: t.rate, tree: buildTree(t.item, rateOf(t), t.item, new Set(), acc, new Map(coBudget), coFeeds) }));
+    const tree = trees.length ? trees[0].tree : null; // back-compat alias (single-target == the one root)
     const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
     // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
     // fires when beltCap 0), so it adds to the dedicated trunk's output AND draws self-heat/nutrient
@@ -651,8 +678,10 @@ function makeComposer(db, cfg) {
       const Pf = Math.max(0, F - fuelCap), Pg = Math.max(0, G - fertCap);
       // (Pf + Mf): the produced carrier the trunk makes is the fuel excess PLUS the merged material,
       // and BOTH portions draw self-heat/nutrient (same coke chain), so both feed the fixpoint.
-      const totalHeat = heatMain + (uFuel ? (Pf + Mf) * uFuel.h : 0) + (uFert ? (Pg + Mg) * uFert.h : 0);
-      const totalNutrient = nutrientMain + (uFuel ? (Pf + Mf) * uFuel.n : 0) + (uFert ? (Pg + Mg) * uFert.n : 0);
+      // (Pf + Mf + Df): the produced fuel carrier covers heat-excess + material + any folded net-output
+      // demand, and ALL of it self-heats/-nutrients. Same for the fert carrier (Pg + Mg + Dg).
+      const totalHeat = heatMain + (uFuel ? (Pf + Mf + Df) * uFuel.h : 0) + (uFert ? (Pg + Mg + Dg) * uFert.h : 0);
+      const totalNutrient = nutrientMain + (uFuel ? (Pf + Mf + Df) * uFuel.n : 0) + (uFert ? (Pg + Mg + Dg) * uFert.n : 0);
       const nF = fuelHeatPerUnit > 0 ? totalHeat / fuelHeatPerUnit : 0;
       const nG = fertNutrientPerUnit > 0 ? totalNutrient / fertNutrientPerUnit : 0;
       if (Math.abs(nF - F) < 1e-9 && Math.abs(nG - G) < 1e-9) { F = nF; G = nG; break; }
@@ -690,22 +719,23 @@ function makeComposer(db, cfg) {
     // heat edges as a self-loop (line output → its own furnaces). The NET belt output is `rate`.
     const fuel = selfFuelLine
       ? { item: fuelItem, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFuelLine: true, netRate: rate, selfFuel: grossRate - rate }
-      : splitTrunk(fuelItem, F + Mf, fuelCap, 'fuel');
-    const fert = splitTrunk(fertCarrier, G + Mg, fertCap, 'fert');
+      : splitTrunk(fuelItem, F + Mf + Df, fuelCap, 'fuel');
+    const fert = splitTrunk(fertCarrier, G + Mg + Dg, fertCap, 'fert');
 
+    const treeSet = new Set(trees.map((t) => t.tree)); // roots already tallied (a self-fuel trunk reuses one)
     const machineTotals = {};
-    tallyMachines(tree, machineTotals);
-    // Skip the fuel trunk's prodTile when it IS the main tree (self-fueling line) — else we'd
-    // double-count the single line's machines.
-    if (fuel && fuel.prodTile && fuel.prodTile !== tree) tallyMachines(fuel.prodTile, machineTotals);
-    if (fert && fert.prodTile && fert.prodTile !== tree) tallyMachines(fert.prodTile, machineTotals);
+    for (const t of trees) tallyMachines(t.tree, machineTotals);
+    // Skip a trunk's prodTile when it IS a target root (self-fueling line) — else we'd double-count
+    // the single line's machines.
+    if (fuel && fuel.prodTile && !treeSet.has(fuel.prodTile)) tallyMachines(fuel.prodTile, machineTotals);
+    if (fert && fert.prodTile && !treeSet.has(fert.prodTile)) tallyMachines(fert.prodTile, machineTotals);
     // Heating devices: count the parent furnaces that host the heated machines (slot-packed),
     // so the build shows e.g. "2× Stone Furnace" behind the 4 Crucibles. The leftover slots in
     // the last (partial) furnace are the source of the "awkward count" — they still get built.
     const furnaceSlots = {};
-    tallyFurnaceSlots(tree, furnaceSlots);
-    if (fuel && fuel.prodTile && fuel.prodTile !== tree) tallyFurnaceSlots(fuel.prodTile, furnaceSlots);
-    if (fert && fert.prodTile && fert.prodTile !== tree) tallyFurnaceSlots(fert.prodTile, furnaceSlots);
+    for (const t of trees) tallyFurnaceSlots(t.tree, furnaceSlots);
+    if (fuel && fuel.prodTile && !treeSet.has(fuel.prodTile)) tallyFurnaceSlots(fuel.prodTile, furnaceSlots);
+    if (fert && fert.prodTile && !treeSet.has(fert.prodTile)) tallyFurnaceSlots(fert.prodTile, furnaceSlots);
     const furnaces = {};
     for (const [fname, used] of Object.entries(furnaceSlots)) {
       const fc = Math.ceil(used / machines[fname].slots - 1e-9);
@@ -713,9 +743,14 @@ function makeComposer(db, cfg) {
     }
 
     const totals = { heatPerMin: heatMain, nutrientPerMin: nutrientMain, fuelPerMin: F, fertPerMin: G, copperPerMin: acc.copperPerMin, mintedCoins: acc.mintedCoins };
+    // Folded carrier targets (Df/Dg) have no tree — their demand sinks are fed from the trunk root.
+    const trunkDemands = [];
+    if (Df > 1e-9 && fuelItem) trunkDemands.push({ item: fuelItem, rate: Df, trunk: 'fuel' });
+    if (Dg > 1e-9 && fertCarrier) trunkDemands.push({ item: fertCarrier, rate: Dg, trunk: 'fert' });
     const summary = {
-      target, ratePerMin: rate,
-      operatingCopperPerMin: opCostOf(target) * rate, // opCost × rate — the per-min material drain
+      target: targets[0].item, ratePerMin: targets[0].rate, // back-compat: first target (single-target unchanged)
+      targets: targets.map((t) => ({ item: t.item, ratePerMin: t.rate })), // every target, incl. folded carriers
+      operatingCopperPerMin: targets.reduce((s, t) => s + opCostOf(t.item) * t.rate, 0), // Σ opCost × rate
       copperPerMin: acc.copperPerMin,                  // total copper drawn from the money line
       machineTotals,
       furnaces,                                        // { "Stone Furnace": 2 } — heating devices hosting the heated machines
@@ -725,7 +760,7 @@ function makeComposer(db, cfg) {
       coproductFeeds: aggregateFeeds(coFeeds),         // [{ item, rate }] co-product reused across tiles
       warnings,
     };
-    return { tree, fuel, fert, totals, coFeeds, carrierMaterial: acc.carrierMaterialFeeds, summary };
+    return { tree, trees, fuel, fert, totals, coFeeds, carrierMaterial: acc.carrierMaterialFeeds, trunkDemands, summary };
   }
 
   return {

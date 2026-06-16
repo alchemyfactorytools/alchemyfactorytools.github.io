@@ -142,3 +142,30 @@ test('Phase 7: trash mode still reuses within-tile, then trashes the unclaimed s
   assert.ok(g.nodes.some((n) => n.type === 'surplus' && /Sand/.test(n.label)), 'the unclaimed surplus Sand is still trashed');
   assert.equal(g.summary.validation.length, 0);
 });
+
+test('multi-target: composeGraph emits one demand sink per target and stays structurally complete', () => {
+  const g = composeGraph(comp.compose([{ item: 'Glass', rate: 60 }, { item: 'Brick', rate: 30 }]), db, cfg);
+  // unique ids + real endpoints across the whole forest
+  const ids = g.nodes.map((n) => n.id);
+  assert.equal(new Set(ids).size, ids.length, 'node ids unique across the forest');
+  const idset = new Set(ids);
+  for (const e of g.edges) assert.ok(idset.has(e.from) && idset.has(e.to), 'edge endpoints are real');
+  // one demand sink per target, each fed by its own root
+  const gd = nodeOf(g, 'demand:Glass'), bd = nodeOf(g, 'demand:Brick');
+  assert.ok(gd && gd.ratePerMin === 60, 'Glass demand sink @60');
+  assert.ok(bd && bd.ratePerMin === 30, 'Brick demand sink @30');
+  assert.ok(g.edges.some((e) => e.to === 'demand:Glass'), 'a root feeds the Glass sink');
+  assert.ok(g.edges.some((e) => e.to === 'demand:Brick'), 'a root feeds the Brick sink');
+  // revenue sums both outputs; structural validation passes (every heated node has its fuel edge, etc.)
+  assert.equal(g.summary.validation.length, 0, 'forest graph is structurally complete');
+});
+
+test('multi-target: a folded fuel-carrier target gets a demand sink fed straight from the trunk root', () => {
+  const g = composeGraph(comp.compose([{ item: 'Coke Powder', rate: 60 }, { item: 'Glass', rate: 60 }]), db, cfg);
+  const cokeSink = nodeOf(g, 'demand:Coke Powder');
+  assert.ok(cokeSink && cokeSink.ratePerMin === 60, 'Coke Powder demand sink @60');
+  const edge = g.edges.find((e) => e.to === 'demand:Coke Powder');
+  assert.ok(edge, 'a feed edge reaches the Coke demand sink');
+  assert.ok(g.nodes.some((n) => n.id === edge.from), 'demand edge originates at a real node (the trunk production root)');
+  assert.equal(g.summary.validation.length, 0);
+});

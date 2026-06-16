@@ -14,14 +14,22 @@ const { explain } = require('./explain');
 const { composerSolve, itemCatalog } = require('./composer-solve');
 
 async function solve(body, db) {
-  const { item, rate = 1, rateMode = 'rate', config = {} } = body;
-  if (!db.items[item]) throw Object.assign(new Error(`unknown item "${item}"`), { status: 400 });
-  if (!(rate > 0)) throw Object.assign(new Error('rate must be > 0'), { status: 400 });
+  const { config = {} } = body;
+  // Normalize to a target list: body.targets[] (multi-target) or the legacy single { item, rate, rateMode }.
+  const list = (Array.isArray(body.targets) && body.targets.length)
+    ? body.targets.map((t) => ({ item: t.item, rate: t.rate ?? 1, rateMode: t.rateMode || 'rate' }))
+    : [{ item: body.item, rate: body.rate ?? 1, rateMode: body.rateMode || 'rate' }];
   const cfg = resolveConfig(config);
   // "Simplest" solver: the deterministic tile composer, not the LP. Picks one canonical recipe per
-  // item and composes a replicated, self-contained tile tree (fuel/fert/coins as shared trunks).
-  // Same {summary, graph} response shape as the LP path, so the renderer is unchanged.
-  if (config.solver === 'composer') return composerSolve(item, rate, rateMode, cfg, db);
+  // item and composes a replicated, self-contained tile FOREST (fuel/fert/coins as shared trunks),
+  // one root per target. Same {summary, graph} response shape as the LP path. Validates internally.
+  if (config.solver === 'composer') return composerSolve(list, cfg, db);
+  // LP optimizer: single-target only. The flow LP could take a multi-item demand vector, but the
+  // composer forest is the supported multi-target path — don't silently merge demands here.
+  if (list.length > 1) throw Object.assign(new Error('multi-target is composer-only — switch Solver to "Tile composer"'), { status: 400 });
+  const { item, rate, rateMode } = list[0];
+  if (!db.items[item]) throw Object.assign(new Error(`unknown item "${item}"`), { status: 400 });
+  if (!(rate > 0)) throw Object.assign(new Error('rate must be > 0'), { status: 400 });
   cfg.buildability = 0; // scaled below, relative to THIS build's own cost (see the probe)
   // Canonical fuel/fert tiles: pre-pick the carrier (Coke Powder, Growth Potion @ t6) and
   // its simplest clean chain, then lock the build to it (default on; canonicalUtilities=false

@@ -226,3 +226,59 @@ test('Phase 7: within-tile co-product reuse feeds a co-product into matching dem
   assert.equal(reuse.summary.copperPerMin, trash.summary.copperPerMin,
     'within-tile reuse runs in trash mode too → identical spend');
 });
+
+// ---- multi-target: a forest of targets sharing the fuel/fert trunks + co-product surplus ----
+
+test('multi-target: compose([Glass, Brick]) builds a forest; shared fuel trunk is additive, per-tree sizing unchanged', () => {
+  const comp = composer();
+  const glass = comp.compose('Glass', 60);
+  const brick = comp.compose('Brick', 30);
+  const both = comp.compose([{ item: 'Glass', rate: 60 }, { item: 'Brick', rate: 30 }]);
+
+  // forest shape: one root per target, in order; summary carries the per-target list
+  assert.equal(both.trees.length, 2);
+  assert.deepEqual(both.trees.map((t) => t.item), ['Glass', 'Brick']);
+  assert.deepEqual(both.summary.targets, [{ item: 'Glass', ratePerMin: 60 }, { item: 'Brick', ratePerMin: 30 }]);
+
+  // Each terminal tile is sized purely by its own output rate, so the per-tree roots match the
+  // single-target builds (the forest replicates; it does not merge intermediates).
+  assert.equal(both.trees[0].tree.machineCount, glass.tree.machineCount); // Glass Kilns
+  assert.equal(both.trees[1].tree.machineCount, brick.tree.machineCount); // Brick Kilns
+  // Kilns are per-tree (never shared) ⇒ the union is exactly additive.
+  assert.equal(both.summary.machineTotals.Kiln, glass.summary.machineTotals.Kiln + brick.summary.machineTotals.Kiln);
+
+  // The shared fuel trunk is sized to the COMBINED heat. Fuel is linear in heat (incl. the trunk's
+  // own self-heat multiplier), so one shared trunk equals the sum of the two separate trunks.
+  assert.ok(both.totals.fuelPerMin > glass.totals.fuelPerMin, 'combined trunk exceeds either target alone');
+  assert.ok(Math.abs(both.totals.fuelPerMin - (glass.totals.fuelPerMin + brick.totals.fuelPerMin)) < 1e-6,
+    'fuel is additive across the forest (linear in combined heat)');
+
+  // Total money-line spend is the sum of the two builds (Glass and Brick share no bought inputs here).
+  assert.ok(Math.abs(both.summary.copperPerMin - (glass.summary.copperPerMin + brick.summary.copperPerMin)) < 1e-6);
+});
+
+test('multi-target: a single-element array is byte-identical to the scalar call (back-compat)', () => {
+  const comp = composer();
+  const scalar = comp.compose('Glass', 60);
+  const arr = comp.compose([{ item: 'Glass', rate: 60 }]);
+  assert.equal(arr.summary.target, 'Glass');           // back-compat scalar summary fields preserved
+  assert.equal(arr.summary.ratePerMin, 60);
+  assert.equal(arr.trees.length, 1);
+  assert.equal(arr.tree, arr.trees[0].tree);           // .tree alias === the one root
+  assert.deepEqual(arr.summary.machineTotals, scalar.summary.machineTotals);
+  assert.equal(arr.summary.copperPerMin, scalar.summary.copperPerMin);
+});
+
+test('multi-target: the fuel carrier as one of several targets folds into the shared trunk (one line, no duplicate)', () => {
+  const comp = composer(); // fuelItem Coke Powder
+  const glass = comp.compose('Glass', 60);
+  const both = comp.compose([{ item: 'Coke Powder', rate: 60 }, { item: 'Glass', rate: 60 }]);
+  // The fuel carrier gets NO separate tree — it folds into the fuel trunk; only Glass is a tree.
+  assert.deepEqual(both.trees.map((t) => t.item), ['Glass']);
+  // …but it's still a declared target (counts for revenue/status) and is wired to its own demand sink.
+  assert.deepEqual(both.summary.targets, [{ item: 'Coke Powder', ratePerMin: 60 }, { item: 'Glass', ratePerMin: 60 }]);
+  assert.deepEqual(both.trunkDemands, [{ item: 'Coke Powder', rate: 60, trunk: 'fuel' }]);
+  // One over-producing line: the trunk covers Glass's furnace heat PLUS the 60/min net output (and its
+  // own self-heat), so it exceeds Glass-alone fuel + 60 — not two separate Coke lines.
+  assert.ok(both.fuel.prodRate >= glass.totals.fuelPerMin + 60 - 1e-6, 'one trunk covers heat + net carrier output');
+});

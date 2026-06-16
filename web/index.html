@@ -17,27 +17,7 @@
       <!-- PRIMARY: what to build, how, and go -->
       <section>
         <h2>Target</h2>
-        <label>Output item
-          <input type="text" id="item" list="items" placeholder="e.g. Mars" autocomplete="off">
-          <datalist id="items"></datalist>
-          <datalist id="dispatchItems"></datalist>
-        </label>
-        <label>Rate <small>(or # of final-product machines to build)</small>
-          <span class="rate-row">
-            <input type="number" id="rate" value="0.1" min="0" step="any">
-            <select id="rateUnit">
-              <option value="min" selected>/ min</option>
-              <option value="sec">/ sec</option>
-              <option value="machines">× output machines</option>
-              <option value="dispatch">dispatch quota</option>
-            </select>
-          </span>
-        </label>
-        <label id="dispatchRow" style="display:none">Dispatch day length <small>(min, base 16 — raised by potion-belt level)</small>
-          <input type="number" id="dispatchDayLen" value="16" min="1" step="any">
-          <p class="hint" id="dispatchHint"></p>
-        </label>
-        <label>Unlock tier <small>(limits recipes to your tier or below)</small>
+        <label>Unlock tier <small>(limits recipes + the output list to your tier)</small>
           <select id="maxTier">
             <option value="">All unlocked</option>
             <option value="1">Tier 1</option>
@@ -51,6 +31,32 @@
             <option value="9">Tier 9</option>
           </select>
         </label>
+        <label class="cap">Output <small>(pick a product, set a rate or # of machines — add more for one shared factory)</small></label>
+        <!-- Each target is a two-row block: the product picker (tier-filtered <select>) on top, then
+             "@ qty unit". The first is required; "+ add target" appends more (Tile composer only — they
+             share the fuel/fert trunks + surplus co-products). -->
+        <div class="target" id="primaryTarget">
+          <select id="item" class="t-item"></select>
+          <div class="t-qty-row">
+            <span class="at">@</span>
+            <input type="number" id="rate" class="t-rate" value="0.1" min="0" step="any">
+            <select id="rateUnit" class="t-unit">
+              <option value="min" selected>/ min</option>
+              <option value="sec">/ sec</option>
+              <option value="machines">× machines</option>
+              <option value="dispatch">dispatch</option>
+            </select>
+            <button type="button" id="delPrimary" class="t-del" title="Remove this target" style="display:none">×</button>
+          </div>
+        </div>
+        <div id="extraTargets" class="target-rows"></div>
+        <button type="button" id="addTarget" class="secondary add-target">+ add target</button>
+        <p class="hint" id="multiHint" style="display:none">Extra targets build side by side, sharing fuel, fertilizer, and surplus co-products. <b>Tile composer only.</b></p>
+        <label id="dispatchRow" style="display:none">Dispatch day length <small>(min, base 16 — raised by potion-belt level)</small>
+          <input type="number" id="dispatchDayLen" value="16" min="1" step="any">
+          <p class="hint" id="dispatchHint"></p>
+        </label>
+        <datalist id="items"></datalist>
       </section>
 
       <section>
@@ -65,6 +71,20 @@
           picks one canonical recipe per item and builds a replicated, self-contained tile tree —
           "what you'd actually build", not cost-minimal. Optimizer-only tuning knobs are hidden
           under Advanced when the composer is selected (the composer ignores them).</p>
+      </section>
+
+      <section>
+        <h2>Main belt supply</h2>
+        <p class="hint">Items already arriving on your main belt — fuel, fertilizer,
+          coins, anything. Treated as free incoming supply (optionally capped at a
+          rate/min) instead of being crafted. A fertilizer's quality sets Nursery
+          grow speed; belt speed (Logistics skill) caps it.</p>
+        <div id="beltRows" class="belt-rows"></div>
+        <div class="belt-add">
+          <input type="text" id="beltItem" list="items" placeholder="item…" autocomplete="off">
+          <input type="number" id="beltRate" placeholder="/min (blank = ∞)" min="0" step="any">
+          <button id="beltAdd" class="secondary">Add</button>
+        </div>
       </section>
 
       <section>
@@ -117,20 +137,6 @@
           <label>Trash only these <small>(comma-separated)</small>
             <input type="text" id="byproductTrash" placeholder="e.g. Crude Silver Powder">
           </label>
-        </section>
-
-        <section>
-          <h2>Main belt supply</h2>
-          <p class="hint">Items already arriving on your main belt — fuel, fertilizer,
-            coins, anything. Treated as free incoming supply (optionally capped at a
-            rate/min) instead of being crafted. A fertilizer's quality sets Nursery
-            grow speed; belt speed (Logistics skill) caps it.</p>
-          <div id="beltRows" class="belt-rows"></div>
-          <div class="belt-add">
-            <input type="text" id="beltItem" list="items" placeholder="item…" autocomplete="off">
-            <input type="number" id="beltRate" placeholder="/min (blank = ∞)" min="0" step="any">
-            <button id="beltAdd" class="secondary">Add</button>
-          </div>
         </section>
 
         <section>

@@ -129,11 +129,17 @@ function composeGraph(composed, db, cfg) {
     return tile.id;
   }
 
-  // main tree + its demand sink
-  const rootId = walk(composed.tree);
-  const target = composed.summary.target;
-  addNode({ id: `demand:${target}`, type: 'demand', label: `${target} (target)`, ratePerMin: composed.summary.ratePerMin, badges: [] });
-  edges.push({ from: rootId, to: `demand:${target}`, item: target, ratePerMin: composed.summary.ratePerMin });
+  // main forest + per-target demand sinks. Each target → its own replicated root; ALL of them share
+  // the fuel/fert/money trunks + co-product pool wired below. treeRoot maps a tile-tree object → its
+  // walked root id, so a self-fueling fuel trunk (whose prodTile IS one of these roots) reuses that id
+  // instead of re-walking — which would duplicate every node/edge.
+  const treeRoot = new Map();
+  for (const t of composed.trees) {
+    const rootId = walk(t.tree);
+    treeRoot.set(t.tree, rootId);
+    addNode({ id: `demand:${t.item}`, type: 'demand', label: `${t.item} (target)`, ratePerMin: t.rate, badges: [] });
+    edges.push({ from: rootId, to: `demand:${t.item}`, item: t.item, ratePerMin: t.rate });
+  }
 
   // Each carrier trunk is now { item, rate, beltRate, prodRate, prodTile }: belt supplies up to its
   // rate, the build PRODUCES the excess. Walk BOTH production sub-trunks BEFORE wiring (a sub-trunk
@@ -156,10 +162,18 @@ function composeGraph(composed, db, cfg) {
     return srcs;
   };
   // Self-fueling line (target IS the fuel carrier): the fuel trunk's prodTile is the SAME object as
-  // the main tree — reuse its already-walked root id rather than re-walking (which would duplicate
-  // every node/edge). The fuel edges below then loop from the line's root → its own heated machines.
-  if (composed.fuel && composed.fuel.prodTile) composed.fuel.prodTile._gid = composed.fuel.prodTile === composed.tree ? rootId : walk(composed.fuel.prodTile);
-  if (composed.fert && composed.fert.prodTile) composed.fert.prodTile._gid = walk(composed.fert.prodTile);
+  // one of the forest roots — reuse its already-walked root id rather than re-walking (which would
+  // duplicate every node/edge). The fuel edges below then loop from the line's root → its own furnaces.
+  if (composed.fuel && composed.fuel.prodTile) composed.fuel.prodTile._gid = treeRoot.has(composed.fuel.prodTile) ? treeRoot.get(composed.fuel.prodTile) : walk(composed.fuel.prodTile);
+  if (composed.fert && composed.fert.prodTile) composed.fert.prodTile._gid = treeRoot.has(composed.fert.prodTile) ? treeRoot.get(composed.fert.prodTile) : walk(composed.fert.prodTile);
+  // Carrier-as-target: the trunk line ALSO delivers a requested output (Df/Dg) — wire its demand sink
+  // straight off the trunk root, so the one over-producing line feeds both the furnaces and this target.
+  for (const d of composed.trunkDemands || []) {
+    const trunk = d.trunk === 'fert' ? composed.fert : composed.fuel;
+    if (!trunk || !trunk.prodTile) continue;
+    addNode({ id: `demand:${d.item}`, type: 'demand', label: `${d.item} (target)`, ratePerMin: d.rate, badges: [] });
+    edges.push({ from: trunk.prodTile._gid, to: `demand:${d.item}`, item: d.item, ratePerMin: d.rate });
+  }
   const fuelSrcs = trunkSources(composed.fuel, 'fuel');
   const fertSrcs = trunkSources(composed.fert, 'fert');
   for (const s of fuelSrcs) for (const h of heatedNodes) {
@@ -252,7 +266,8 @@ function composeGraph(composed, db, cfg) {
   // valued at its sell price. Coins ARE the copper draw, so they're not added again (no double-count).
   const sellOf = (n) => (db.items[n] && db.items[n].sellPrice) || 0;
   const profitMode = !!(cfg.composer && cfg.composer.profit);
-  const revenuePerMin = sellOf(target) * composed.summary.ratePerMin;
+  // Revenue across ALL targets — each output's sell value × its rate.
+  const revenuePerMin = composed.summary.targets.reduce((s, t) => s + sellOf(t.item) * t.ratePerMin, 0);
 
   let inputCostPerMin, beltUtilCostPerMin = 0;
   if (profitMode) {

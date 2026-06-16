@@ -157,13 +157,35 @@
     // Gear line" box that itself contains a "Steel Gear line" group node.
     const groupSet = new Set(graph.nodes.filter((n) => n.kind === 'group').map((n) => n.id));
     const excluded = (id) => beltSet.has(id) || groupSet.has(id);
-    // line roots = tree-children of the producer of each demanded item, busiest
-    // first (rate order, inherited from treeKids) so ties go to the larger line.
+    // Utility (fuel/fert) sources — nodes with an outgoing heat/nutrient edge that aren't
+    // the belt. Detected up-front because a heat/nutrient CARRIER must not be claimed as a
+    // product line-root below: a fuel like Charcoal Powder that happens to heat a target's
+    // FINAL machine (the Brick kiln burns it, and at higher rate than the Clay it bakes)
+    // would otherwise be adopted as that target's busiest tree-child and seeded as its own
+    // product line — never getting the Fuel-line (top-band) treatment its fertilizer
+    // counterpart gets, since fertilizer only ever feeds deep Nurseries, not a final machine.
+    // A node that directly produces a DEMANDED item is exempt: it's the real final producer
+    // (even when the target is itself a fuel, e.g. Black Powder), so it stays a product line.
+    const demandSet = new Set(graph.nodes.filter((n) => n.type === 'demand').map((n) => n.id));
+    const demandProducers = new Set();
+    for (const e of graph.edges) if (demandSet.has(e.to)) demandProducers.add(e.from);
+    const fuelSources = new Set();
+    const fertSources = new Set();
+    for (const e of graph.edges) {
+      if (demandProducers.has(e.from)) continue;
+      if (e.nutrient && !beltSet.has(e.from)) fertSources.add(e.from);
+      else if (e.heat && !beltSet.has(e.from)) fuelSources.add(e.from);
+    }
+    const isUtilSource = (id) => fuelSources.has(id) || fertSources.has(id);
+    // line roots = tree-children of the producer of each demanded item, busiest first
+    // (rate order, inherited from treeKids) so ties go to the larger line. A util (fuel/
+    // fert) carrier among them is skipped — it groups as the Fuel/Fert line (seeded below)
+    // rather than being double-claimed as a product line of the target it happens to heat.
     const lineRoots = [];
     const lineRootSet = new Set();
     for (const d of graph.nodes.filter((n) => n.type === 'demand')) {
       for (const prod of treeKids.get(d.id)) for (const inp of treeKids.get(prod)) {
-        if (!lineRootSet.has(inp) && !excluded(inp)) { lineRootSet.add(inp); lineRoots.push(inp); }
+        if (!lineRootSet.has(inp) && !excluded(inp) && !isUtilSource(inp)) { lineRootSet.add(inp); lineRoots.push(inp); }
       }
     }
     if (!lineRoots.length) return { clusterOf: new Map(), clusters: [] };
@@ -187,25 +209,10 @@
     const labelOf = new Map();
     const seeds = []; // { node, key } in priority order
     for (const r of lineRoots) { seeds.push({ node: r, key: r }); labelOf.set(r, itemOfEdge.get(r) || (nodeById.get(r) || {}).label || r); }
-    // Utility sources are nodes that feed heat (fuel) or nutrient (fertilizer) to a
-    // machine — i.e. have an outgoing heat/nutrient edge — and aren't the belt
-    // (which is its own band). Their upstream production chain becomes the Fuel /
-    // Fertilizer line. Fertilizer takes priority when a node feeds both.
-    // A node that directly produces a DEMANDED item is the main-spine final producer
-    // and must never be pulled into a util (fuel/fert) line — even when the target is
-    // itself a fuel/fertilizer (e.g. Black Powder, which a furnace burns), so the
-    // cauldron making it ALSO has an outgoing heat edge. Without this it gets seeded
-    // into util:fuel, pinned to the top band, and strands a monster edge to the target.
-    const demandSet = new Set(graph.nodes.filter((n) => n.type === 'demand').map((n) => n.id));
-    const demandProducers = new Set();
-    for (const e of graph.edges) if (demandSet.has(e.to)) demandProducers.add(e.from);
-    const fuelSources = new Set();
-    const fertSources = new Set();
-    for (const e of graph.edges) {
-      if (demandProducers.has(e.from)) continue;
-      if (e.nutrient && !beltSet.has(e.from)) fertSources.add(e.from);
-      else if (e.heat && !beltSet.has(e.from)) fuelSources.add(e.from);
-    }
+    // Seed the utility subsystems (fuel / fertilizer) detected up-front above. Their
+    // upstream production chain becomes the Fuel / Fertilizer line — its own subgraph,
+    // pinned to the top band — so each reads as the distinct major component it is.
+    // Fertilizer takes priority when a node feeds both.
     for (const n of graph.nodes) {
       if (fertSources.has(n.id)) { seeds.push({ node: n.id, key: FERT }); labelOf.set(FERT, 'Fertilizer'); }
       else if (fuelSources.has(n.id)) { seeds.push({ node: n.id, key: FUEL }); labelOf.set(FUEL, 'Fuel'); }
@@ -1161,6 +1168,39 @@
         }
         if (collides) continue;
         if (orientation === 'TB') p.x = newLead; else p.y = newLead;
+      }
+    }
+
+    // Multi-target: pack the demand (target) row as a contiguous group ordered by each
+    // target's PRODUCER cross-position, so every target sits beside its own feeder. With a
+    // single demand the centre-output pass above already pulls it under its producer; with
+    // ≥2 demands that pass centres each independently and BAILS on collision — so the first
+    // target claims the centre and the rest are stranded at their flush-packed slots in the
+    // far unclustered band, each raking a long output edge clear across the diagram back to
+    // a producer on the opposite side. Instead, order the targets by where their feeders sit
+    // and sweep them left-to-right, each as close to its feeder as the previous one allows.
+    {
+      const crossCtr = (p) => (orientation === 'TB' ? p.x + NODE_W / 2 : p.y + NODE_H / 2);
+      const span = orientation === 'TB' ? NODE_W : NODE_H;
+      const rowsByRank = new Map(); // demand rank -> [{ id, want }]
+      for (const n of graph.nodes) {
+        if (n.type !== 'demand' || !pos.get(n.id)) continue;
+        const ins = graph.edges.filter((e) => e.to === n.id && pos.get(e.from)).map((e) => pos.get(e.from));
+        const want = ins.length ? ins.reduce((s, q) => s + crossCtr(q), 0) / ins.length : crossCtr(pos.get(n.id));
+        const r = rank.get(n.id);
+        if (!rowsByRank.has(r)) rowsByRank.set(r, []);
+        rowsByRank.get(r).push({ id: n.id, want });
+      }
+      for (const group of rowsByRank.values()) {
+        if (group.length < 2) continue; // single target: the centre-output pass already placed it
+        group.sort((a, b) => a.want - b.want);
+        let lead = -Infinity;
+        for (const g of group) {
+          const wantLead = g.want - span / 2; // desired top-left so the box centres on its feeders
+          lead = lead === -Infinity ? wantLead : Math.max(wantLead, lead + crossStep);
+          const p = pos.get(g.id);
+          if (orientation === 'TB') p.x = lead; else p.y = lead;
+        }
       }
     }
 

@@ -97,6 +97,20 @@ button.secondary:hover { color: var(--ink); border-color: var(--accent); }
 .belt-add #beltRate { width: 90px; }
 .belt-add button { white-space: nowrap; }
 
+/* output targets — each a two-row block: product <select> on top, then "@ qty unit" */
+label.cap { margin-top: 2px; }
+.target { display: flex; flex-direction: column; gap: 5px; }
+#primaryTarget { margin-top: 2px; }
+.target-rows { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.target .t-item { width: 100%; }
+.t-qty-row { display: flex; align-items: center; gap: 6px; }
+.t-qty-row .at { color: var(--muted); font-size: 13px; }
+.t-qty-row .t-rate { flex: 0 0 64px; width: 64px; min-width: 0; text-align: right; }
+.t-qty-row .t-unit { flex: 1 1 auto; min-width: 0; }
+.t-qty-row .t-del { flex: 0 0 auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+.t-qty-row .t-del:hover { color: var(--ink); }
+button.add-target { margin-top: 2px; width: 100%; font-size: 12px; padding: 6px; }
+
 main { display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px; gap: 8px; }
 .status { flex: 0 0 auto; font-size: 13px; }
 .status.error { color: var(--bad); }
