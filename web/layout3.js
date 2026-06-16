@@ -1009,17 +1009,32 @@
       }
     }
 
-    // lane width = widest slot used in that lane (+1, rounded up since slots are real).
-    const laneWidth = new Array(laneCount).fill(0);
-    for (const [id, s] of slotOf) laneWidth[lane(id)] = Math.max(laneWidth[lane(id)], Math.ceil(s) + 1);
+    // Pack lanes by their ACTUAL slot extent, not a zero-based slot grid. The tidy-tree centres
+    // leaves at slot k+0.5, so a lane's leftmost node started half a crossStep in, and a lone
+    // node rounded up to two columns — together those left a dead ~crossStep band between every
+    // tile. Instead: resolve every node's slot (its tidy-tree value, or the packed integer
+    // fallback used for unclustered nodes), take each lane's [min,max] slot, and start lane l
+    // immediately after lane l-1's real pixel width + LANE_GAP. Node x is then measured from its
+    // own lane's leftmost slot — no left lead, no right over-reserve, so gaps == LANE_GAP.
+    const slotResolved = new Map();
     for (const c of cols) {
       if (!c) continue;
-      const cnt = new Array(laneCount).fill(0);
-      for (const n of c) cnt[lane(n.id)]++;
-      for (let l = 0; l < laneCount; l++) laneWidth[l] = Math.max(laneWidth[l], cnt[l]);
+      const seen = new Array(laneCount).fill(0);
+      for (const n of c) slotResolved.set(n.id, slotOf.has(n.id) ? slotOf.get(n.id) : seen[lane(n.id)]++);
     }
-    const laneOffset = new Array(laneCount).fill(0);
-    for (let l = 1; l < laneCount; l++) laneOffset[l] = laneOffset[l - 1] + laneWidth[l - 1] * crossStep + (laneWidth[l - 1] ? LANE_GAP : 0);
+    const laneMin = new Array(laneCount).fill(Infinity);
+    const laneMax = new Array(laneCount).fill(-Infinity);
+    for (const [id, s] of slotResolved) {
+      const l = lane(id);
+      if (s < laneMin[l]) laneMin[l] = s;
+      if (s > laneMax[l]) laneMax[l] = s;
+    }
+    const laneStart = new Array(laneCount).fill(0);
+    for (let l = 1; l < laneCount; l++) {
+      const empty = laneMax[l - 1] === -Infinity;
+      const spanPx = empty ? 0 : (laneMax[l - 1] - laneMin[l - 1]) * crossStep + NODE_W;
+      laneStart[l] = laneStart[l - 1] + spanPx + (empty ? 0 : LANE_GAP);
+    }
     // reserve header rows at the start: the belt band, then one row per utility
     // (fuel/fertilizer) band, so the product lines begin below them and their
     // Nurseries sit directly under the utility bands that feed them.
@@ -1044,16 +1059,15 @@
     const pos = new Map();
     cols.forEach((c, r) => {
       if (!c) return;
-      const seenInLane = new Array(laneCount).fill(0);
       for (const n of c) {
         const l = lane(n.id);
-        // use the barycenter slot if we computed one; else fall back to packed order
-        const slot = slotOf.has(n.id) ? slotOf.get(n.id) : seenInLane[l]++;
+        // slot resolved above (tidy-tree barycentre, or packed fallback); measured from the
+        // lane's own leftmost slot so each tile sits flush against its neighbour.
         // Drop the final target an extra row below its producers ONLY when >1 line fans into
         // it; a single-producer target sits at normal row spacing (no dead gap).
         const demandDrop = (n.type === 'demand' && (demandFanIn.get(n.id) || 0) > 1) ? flowStep : 0;
         const flow = (r + (utilNodeSet.has(n.id) ? 0 : spineDrop)) * flowStep + headerOffset + demandDrop;
-        const cross = laneOffset[l] + slot * crossStep;
+        const cross = laneStart[l] + (slotResolved.get(n.id) - laneMin[l]) * crossStep;
         if (orientation === 'TB') pos.set(n.id, { x: cross, y: flow, w: NODE_W, h: NODE_H });
         else pos.set(n.id, { x: flow, y: cross, w: NODE_W, h: NODE_H });
       }
