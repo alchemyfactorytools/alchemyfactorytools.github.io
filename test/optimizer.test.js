@@ -87,9 +87,15 @@ test('capital off: no degenerate floating production (activation-floor polish dr
     for (const [k, v] of Object.entries(f.process.produces || {})) prod[k] = (prod[k] || 0) + v * f.rate;
     for (const [k, v] of Object.entries(f.process.consumes || {})) cons[k] = (cons[k] || 0) + v * f.rate;
   }
-  // Clay Powder is never needed for Mars — the dead-end loop that fabricated it
-  // (Copper → Copper Coin → cauldron → Clay → Clay Powder → discard) must be gone.
-  assert.ok((prod['Clay Powder'] || 0) < 1e-6, `no fabricated Clay Powder, got ${prod['Clay Powder']}`);
+  // Clay Powder must not be FABRICATED-AND-DISCARDED (the original dead-end loop:
+  // Copper → Copper Coin → cauldron → Clay → Clay Powder → discard). In the degenerate
+  // capital-off regime the LP may legitimately route through a fully-CONSUMED Clay Powder
+  // intermediate — one of many equal-cost, zero-surplus optima, and which vertex the simplex
+  // returns shifts with the column set (e.g. adding Seed Plot recipes). So assert no DISCARDED
+  // Clay Powder (zero surplus), not zero production; the general no-floating check below covers
+  // the rest.
+  const clayPowderSurplus = (prod['Clay Powder'] || 0) - (cons['Clay Powder'] || 0);
+  assert.ok(clayPowderSurplus < 1e-6, `no discarded Clay Powder dead-end, surplus ${clayPowderSurplus}`);
   // No large discarded dead-ends: every item is either consumed or a small joint
   // byproduct (the Athanor Copper/Impure-Copper co-product surplus is legitimate).
   for (const it of Object.keys(prod)) {

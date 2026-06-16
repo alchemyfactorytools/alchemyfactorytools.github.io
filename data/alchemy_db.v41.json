@@ -3280,6 +3280,78 @@
         "Fairy Tear": 1
       },
       "baseTime": 4
+    },
+    {
+      "id": "Flax_SeedPlot",
+      "machine": "Seed Plot",
+      "inputs": {
+        "Flax Seeds": 1
+      },
+      "outputs": {
+        "Flax": 1
+      },
+      "baseTime": 400,
+      "source": "seed-plot-codex"
+    },
+    {
+      "id": "Sage_SeedPlot",
+      "machine": "Seed Plot",
+      "inputs": {
+        "Sage Seeds": 1
+      },
+      "outputs": {
+        "Sage": 1
+      },
+      "baseTime": 540,
+      "source": "seed-plot-codex"
+    },
+    {
+      "id": "Redcurrant_SeedPlot",
+      "machine": "Seed Plot",
+      "inputs": {
+        "Redcurrant Seeds": 1
+      },
+      "outputs": {
+        "Redcurrant": 1
+      },
+      "baseTime": 900,
+      "source": "seed-plot-codex"
+    },
+    {
+      "id": "Chamomile_SeedPlot",
+      "machine": "Seed Plot",
+      "inputs": {
+        "Chamomile Seeds": 1
+      },
+      "outputs": {
+        "Chamomile": 1
+      },
+      "baseTime": 1120,
+      "source": "seed-plot-codex"
+    },
+    {
+      "id": "Lavender_SeedPlot",
+      "machine": "Seed Plot",
+      "inputs": {
+        "Lavender Seeds": 1
+      },
+      "outputs": {
+        "Lavender": 1
+      },
+      "baseTime": 1440,
+      "source": "seed-plot-codex"
+    },
+    {
+      "id": "Gentian_SeedPlot",
+      "machine": "Seed Plot",
+      "inputs": {
+        "Gentian Seeds": 1
+      },
+      "outputs": {
+        "Gentian": 1
+      },
+      "baseTime": 2160,
+      "source": "seed-plot-codex"
     }
   ]
 }
