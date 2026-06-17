@@ -172,11 +172,12 @@
     const exit = sideBySide
       ? (dx >= 0 ? { x: s.x + s.w, y: sy, nx: 1, ny: 0 } : { x: s.x, y: sy, nx: -1, ny: 0 })
       : (dy >= 0 ? { x: sx, y: s.y + s.h, nx: 0, ny: 1 } : { x: sx, y: s.y, nx: 0, ny: -1 });
-    // Enter the facing SIDE unless the boxes are basically directly stacked (≥~60% horizontal
-    // overlap). So a convergence point (Basic/Advanced Fertilizer assemblers) takes its offset
-    // inputs from the sides consistently, while straight single-input chains stay top→bottom.
+    // Enter the facing SIDE only when the boxes sit in clearly different columns (little horizontal
+    // overlap, <~37%); enter TOP/BOTTOM when they're stacked or mostly aligned. Keeps partly-aligned
+    // convergence inputs (Plant Ash/Quicklime → Basic Fert, 40–50% overlap) entering the top, while
+    // genuinely off-column inputs (Rotten Log → Table Saw 33%) come in the side.
     const xOverlap = (Math.min(s.x + s.w, t.x + t.w) - Math.max(s.x, t.x)) / Math.min(s.w, t.w);
-    const offset = xOverlap < 0.6;
+    const offset = xOverlap < 0.37;
     const entry = (sideBySide || offset)
       ? (dx >= 0 ? { x: t.x, y: ty, nx: -1, ny: 0 } : { x: t.x + t.w, y: ty, nx: 1, ny: 0 })  // facing side
       : (dy >= 0 ? { x: tx, y: t.y, nx: 0, ny: -1 } : { x: tx, y: t.y + t.h, nx: 0, ny: 1 }); // top/bottom
