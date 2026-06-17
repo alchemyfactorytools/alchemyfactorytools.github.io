@@ -157,7 +157,14 @@
   }
 
   function edgeClass(kind, back) { return 'edge' + (kind === 'fuel' ? ' heat' : kind === 'fert' ? ' nutrient' : kind === 'cash' ? ' cash' : back ? ' recycle' : ''); }
-  function curve(x1, y1, x2, y2) { const my = (y1 + y2) / 2; return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`; }
+  // Leaves the source going down, but ARRIVES aligned with the source→target direction so the
+  // arrowhead (orient=auto) points along the flow into the edge, not perpendicular to a flat top.
+  function curve(x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, stub = Math.min(38, len * 0.45);
+    const c1y = y1 + Math.min(44, Math.abs(dy) * 0.4);
+    const c2x = x2 - (dx / len) * stub, c2y = y2 - (dy / len) * stub;
+    return `M${x1},${y1} C${x1},${c1y} ${c2x},${c2y} ${x2},${y2}`;
+  }
   function edgeLabel(g, x, y, text) { for (const cls of ['bg', '']) { const t = el('text', { x, y: y - 3, 'text-anchor': 'middle' }); if (cls) t.setAttribute('class', cls); t.textContent = text; g.appendChild(t); } }
 
   function drawIR(ir, layout, gEl) {
