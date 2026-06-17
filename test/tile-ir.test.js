@@ -43,8 +43,8 @@ test('grouping is the composer structure, not a re-clustering — no line absorp
   const ban = ir.tiles.filter((t) => t.id.startsWith('Bandage'));
   assert.ok(adv.length > 0, 'has Advanced Fertilizer tiles');
   assert.ok(ban.length > 0, 'has Bandage tiles');
-  assert.ok(adv.every((t) => t.group === 'Advanced Fertilizer'), 'AdvFert chain stays in its own group');
-  assert.ok(ban.every((t) => t.group === 'Bandage'), 'Bandage chain stays in its own group');
+  assert.ok(adv.every((t) => t.line === 'Advanced Fertilizer'), 'AdvFert chain stays in its own line');
+  assert.ok(ban.every((t) => t.line === 'Bandage'), 'Bandage chain stays in its own line');
 });
 
 test('single-target build also round-trips faithfully', () => {

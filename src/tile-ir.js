@@ -20,29 +20,48 @@
 //   }
 
 const isProcess = (n) => !!(n.machine && n.machineCount);
+const isSupplyBelt = (n) => n.kind === 'belt';
 
-// The line/target a node belongs to, taken straight from the composer's hierarchical node id
-// (e.g. "Advanced Fertilizer#fert>Basic Fertilizer>..." -> "Advanced Fertilizer"). This is the
-// composer's OWN grouping carried through, not a re-clustering of the graph.
-function groupOf(n) {
-  if (n.type === 'external' || n.kind === 'belt') return 'supply';
+// The LINE (top-level group) a node belongs to — the composer's own grouping, read straight from the
+// hierarchical node id ("Advanced Fertilizer#fert>Basic Fertilizer>..." -> "Advanced Fertilizer").
+// Supply belts are their own 'supply' band; demand sinks inherit their target's line.
+function lineOf(n) {
+  if (isSupplyBelt(n)) return 'supply';
   const stripped = String(n.id).replace(/^(trash|surplus|demand|resource):/, '');
   const root = stripped.split('>')[0].replace(/#.*/, '').replace(/:.*$/, '');
   return root || n.label || 'misc';
 }
 
+// The material-tree PARENT id of a node, taken from the composer's id structure (the composer builds
+// a pure tree; the id encodes the lineage). Buys are tree leaves; trash hangs off its producer.
+// Supply belts and demand sinks have no tree parent (placed in their own bands). Returns null at a
+// line root. Only returns an id that actually exists, so the renderer can trust the link.
+function parentOf(id, idSet) {
+  if (/^(trash|surplus):/.test(id)) {
+    const body = id.replace(/^(trash|surplus):/, '');
+    const p = body.slice(0, body.lastIndexOf(':'));
+    return idSet.has(p) ? p : null;
+  }
+  if (/^(demand|resource):/.test(id)) return null;
+  const i = id.lastIndexOf('>');
+  if (i < 0) return null;
+  const p = id.slice(0, i);
+  return idSet.has(p) ? p : null;
+}
+
 const beltKind = (e) => (e.heat ? 'fuel' : e.nutrient ? 'fert' : e.cash ? 'cash' : 'material');
 
-// Level-1 producer: composer graph -> IR, structure preserved verbatim.
+// Level-1 producer: composer graph -> IR, structure preserved verbatim. Tiles are recipe steps;
+// ports are buys / demand sinks / supply belts / waste. `line` + `parent` carry the composer's tree
+// so the renderer can pack it recursively without re-deriving anything.
 function graphToIR(graph) {
+  const idSet = new Set(graph.nodes.map((n) => n.id));
   const tiles = [];
   const ports = [];
   for (const n of graph.nodes) {
-    if (isProcess(n)) {
-      tiles.push({ id: n.id, item: n.label, machine: n.machine, count: n.machineCount, out: n.ratePerMin || 0, group: groupOf(n) });
-    } else {
-      ports.push({ id: n.id, item: n.label, role: n.type || n.kind || 'node', group: groupOf(n) });
-    }
+    const common = { id: n.id, item: n.label, line: lineOf(n), parent: parentOf(n.id, idSet) };
+    if (isProcess(n)) tiles.push({ ...common, machine: n.machine, count: n.machineCount, out: n.ratePerMin || 0 });
+    else ports.push({ ...common, role: isSupplyBelt(n) ? 'belt' : (n.type || n.kind || 'node') });
   }
   const belts = [];
   for (const e of graph.edges) {
@@ -82,4 +101,4 @@ function machineTotalsFromIR(ir) {
   return totals;
 }
 
-module.exports = { graphToIR, validateIR, machineTotalsFromIR, groupOf };
+module.exports = { graphToIR, validateIR, machineTotalsFromIR, lineOf };
