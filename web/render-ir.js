@@ -29,12 +29,15 @@
     if (n.recirc) b += n.recirc.length;
     return b;
   };
+  const hasBadge = (n) => n.machine != null && n.utilization != null && Math.round(n.utilization * 100) < 90;
+  const BADGE_W = 50; // reserve for the ⚙NN% chip so it never overlaps the title
   function defaultSizeOf(node) {
     const isTile = node.machine != null;
     const label = isTile ? `${node.machine} → ${node.item}` : (node.item || node.id);
     const minW = node.role === 'belt' ? 280 : isTile ? 170 : 200;
-    const w = snap(Math.max(minW, Math.min(300, String(label).length * CHAR_W + 24)));
-    const titleLines = String(label).length * CHAR_W > w - 16 ? 2 : 1;
+    const badge = hasBadge(node) ? BADGE_W : 0;
+    const w = snap(Math.max(minW + badge, Math.min(300 + badge, String(label).length * CHAR_W + 24 + badge)));
+    const titleLines = String(label).length * CHAR_W > w - 16 - badge ? 2 : 1;
     const h = snap(titleLines * 16 + 16 + bandsOf(node) * BAND_H + 14);
     return { w, h };
   }
@@ -157,6 +160,10 @@
     // per-line header content (output rate + machine summary), all from the IR (faithful)
     const lineTiles = new Map();
     for (const t of ir.tiles) { if (!lineTiles.has(t.line)) lineTiles.set(t.line, []); lineTiles.get(t.line).push(t); }
+    const lineBox = new Map();
+    for (const b of layout.boxes) if (b.depth === 0 && b.line) lineBox.set(b.line, b);
+    let minNodeX = Infinity; for (const p of pos.values()) minNodeX = Math.min(minNodeX, p.x);
+    const gutter = Math.max(6, minNodeX - 30); // left rail for feedback loops
     const lineOutput = (line) => {
       const dem = ir.ports.find((p) => p.role === 'demand' && p.line === line);
       if (dem) return dem.rate;
@@ -190,13 +197,16 @@
         const tr = trunks.get(k); tr.rate += b.rate; tr.tos.push(b.to);
       } else individual.push({ b, back });
     }
-    // trunks: one aggregated line from the source to the consumers' centroid
+    // trunks: one aggregated line from the source DOWN to the TOP of the consuming line box (a short
+    // hop into the box, label in the clear gap above it — not a deep rake to the consumer centroid).
     for (const tr of trunks.values()) {
       const s = pos.get(tr.from); if (!s) continue;
       const cs = tr.tos.map((id) => pos.get(id)).filter(Boolean);
       if (!cs.length) continue;
-      const cx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
-      const cy = Math.min(...cs.map((p) => p.y));
+      const lb = lineBox.get(tr.line);
+      let cx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
+      let cy;
+      if (lb) { cy = lb.y; cx = Math.min(Math.max(cx, lb.x + 24), lb.x + lb.w - 24); } else { cy = Math.min(...cs.map((p) => p.y)); }
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
       g.appendChild(el('path', { d: curve(s.x + s.w / 2, s.y + s.h, cx, cy), 'marker-end': 'url(#arrow)' }));
       edgeLabel(g, (s.x + s.w / 2 + cx) / 2, (s.y + s.h + cy) / 2, `${tr.item} ${fmt(tr.rate)}`);
@@ -205,9 +215,16 @@
     for (const { b, back } of individual) {
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
       const g = el('g', { class: edgeClass(b.kind, back) });
-      const x1 = s.x + s.w / 2, y1 = s.y + s.h, x2 = t.x + t.w / 2, y2 = t.y;
-      g.appendChild(el('path', { d: curve(x1, y1, x2, y2), 'marker-end': 'url(#arrow)' }));
-      edgeLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+      if (back) {
+        // feedback loop: route out to the left rail and back, so it doesn't cut through the diagram
+        const x1 = s.x, y1 = s.y + s.h / 2, x2 = t.x, y2 = t.y + t.h / 2;
+        g.appendChild(el('path', { d: `M${x1},${y1} C${gutter},${y1} ${gutter},${y2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
+        edgeLabel(g, gutter + 44, (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+      } else {
+        const x1 = s.x + s.w / 2, y1 = s.y + s.h, x2 = t.x + t.w / 2, y2 = t.y;
+        g.appendChild(el('path', { d: curve(x1, y1, x2, y2), 'marker-end': 'url(#arrow)' }));
+        edgeLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+      }
       gEl.appendChild(g);
     }
 
@@ -219,7 +236,8 @@
       g.appendChild(el('rect', { width: p.w, height: p.h, rx: 7 }));
       const maxc = Math.floor((p.w - 16) / 7);
       if (tile) {
-        const titleLines = wrap(`${tile.machine} → ${tile.item}`, maxc, 2);
+        const titleMaxc = Math.floor((p.w - 16 - (hasBadge(tile) ? BADGE_W : 0)) / 7);
+        const titleLines = wrap(`${tile.machine} → ${tile.item}`, titleMaxc, 2);
         titleLines.forEach((ln, i) => { const t = el('text', { x: 10, y: 19 + i * 15 }); t.textContent = ln; g.appendChild(t); });
         const subY = titleLines.length === 2 ? 50 : 37;
         const sub = el('text', { x: 10, y: subY, class: 'sub' }); sub.textContent = `${tile.count}× · ${fmt(tile.out)}/min`; g.appendChild(sub);
