@@ -12,6 +12,7 @@
     "build": "node scripts/build-static.js",
     "serve": "npm run build:bundle && node server.js",
     "validate": "node scripts/validate.js",
+    "layout:debug": "node scripts/layout-debug.js",
     "cost": "node src/cli.js cost",
     "profit": "node src/cli.js profit"
   },
