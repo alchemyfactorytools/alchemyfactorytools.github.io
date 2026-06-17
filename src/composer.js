@@ -611,8 +611,19 @@ function makeComposer(db, cfg) {
     // a SINGLE-target affair — producing the fuel carrier alongside other targets is rejected upstream
     // (composerSolve), so a multi-target forest never self-fuels.
     const kf = uFuel && fuelHeatPerUnit > 0 ? uFuel.h / fuelHeatPerUnit : 0;
-    const selfFuelLine = !!(single && fuelItem && targets[0].item === fuelItem && !steamOn && !(fuelCap > 0) && kf > 1e-9 && kf < 1 - 1e-9);
-    const rateOf = (t) => (selfFuelLine ? t.rate / (1 - kf) : t.rate); // gross build rate per target
+    let selfFuelLine = !!(single && fuelItem && targets[0].item === fuelItem && !steamOn && !(fuelCap > 0) && kf > 1e-9 && kf < 1 - 1e-9);
+    // Self-ferting line: the fert mirror of the above. When the TARGET *is* the fert carrier and that
+    // carrier is grown from fertilized crops (kg = nutrient drawn per carrier unit / nutrient it
+    // provides, uFert.n/fertNutrientPerUnit), one over-producing line fertilizes its own nurseries —
+    // no separate fert trunk. No steam analogue for fert, so no steam gate. 0<kg<1 ⇒ self-sustaining.
+    const kg = uFert && fertNutrientPerUnit > 0 ? uFert.n / fertNutrientPerUnit : 0;
+    let selfFertLine = !!(single && fertCarrier && targets[0].item === fertCarrier && !(fertCap > 0) && kg > 1e-9 && kg < 1 - 1e-9);
+    // A carrier that is BOTH fuel and fert (e.g. Panacea Potion) loops BOTH heat AND nutrient back into
+    // itself, so GROSS = rate/(1-kf-kg) covers both draws at once. That only sustains if kf+kg<1; if the
+    // two self-draws together exceed one unit, no single line can feed both — fall back to normal trunks.
+    if (selfFuelLine && selfFertLine && kf + kg >= 1 - 1e-9) { selfFuelLine = false; selfFertLine = false; }
+    const kSelf = (selfFuelLine ? kf : 0) + (selfFertLine ? kg : 0);
+    const rateOf = (t) => (kSelf > 1e-9 ? t.rate / (1 - kSelf) : t.rate); // gross build rate per target
     const rate = single ? targets[0].rate : null;        // NET rate — back-compat scalar for summary/fuel
     const grossRate = single ? rateOf(targets[0]) : null; // back-compat scalar (== rate unless self-fueling)
 
@@ -620,13 +631,13 @@ function makeComposer(db, cfg) {
     // its net output demand (Df / Dg) folds into the shared trunk, which already over-produces for the
     // whole build's heat/nutrient + its own self-heat. That one trunk line then feeds BOTH the heated
     // machines AND this target's demand sink (wired in compose-graph). Folds only when the carrier is
-    // produced from scratch (cap 0), not steam-supplied, and — for fuel — can self-sustain (0<kf<1);
-    // otherwise it stays an ordinary tree. SINGLE-target carrier keeps the self-fuel collapse (grossRate).
+    // produced from scratch (cap 0), not steam-supplied, and can self-sustain (fuel 0<kf<1, fert 0<kg<1);
+    // otherwise it stays an ordinary tree. SINGLE-target carrier keeps the self-feed collapse (grossRate).
     let Df = 0, Dg = 0;
     const carrierTargets = new Set();
     if (!single) for (const t of targets) {
       if (fuelItem && t.item === fuelItem && !steamOn && fuelCap === 0 && kf > 1e-9 && kf < 1 - 1e-9) { Df += t.rate; carrierTargets.add(t.item); }
-      else if (fertCarrier && t.item === fertCarrier && fertCap === 0) { Dg += t.rate; carrierTargets.add(t.item); }
+      else if (fertCarrier && t.item === fertCarrier && fertCap === 0 && kg > 1e-9 && kg < 1 - 1e-9) { Dg += t.rate; carrierTargets.add(t.item); }
     }
     const buildTargets = carrierTargets.size ? targets.filter((t) => !carrierTargets.has(t.item)) : targets;
 
@@ -720,7 +731,12 @@ function makeComposer(db, cfg) {
     const fuel = selfFuelLine
       ? { item: fuelItem, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFuelLine: true, netRate: rate, selfFuel: grossRate - rate }
       : splitTrunk(fuelItem, F + Mf + Df, fuelCap, 'fuel');
-    const fert = splitTrunk(fertCarrier, G + Mg + Dg, fertCap, 'fert');
+    // Self-ferting line (target IS the fert carrier): mirror of the fuel self-loop — the target line is
+    // built at GROSS above, so there is no separate fert trunk; point it at the target tree itself and
+    // compose-graph wires the nutrient edges as a self-loop (line output → its own nurseries).
+    const fert = selfFertLine
+      ? { item: fertCarrier, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFertLine: true, netRate: rate, selfFert: grossRate - rate }
+      : splitTrunk(fertCarrier, G + Mg + Dg, fertCap, 'fert');
 
     const treeSet = new Set(trees.map((t) => t.tree)); // roots already tallied (a self-fuel trunk reuses one)
     const machineTotals = {};

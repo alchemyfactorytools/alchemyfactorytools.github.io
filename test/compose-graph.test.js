@@ -42,16 +42,22 @@ test('Phase 4: heated machines get a fuel edge + band from the fuel trunk', () =
   assert.ok(fuelEdge && fuelEdge.item === 'Coke Powder', 'a heat edge feeds the Kiln from the fuel trunk');
 });
 
-test('Phase 4: nurseries get a fert edge; a heated machine INSIDE the fert trunk still gets fuel', () => {
-  // Growth Potion (the fert carrier) grows its own herbs and its Clay sub-cauldron burns fuel —
-  // the trunk-ordering must wire fuel to consumers discovered while walking the fert trunk.
-  const g = graphOf('Growth Potion', 20);
+test('Phase 4: self-ferting line — target IS the fert carrier, so one over-producing line feeds its own nurseries', () => {
+  // Growth Potion (the fert carrier) grows its own herbs, so targeting it collapses to a SINGLE
+  // over-producing line that fertilizes itself (no separate Growth Potion#fert trunk). Its Clay
+  // sub-cauldron is heated, and must still get a fuel edge even though it lives in the target line.
+  const composed = comp.compose('Growth Potion', 20);
+  assert.ok(composed.fert && composed.fert.selfFertLine, 'fert collapses to a self-ferting line');
+  assert.ok(composed.fert.prodTile === composed.tree, 'the fert "trunk" IS the target line itself');
+  assert.ok(composed.fert.netRate === 20 && composed.fert.selfFert > 1e-6, 'nets the target rate; surplus loops back');
+  const g = composeGraph(composed, db, cfg);
   assert.equal(g.summary.validation.length, 0, 'no missing-fuel/fert issues anywhere');
+  assert.equal(g.nodes.filter((n) => n.id.startsWith('Growth Potion#fert')).length, 0, 'no separate fert trunk built');
   const nursery = g.nodes.find((n) => n.machine === 'Nursery');
-  assert.ok(g.edges.some((e) => e.nutrient && e.to === nursery.id), 'a nutrient edge feeds the Nursery');
-  const fertCauldron = g.nodes.find((n) => n.id.startsWith('Growth Potion#fert') && n.kind === 'cauldron' && n.fuelPerMin > 0);
-  assert.ok(fertCauldron, 'the fert trunk has a heated cauldron');
-  assert.ok(g.edges.some((e) => e.heat && e.to === fertCauldron.id), 'that in-trunk cauldron still gets a fuel edge');
+  assert.ok(g.edges.some((e) => e.nutrient && e.to === nursery.id), 'a nutrient edge feeds the Nursery (self-loop from the line)');
+  const fertCauldron = g.nodes.find((n) => /Growth Potion/.test(n.id) && n.kind === 'cauldron' && n.fuelPerMin > 0);
+  assert.ok(fertCauldron, 'the self-ferting line has a heated cauldron');
+  assert.ok(g.edges.some((e) => e.heat && e.to === fertCauldron.id), 'that in-line cauldron still gets a fuel edge');
 });
 
 test('Phase 4: a minted coin links back to the main-belt money line (cash edge)', () => {
