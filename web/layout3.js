@@ -177,14 +177,29 @@
       else if (e.heat && !beltSet.has(e.from)) fuelSources.add(e.from);
     }
     const isUtilSource = (id) => fuelSources.has(id) || fertSources.has(id);
-    // line roots = tree-children of the producer of each demanded item, busiest first
-    // (rate order, inherited from treeKids) so ties go to the larger line. A util (fuel/
-    // fert) carrier among them is skipped — it groups as the Fuel/Fert line (seeded below)
-    // rather than being double-claimed as a product line of the target it happens to heat.
+    // adjacency: consumer → its inputs (producers feeding it).
+    // MATERIAL edges only. A cluster key propagates upstream along material flow; it must NOT
+    // climb a heat/nutrient (fuel/fert) support edge, or a product line would jump across the
+    // fert edge into the carrier that fertilizes it and swallow the whole carrier chain. That
+    // matters when the carrier is ALSO a target (e.g. building Advanced Fertilizer AND Bandage,
+    // where the Advanced Fertilizer line fertilizes Bandage): the Bandage BFS would otherwise win
+    // the nearest-seed race up the fert edge and absorb the Advanced Fertilizer line. (Cash edges
+    // come off the belt, which is already excluded.)
+    const inputsOf = new Map(graph.nodes.map((n) => [n.id, []]));
+    for (const e of graph.edges) {
+      if (e.from === e.to || e.heat || e.nutrient || e.cash) continue;
+      inputsOf.get(e.to).push(e.from);
+    }
+    // line roots = the MATERIAL ingredients of each demanded item's producer. Derived from the
+    // material adjacency above (not the spanning tree): the spanning tree includes fuel/fert
+    // edges, so in a multi-target build a carrier-target's producer can be claimed under the line
+    // it fertilizes, leaving treeKids(demand) empty and the carrier line unseeded. A util (fuel/
+    // fert) carrier among the ingredients is skipped — it groups as the Fuel/Fert line (seeded
+    // below) rather than being double-claimed as a product line of the target it happens to heat.
     const lineRoots = [];
     const lineRootSet = new Set();
     for (const d of graph.nodes.filter((n) => n.type === 'demand')) {
-      for (const prod of treeKids.get(d.id)) for (const inp of treeKids.get(prod)) {
+      for (const prod of inputsOf.get(d.id) || []) for (const inp of inputsOf.get(prod) || []) {
         if (!lineRootSet.has(inp) && !excluded(inp) && !isUtilSource(inp)) { lineRootSet.add(inp); lineRoots.push(inp); }
       }
     }
@@ -192,12 +207,6 @@
     // label each line by the item it produces toward the final product
     const itemOfEdge = new Map();
     for (const e of graph.edges) if (lineRootSet.has(e.from) && parent.get(e.from) === e.to) itemOfEdge.set(e.from, e.item);
-    // adjacency: consumer → its inputs (producers feeding it)
-    const inputsOf = new Map(graph.nodes.map((n) => [n.id, []]));
-    for (const e of graph.edges) {
-      if (e.from === e.to) continue;
-      inputsOf.get(e.to).push(e.from);
-    }
     // Seeds for the multi-source nearest-root BFS. Product lines first (so a tie
     // goes to a product), then the UTILITY subsystems — fuel and fertilizer
     // production — each as its own line. Making fertilizer (the Growth-Potion →
@@ -316,6 +325,26 @@
         labelOf.set(key, compLabel.get(compOf.get(s)));
       }
       clusterOf = runBFS(seeds2);
+    }
+
+    // Re-home self-fert / self-fuel CARRIER producers that are themselves targets. The material-
+    // only BFS never reaches them (they sit downstream of their own ingredients, and their only
+    // non-material output is the fert/fuel loop), so without this they'd strand on the spine like
+    // an ordinary final producer. Attach each to the line of its busiest MATERIAL input — its own
+    // main ingredient chain — so the carrier sits inside its own line box. Crucially this uses the
+    // carrier's OWN input, never the foreign line it fertilizes, so a multi-target build keeps the
+    // fert line as its own box instead of folding it into the consumer. Non-carrier final producers
+    // (no heat/nutrient output) are left unclustered on the spine, exactly as before. Done before
+    // the fold so an exclusive feeder (e.g. Gloom Fungus → this carrier) still folds in correctly.
+    for (const n of graph.nodes) {
+      if (clusterOf.has(n.id) || !demandProducers.has(n.id)) continue;
+      if (!graph.edges.some((e) => e.from === n.id && (e.heat || e.nutrient))) continue; // carrier only
+      let from = null, best = -1;
+      for (const e of graph.edges) {
+        if (e.to !== n.id || e.heat || e.nutrient || e.cash || e.from === e.to) continue;
+        if ((e.ratePerMin || 0) > best) { best = e.ratePerMin || 0; from = e.from; }
+      }
+      if (from != null && clusterOf.has(from)) clusterOf.set(n.id, clusterOf.get(from));
     }
 
     // Fold an EXCLUSIVE feeder line into its sole consumer. The seeding above makes every direct
