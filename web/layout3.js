@@ -1214,6 +1214,14 @@
       const toCenter = [...new Set([...demandIds, ...finalProducers])].sort((a, b) => rank.get(a) - rank.get(b));
       const span = orientation === 'TB' ? NODE_W : NODE_H;
       const lead = (p) => (orientation === 'TB' ? p.x : p.y);
+      // A node whose lane renders as a box (≥2 positioned members) drags that box with it when
+      // centred. If its inputs straddle two lanes, the barycentre lands BETWEEN them — sliding the
+      // box across the cross-axis band of a neighbouring lane. No two nodes overlap (they're in
+      // different flow rows), so the same-row check below misses it, but the two cluster BOXES then
+      // overlap. Count lane sizes so we can additionally forbid a boxed node from centring over any
+      // other lane's column.
+      const laneSize = new Map();
+      for (const oid of pos.keys()) { const l = lane(oid); laneSize.set(l, (laneSize.get(l) || 0) + 1); }
       for (const id of toCenter) {
         const p = pos.get(id);
         if (!p) continue;
@@ -1221,6 +1229,7 @@
         if (!ins.length) continue;
         const c = ins.reduce((s, q) => s + crossCtr(q), 0) / ins.length;
         const newLead = c - span / 2;
+        const boxed = (laneSize.get(lane(id)) || 0) >= 2; // its lane draws a container box
         // Centre on the inputs even when the row is shared — only skip if the centred position
         // would actually COLLIDE with a same-row neighbour. "Same row" = same FLOW position, NOT
         // same rank: spineDrop drops the product/demand spine rows below the top-pinned util
@@ -1233,7 +1242,11 @@
         for (const oid of pos.keys()) {
           if (oid === id) continue;
           const op = pos.get(oid);
-          if (Math.abs((orientation === 'TB' ? op.y : op.x) - myFlow) > 1) continue;
+          // Block on a same-flow-row neighbour (node overlap) OR — for a boxed node — any node in
+          // a DIFFERENT lane whose column the new position would overlap (box overlap, any row).
+          const sameRow = Math.abs((orientation === 'TB' ? op.y : op.x) - myFlow) <= 1;
+          const otherLane = boxed && lane(oid) !== lane(id);
+          if (!sameRow && !otherLane) continue;
           const ol = lead(op);
           if (newLead < ol + span + GAP_CROSS && ol < newLead + span + GAP_CROSS) { collides = true; break; }
         }
