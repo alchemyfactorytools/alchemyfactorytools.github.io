@@ -246,16 +246,26 @@
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
       const g = el('g', { class: edgeClass(b.kind, back) });
       if (back) {
-        // feedback loop: come up the gap on the source's side of the target and enter from that side
-        // (a tight loop), instead of swinging out to a far rail.
-        const rightSide = s.x + s.w / 2 >= t.x + t.w / 2;
+        // feedback loop: comes up the gap on the source's side of the target. Back edges always run
+        // from below (ancestor) up to above (descendant). When the approach is STEEP (target nearly
+        // overhead) a side-edge arrow gets half-covered by the box, so enter the BOTTOM edge with an
+        // upward arrow instead (sits cleanly in the gap, like a downward flow entering the top).
+        const sc = s.x + s.w / 2, tc = t.x + t.w / 2;
+        const rightSide = sc >= tc;
+        const dx = Math.abs(tc - sc), dy = Math.abs((t.y + t.h / 2) - (s.y + s.h / 2));
         const x1 = rightSide ? s.x : s.x + s.w, y1 = s.y + s.h / 2;
-        const x2 = rightSide ? t.x + t.w : t.x, y2 = t.y + t.h / 2;
-        const bx = rightSide ? t.x + t.w + 30 : t.x - 30;
-        // 2nd control at mid-height (not at y2) so the end tangent is diagonal — the arrow enters
-        // angled with the loop's travel instead of horizontally at 90° to the side edge.
-        g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${(y1 + y2) / 2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
-        edgeLabel(g, bx + (rightSide ? 8 : -8), (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+        if (dx < dy * 0.6) {
+          const ey = t.y + t.h;                       // bottom edge, arrow points up
+          const cx = Math.min(Math.max(sc, t.x + 16), t.x + t.w - 16);
+          const bx = rightSide ? Math.max(s.x, t.x + t.w) + 30 : Math.min(s.x + s.w, t.x) - 30;
+          g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${cx},${ey + 32} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
+          edgeLabel(g, cx + (rightSide ? 10 : -10), (y1 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
+        } else {
+          const x2 = rightSide ? t.x + t.w : t.x, y2 = t.y + t.h / 2;
+          const bx = rightSide ? t.x + t.w + 30 : t.x - 30;
+          g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${(y1 + y2) / 2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
+          edgeLabel(g, bx + (rightSide ? 8 : -8), (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+        }
       } else {
         const x1 = s.x + s.w / 2, y1 = s.y + s.h, x2 = t.x + t.w / 2, y2 = t.y;
         g.appendChild(el('path', { d: curve(x1, y1, x2, y2), 'marker-end': 'url(#arrow)' }));
