@@ -15,7 +15,7 @@
   const snap = (v) => Math.ceil(v / U) * U;
   const CHAR_W = 7.2;
   const BAND_H = 17;
-  const TOPHDR = U * 3;                           // line-box header height (name + output + machines)
+  const TOPHDR = U * 4;                           // line-box header clearance (name + output + machines)
 
   const fmt = (n) => (n == null ? '' : Math.abs(n) >= 100 ? String(Math.round(n)) : Math.abs(n) >= 1 ? String(Math.round(n * 10) / 10) : String(Math.round(n * 1000) / 1000));
   const fmtCu = (n) => (n == null ? '' : n >= 1000 ? `${Math.round(n)}c` : `${Math.round(n * 10) / 10}c`);
@@ -110,7 +110,8 @@
     for (const rootId of lineRoots) {
       const sub = layoutSubtree(rootId, childrenOf, sizeFn, 1);
       for (const [nid, p] of sub.place) pos.set(nid, { x: p.x + lineX + U, y: p.y + lineTop + TOPHDR, w: p.w, h: p.h });
-      for (const bx of sub.boxes) boxes.push({ ...bx, x: bx.x + lineX + U, y: bx.y + lineTop + TOPHDR });
+      // skip the root's OWN branch box — the line box (below) already wraps the same subtree
+      for (const bx of sub.boxes) if (bx.key !== rootId) boxes.push({ ...bx, x: bx.x + lineX + U, y: bx.y + lineTop + TOPHDR });
       boxes.push({ key: rootId, line: nodeById.get(rootId).line, x: lineX, y: lineTop, w: sub.w + 2 * U, h: sub.h + TOPHDR + U, depth: 0 });
       lineCenterX.set(nodeById.get(rootId).line, lineX + (sub.w + 2 * U) / 2);
       lineX += sub.w + 2 * U + GAP;
@@ -190,6 +191,10 @@
         const out = el('text', { x: b.x + 10, y: b.y + 31, class: 'clustersub', fill: col }); out.textContent = `● ${fmt(lineOutput(b.line))} ${b.line}/min`; gEl.appendChild(out);
         const sum = (lineTiles.get(b.line) || []).map((t) => `${t.count}× ${t.machine}`).join(' + ');
         const ms = el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub', fill: col }); ms.textContent = clip(sum, maxc); gEl.appendChild(ms);
+      } else if (b.key) {
+        // branch sub-box: label it with the item its subtree produces
+        const n = nodeById.get(b.key);
+        if (n) { const lb = el('text', { x: b.x + 10, y: b.y + 15, class: 'clustersub', fill: col }); lb.textContent = n.item; gEl.appendChild(lb); }
       }
     }
 
