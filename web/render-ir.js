@@ -129,10 +129,14 @@
     let mx = 0;
     for (const id of ids) if (!pos.has(id)) { const s = sizeFn(id); pos.set(id, { x: mx, y: demandY + 4 * U, w: s.w, h: s.h }); mx += s.w + U; }
 
+    // outer margin so nothing sits flush against the canvas edge
+    const M = U * 2;
+    for (const p of pos.values()) { p.x += M; p.y += M; }
+    for (const b of boxes) { b.x += M; b.y += M; }
     let width = 0, height = 0;
     for (const p of pos.values()) { width = Math.max(width, p.x + p.w); height = Math.max(height, p.y + p.h); }
     for (const b of boxes) { width = Math.max(width, b.x + b.w); height = Math.max(height, b.y + b.h); }
-    return { pos, boxes, backEdges, width: Math.max(width, 1), height: Math.max(height, 1) };
+    return { pos, boxes, backEdges, width: width + M, height: height + M };
   }
 
   // ---------------- DOM drawing ----------------
@@ -162,8 +166,8 @@
     for (const t of ir.tiles) { if (!lineTiles.has(t.line)) lineTiles.set(t.line, []); lineTiles.get(t.line).push(t); }
     const lineBox = new Map();
     for (const b of layout.boxes) if (b.depth === 0 && b.line) lineBox.set(b.line, b);
-    let minNodeX = Infinity; for (const p of pos.values()) minNodeX = Math.min(minNodeX, p.x);
-    const gutter = Math.max(6, minNodeX - 30); // left rail for feedback loops
+    // transparent full-canvas rect so getBBox (and thus fitView) includes the outer margin
+    gEl.appendChild(el('rect', { x: 0, y: 0, width: layout.width, height: layout.height, fill: 'none' }));
     const lineOutput = (line) => {
       const dem = ir.ports.find((p) => p.role === 'demand' && p.line === line);
       if (dem) return dem.rate;
@@ -220,10 +224,14 @@
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
       const g = el('g', { class: edgeClass(b.kind, back) });
       if (back) {
-        // feedback loop: route out to the left rail and back, so it doesn't cut through the diagram
-        const x1 = s.x, y1 = s.y + s.h / 2, x2 = t.x, y2 = t.y + t.h / 2;
-        g.appendChild(el('path', { d: `M${x1},${y1} C${gutter},${y1} ${gutter},${y2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
-        edgeLabel(g, gutter + 44, (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+        // feedback loop: come up the gap on the source's side of the target and enter from that side
+        // (a tight loop), instead of swinging out to a far rail.
+        const rightSide = s.x + s.w / 2 >= t.x + t.w / 2;
+        const x1 = rightSide ? s.x : s.x + s.w, y1 = s.y + s.h / 2;
+        const x2 = rightSide ? t.x + t.w : t.x, y2 = t.y + t.h / 2;
+        const bx = rightSide ? t.x + t.w + 30 : t.x - 30;
+        g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${y2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
+        edgeLabel(g, bx + (rightSide ? 8 : -8), (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
       } else {
         const x1 = s.x + s.w / 2, y1 = s.y + s.h, x2 = t.x + t.w / 2, y2 = t.y;
         g.appendChild(el('path', { d: curve(x1, y1, x2, y2), 'marker-end': 'url(#arrow)' }));
