@@ -478,7 +478,13 @@
     const K = Math.min(200, Math.max(1, Math.ceil(termTotal / perBelt - 1e-6)), netBelts);
     const tTerm = Math.max(1, Math.ceil(termTotal / K - 1e-6));
     // feeders sized so a tile's terminal machines run at 100%: f = terminal machines per tile / total.
-    const { cell, total } = mkCell(K, tTerm / termLoad);
+    // For a single tile (K === 1) the "tile" IS the whole line — there is no tiling to balance, so
+    // over-provisioning feeders up to a rounded-up terminal would just over-build the line and disagree
+    // with the per-node machine counts (which are ceil(load) at demand, e.g. 11 Table Saws, not 13).
+    // Use f = 1 so the header's machine list reconciles with the nodes; keep the saturating scale only
+    // when genuinely splitting into K > 1 self-contained tiles.
+    const f = K > 1 ? tTerm / termLoad : 1;
+    const { cell, total } = mkCell(K, f);
     const perTileOut = Math.min(tTerm * s, transportCap > 0 ? transportCap : Infinity);
     // idle = fraction of the tiles' SATURATED terminal capacity that backpressures to meet demand.
     const satCap = K * tTerm * s;
