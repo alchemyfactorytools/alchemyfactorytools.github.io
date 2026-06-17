@@ -318,6 +318,33 @@
       clusterOf = runBFS(seeds2);
     }
 
+    // Fold an EXCLUSIVE feeder line into its sole consumer. The seeding above makes every direct
+    // ingredient of the final product its own line, so a product fed by two chains (Advanced
+    // Fertilizer = Basic Fertilizer + Gloom Fungus) reads as two separate lines even though Gloom
+    // Fungus is consumed ONLY by Advanced Fertilizer — you can't make the product without it, so it
+    // belongs in that box. Reassign any line whose entire material output crosses into exactly ONE
+    // other line into that consumer. Shared sub-assemblies (≥2 consumers) and util (fuel/fert) lines
+    // are never folded, so they stay their own tileable boxes. Iterate so a chain folds all the way up.
+    for (let iter = 0; iter < 8; iter++) {
+      const consumersOf = new Map(); // line key → set of consumer line keys (material edges only)
+      for (const e of graph.edges) {
+        if (e.heat || e.nutrient || e.cash || e.from === e.to) continue;
+        const a = clusterOf.get(e.from), b = clusterOf.get(e.to);
+        if (a == null || b == null || a === b) continue;
+        if (!consumersOf.has(a)) consumersOf.set(a, new Set());
+        consumersOf.get(a).add(b);
+      }
+      let folded = false;
+      for (const [k, cons] of consumersOf) {
+        if (String(k).startsWith('util:') || cons.size !== 1) continue; // util / shared stay separate
+        const target = [...cons][0];
+        if (String(target).startsWith('util:')) continue; // don't fold a product line into a util line
+        for (const [nid, key] of clusterOf) if (key === k) clusterOf.set(nid, target);
+        folded = true;
+      }
+      if (!folded) break;
+    }
+
     // Disposal sinks (surplus / trash) have no line of their own — the BFS above never
     // reaches them (they produce nothing a seed consumes), so they'd fall into the trailing
     // unclustered band on the far side with a feed edge raking the whole canvas. Attach each
