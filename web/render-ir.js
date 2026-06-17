@@ -252,14 +252,17 @@
         // upward arrow instead (sits cleanly in the gap, like a downward flow entering the top).
         const sc = s.x + s.w / 2, tc = t.x + t.w / 2;
         const rightSide = sc >= tc;
-        const dx = Math.abs(tc - sc), dy = Math.abs((t.y + t.h / 2) - (s.y + s.h / 2));
+        const dy = Math.abs((t.y + t.h / 2) - (s.y + s.h / 2));
         const x1 = rightSide ? s.x : s.x + s.w, y1 = s.y + s.h / 2;
-        if (dx < dy * 0.6) {
-          const ey = t.y + t.h;                       // bottom edge, arrow points up
-          const cx = Math.min(Math.max(sc, t.x + 16), t.x + t.w - 16);
-          const bx = rightSide ? Math.max(s.x, t.x + t.w) + 30 : Math.min(s.x + s.w, t.x) - 30;
-          g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${cx},${ey + 32} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
-          edgeLabel(g, cx + (rightSide ? 10 : -10), (y1 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
+        if (dy > 60) {
+          // any real upward loop arrives near-vertically up the rail, so a side-edge arrow clips on
+          // the box. Hug the near rail and enter the BOTTOM edge with an angled-up arrow (sits in the
+          // gap below the box, fully visible).
+          const ey = t.y + t.h;
+          const bx = rightSide ? t.x + t.w + 28 : t.x - 28;
+          const cx = rightSide ? t.x + t.w - 18 : t.x + 18;
+          g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
+          edgeLabel(g, bx + (rightSide ? 10 : -10), (y1 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
         } else {
           const x2 = rightSide ? t.x + t.w : t.x, y2 = t.y + t.h / 2;
           const bx = rightSide ? t.x + t.w + 30 : t.x - 30;
