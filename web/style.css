@@ -30,7 +30,11 @@ header {
 }
 h1 { font-size: 18px; margin: 0; font-weight: 600; }
 h1 .muted { color: var(--muted); font-weight: 400; font-size: 14px; }
+.header-right { display: flex; align-items: center; gap: 12px; }
 .version { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gh-link { display: inline-flex; color: var(--muted); transition: color .12s; }
+.gh-link:hover { color: var(--ink); }
+.gh-link svg { display: block; fill: currentColor; }
 .muted { color: var(--muted); }
 
 .layout { display: grid; grid-template-columns: 320px 1fr; flex: 1; min-height: 0; transition: grid-template-columns .15s; }
