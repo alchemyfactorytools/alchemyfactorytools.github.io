@@ -162,20 +162,21 @@
   // outgoing placements use this same rule — that's the unification.
   function attach(s, t) {
     const sx = s.x + s.w / 2, sy = s.y + s.h / 2, tx = t.x + t.w / 2, ty = t.y + t.h / 2;
-    // Prefer VERTICAL (the layered flow), but attach to the SIDES when either the boxes overlap
-    // vertically (genuinely side-by-side) OR the edge is aggressively shallow (≳2:1 horizontal:
-    // vertical) — a near-horizontal line knifing into a flat top reads worse than entering the side.
-    // Moderate offsets stay vertical so a slightly-offset downward flow still reads top→bottom.
+    const dx = tx - sx, dy = ty - sy;
     const overlapY = Math.min(s.y + s.h, t.y + t.h) - Math.max(s.y, t.y);
-    const aggressive = Math.abs(tx - sx) > Math.abs(ty - sy) * 2;
-    if (overlapY <= Math.min(s.h, t.h) * 0.5 && !aggressive) {
-      return ty >= sy
-        ? { exit: { x: sx, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: tx, y: t.y, nx: 0, ny: -1 } }        // target below
-        : { exit: { x: sx, y: s.y, nx: 0, ny: -1 }, entry: { x: tx, y: t.y + t.h, nx: 0, ny: 1 } };        // target above
-    }
-    return tx >= sx
-      ? { exit: { x: s.x + s.w, y: sy, nx: 1, ny: 0 }, entry: { x: t.x, y: ty, nx: -1, ny: 0 } }           // target right
-      : { exit: { x: s.x, y: sy, nx: -1, ny: 0 }, entry: { x: t.x + t.w, y: ty, nx: 1, ny: 0 } };          // target left
+    const sideBySide = overlapY > Math.min(s.h, t.h) * 0.5;
+    // EXIT and ENTRY are chosen INDEPENDENTLY. Producers drop output out the BOTTOM toward a target
+    // below (only a side exit when genuinely side-by-side). The consumer is entered on the TOP when
+    // the source is roughly overhead, but on the facing SIDE when the source is offset enough — so a
+    // shallow input reads as "drop out the bottom, curve into the side" rather than knifing the top.
+    const exit = sideBySide
+      ? (dx >= 0 ? { x: s.x + s.w, y: sy, nx: 1, ny: 0 } : { x: s.x, y: sy, nx: -1, ny: 0 })
+      : (dy >= 0 ? { x: sx, y: s.y + s.h, nx: 0, ny: 1 } : { x: sx, y: s.y, nx: 0, ny: -1 });
+    const offset = Math.abs(dx) > Math.abs(dy) * 1.6;
+    const entry = (sideBySide || offset)
+      ? (dx >= 0 ? { x: t.x, y: ty, nx: -1, ny: 0 } : { x: t.x + t.w, y: ty, nx: 1, ny: 0 })  // facing side
+      : (dy >= 0 ? { x: tx, y: t.y, nx: 0, ny: -1 } : { x: tx, y: t.y + t.h, nx: 0, ny: 1 }); // top/bottom
+    return { exit, entry };
   }
   // Curve leaving `exit` along its edge normal and ARRIVING at `entry` aligned with the exit→entry
   // direction, so the auto-oriented arrowhead points along the flow into the edge.
