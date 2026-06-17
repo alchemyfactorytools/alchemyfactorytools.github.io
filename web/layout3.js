@@ -378,6 +378,13 @@
         : lineOutput(c.members);
       c.outItem = out ? out.item : null;
       c.outRate = out ? out.rate : null;
+      // Name a PRODUCT line by what it ultimately makes (its dominant boundary output), not by its
+      // root tile's item. When the final assembler is folded into its main ingredient's line — e.g.
+      // the Advanced Fertilizer assembler joining the Basic Fertilizer chain — the line PRODUCES
+      // Advanced Fertilizer even though its root tile is Basic Fertilizer, so it should read
+      // "Advanced Fertilizer line", matching the per-tile output already shown in the header. Util
+      // (fuel/fert) lines keep their "Fuel"/"Fertilizer" labels.
+      if (c.outItem && String(c.id) !== 'util:fuel' && String(c.id) !== 'util:fertilizer') c.label = c.outItem;
       // Terminal output machine(s): the member(s) that emit the line's product across the box
       // boundary (the fuel line's Grinder→Coke Powder; a material line's final machine). Their
       // saturated single-machine throughput defines a tile — a tile is built around whole output
