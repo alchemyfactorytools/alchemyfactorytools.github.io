@@ -8,9 +8,13 @@
 //   3. stamp   — stamp ceil(build production / one tile's output) identical tiles.
 //   4. belts   — inter-item flows (material/fuel/fert/cash) become belts between tiles.
 //
-// TILE-SIZE MODE (both supported):
+// TILE-SIZE MODE:
 //   'machine' — one terminal machine + its belt taps. Minimal/modular, ~exact-fit, many small tiles.
 //   'belt'    — terminal machines sized to fill one belt. Fewer, denser tiles; over-builds low demand.
+//   'hybrid'  — whole belt-tiles for the bulk + machine-tiles for the leftover remainder. "Belt for
+//               the high-demand backbone, machine for the low-demand tail" — gets ~exact-fit machine
+//               counts AND consolidated belt blueprints. Both unit sizes are canonical, so identity
+//               still holds; an item just renders as N belt-tiles + R machine-tiles.
 // A tile's output is sized from the SATURATED single-machine rate (recipe throughput × speedMult),
 // not the demand-throttled average, so the unit is a true buildable blueprint.
 //
@@ -67,35 +71,57 @@ function unitTile(item, mode) {
 }
 const tileSig = (t) => (t ? `${t.count}× ${t.machine} → ${t.item} @ ${t.out.toFixed(1)}/min` : '∅(bought)');
 
+// stamps for one item at total demand `gross`: a list of {unit, n} (belt and/or machine units)
+function stampsFor(item, gross, mode) {
+  if (!perMachine(item)) return null; // raw / leaf -> bought
+  const belt = unitTile(item, 'belt'), mach = unitTile(item, 'machine');
+  if (mode === 'machine') return [{ unit: mach, n: Math.max(1, Math.ceil(gross / mach.out - 1e-9)) }];
+  if (mode === 'belt') return [{ unit: belt, n: Math.max(1, Math.ceil(gross / belt.out - 1e-9)) }];
+  // hybrid: whole belts for the bulk, machine tiles for the remainder
+  const nBelt = Math.floor(gross / belt.out + 1e-9);
+  const rem = gross - nBelt * belt.out;
+  const out = [];
+  if (nBelt > 0) out.push({ unit: belt, n: nBelt });
+  if (rem > 1e-6) out.push({ unit: mach, n: Math.ceil(rem / mach.out - 1e-9) });
+  if (!out.length) out.push({ unit: mach, n: 1 });
+  // merge identical units (when one machine already fills a belt, belt unit == machine unit)
+  const merged = new Map();
+  for (const st of out) { const k = st.unit.machine + '\t' + st.unit.count; if (merged.has(k)) merged.get(k).n += st.n; else merged.set(k, { unit: st.unit, n: st.n }); }
+  return [...merged.values()];
+}
+
 function composeBuild(targets, mode) {
   const o = solve(targets);
   if (!ok(o)) return { error: o.status };
   const grossOf = new Map();
   for (const n of o.graph.nodes) if (n.machine && n.machineCount) grossOf.set(n.label, (grossOf.get(n.label) || 0) + (n.ratePerMin || 0));
-  const tiles = [];
-  let totMach = 0;
+  const items = [];
+  let totMach = 0, totTiles = 0;
   for (const [item, gross] of [...grossOf].sort((a, b) => b[1] - a[1])) {
-    const unit = unitTile(item, mode);
-    if (!unit) { tiles.push({ item, unit: null, gross }); continue; }
-    const n = Math.max(1, Math.ceil(gross / unit.out - 1e-9));
-    const mach = n * unit.count;
-    totMach += mach;
-    tiles.push({ item, unit, n, gross, mach });
+    const stamps = stampsFor(item, gross, mode);
+    if (!stamps) { items.push({ item, gross, raw: true }); continue; }
+    const mach = stamps.reduce((s, st) => s + st.n * st.unit.count, 0);
+    totMach += mach; totTiles += stamps.reduce((s, st) => s + st.n, 0);
+    items.push({ item, gross, stamps, mach });
   }
-  return { tiles, totMach };
+  return { items, totMach, totTiles };
 }
 
 function render(name, targets) {
   console.log(`\n# Build: ${name}`);
-  for (const mode of ['machine', 'belt']) {
+  console.log('  mode'.padEnd(12) + 'tiles   machines');
+  for (const mode of ['machine', 'belt', 'hybrid']) {
     const b = composeBuild(targets, mode);
     if (b.error) { console.log(`  [${mode}] solve failed: ${b.error}`); continue; }
-    const ntiles = b.tiles.filter((t) => t.unit).reduce((s, t) => s + t.n, 0);
-    console.log(`  mode=${mode}:  ${ntiles} tiles, ${b.totMach} terminal machines`);
-    for (const t of b.tiles) {
-      if (!t.unit) { console.log(`      (raw) ${t.item}: buy ${t.gross.toFixed(1)}/min`); continue; }
-      console.log(`      ${String(t.n).padStart(3)}× [${tileSig(t.unit)}]   build needs ${t.gross.toFixed(1)}/min → ${t.mach} machines`);
-    }
+    console.log('  ' + mode.padEnd(10) + String(b.totTiles).padEnd(8) + b.totMach);
+  }
+  // full per-item breakdown for HYBRID (the new mode)
+  console.log('  hybrid breakdown:');
+  const h = composeBuild(targets, 'hybrid');
+  for (const it of h.items) {
+    if (it.raw) { console.log(`      (raw) ${it.item}: buy ${it.gross.toFixed(1)}/min`); continue; }
+    const parts = it.stamps.map((st) => `${st.n}× [${tileSig(st.unit)}]`).join('  +  ');
+    console.log(`      ${it.item} (needs ${it.gross.toFixed(1)}/min → ${it.mach} machines): ${parts}`);
   }
 }
 
@@ -104,8 +130,7 @@ render('Advanced Fertilizer @60', [{ item: 'Advanced Fertilizer', rate: 60, rate
 render('Advanced Fertilizer @60 + Bandage @2 machines', [{ item: 'Advanced Fertilizer', rate: 60, rateMode: 'rate' }, { item: 'Bandage', rate: 2, rateMode: 'machines' }]);
 
 // ---- IDENTITY across builds AND modes ----
-console.log('\n# IDENTITY — Advanced Fertilizer tile, standalone vs paired, per size mode');
-for (const mode of ['machine', 'belt']) {
-  const s = unitTile('Advanced Fertilizer', mode); // canonical unit is build-independent by construction
-  console.log(`  mode=${mode}: ${tileSig(s)}  — same unit in every build; only the stamp count changes`);
-}
+console.log('\n# IDENTITY — Advanced Fertilizer canonical units (build-independent)');
+console.log(`  belt unit:    ${tileSig(unitTile('Advanced Fertilizer', 'belt'))}`);
+console.log(`  machine unit: ${tileSig(unitTile('Advanced Fertilizer', 'machine'))}`);
+console.log('  hybrid composes from exactly these two units, so identity holds; only the mix/stamp changes.');
