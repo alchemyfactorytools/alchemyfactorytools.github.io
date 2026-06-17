@@ -172,7 +172,11 @@
     const exit = sideBySide
       ? (dx >= 0 ? { x: s.x + s.w, y: sy, nx: 1, ny: 0 } : { x: s.x, y: sy, nx: -1, ny: 0 })
       : (dy >= 0 ? { x: sx, y: s.y + s.h, nx: 0, ny: 1 } : { x: sx, y: s.y, nx: 0, ny: -1 });
-    const offset = Math.abs(dx) > Math.abs(dy) * 1.6;
+    // Enter the facing SIDE when the boxes sit in clearly different columns (little horizontal
+    // overlap); enter the TOP/BOTTOM when they're stacked (≥~37% overlap). Horizontal overlap
+    // discriminates this far better than the edge's angle (which barely differs between the two).
+    const xOverlap = (Math.min(s.x + s.w, t.x + t.w) - Math.max(s.x, t.x)) / Math.min(s.w, t.w);
+    const offset = xOverlap < 0.37;
     const entry = (sideBySide || offset)
       ? (dx >= 0 ? { x: t.x, y: ty, nx: -1, ny: 0 } : { x: t.x + t.w, y: ty, nx: 1, ny: 0 })  // facing side
       : (dy >= 0 ? { x: tx, y: t.y, nx: 0, ny: -1 } : { x: tx, y: t.y + t.h, nx: 0, ny: 1 }); // top/bottom
