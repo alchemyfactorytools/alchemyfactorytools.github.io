@@ -162,10 +162,13 @@
   // outgoing placements use this same rule — that's the unification.
   function attach(s, t) {
     const sx = s.x + s.w / 2, sy = s.y + s.h / 2, tx = t.x + t.w / 2, ty = t.y + t.h / 2;
-    // Prefer VERTICAL (the layered flow). Only attach to the sides when the boxes genuinely overlap
-    // vertically (side-by-side); a merely-offset downward edge still reads as a clean top/bottom link.
+    // Prefer VERTICAL (the layered flow), but attach to the SIDES when either the boxes overlap
+    // vertically (genuinely side-by-side) OR the edge is aggressively shallow (≳2:1 horizontal:
+    // vertical) — a near-horizontal line knifing into a flat top reads worse than entering the side.
+    // Moderate offsets stay vertical so a slightly-offset downward flow still reads top→bottom.
     const overlapY = Math.min(s.y + s.h, t.y + t.h) - Math.max(s.y, t.y);
-    if (overlapY <= Math.min(s.h, t.h) * 0.5) {
+    const aggressive = Math.abs(tx - sx) > Math.abs(ty - sy) * 2;
+    if (overlapY <= Math.min(s.h, t.h) * 0.5 && !aggressive) {
       return ty >= sy
         ? { exit: { x: sx, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: tx, y: t.y, nx: 0, ny: -1 } }        // target below
         : { exit: { x: sx, y: s.y, nx: 0, ny: -1 }, entry: { x: tx, y: t.y + t.h, nx: 0, ny: 1 } };        // target above
