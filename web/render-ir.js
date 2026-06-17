@@ -252,7 +252,9 @@
         const x1 = rightSide ? s.x : s.x + s.w, y1 = s.y + s.h / 2;
         const x2 = rightSide ? t.x + t.w : t.x, y2 = t.y + t.h / 2;
         const bx = rightSide ? t.x + t.w + 30 : t.x - 30;
-        g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${y2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
+        // 2nd control at mid-height (not at y2) so the end tangent is diagonal — the arrow enters
+        // angled with the loop's travel instead of horizontally at 90° to the side edge.
+        g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${(y1 + y2) / 2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
         edgeLabel(g, bx + (rightSide ? 8 : -8), (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
       } else {
         const x1 = s.x + s.w / 2, y1 = s.y + s.h, x2 = t.x + t.w / 2, y2 = t.y;
