@@ -1214,14 +1214,30 @@
       const toCenter = [...new Set([...demandIds, ...finalProducers])].sort((a, b) => rank.get(a) - rank.get(b));
       const span = orientation === 'TB' ? NODE_W : NODE_H;
       const lead = (p) => (orientation === 'TB' ? p.x : p.y);
-      // A node whose lane renders as a box (≥2 positioned members) drags that box with it when
+      // A node whose cluster renders as a BOX (≥2 positioned members) drags that box with it when
       // centred. If its inputs straddle two lanes, the barycentre lands BETWEEN them — sliding the
-      // box across the cross-axis band of a neighbouring lane. No two nodes overlap (they're in
-      // different flow rows), so the same-row check below misses it, but the two cluster BOXES then
-      // overlap. Count lane sizes so we can additionally forbid a boxed node from centring over any
-      // other lane's column.
-      const laneSize = new Map();
-      for (const oid of pos.keys()) { const l = lane(oid); laneSize.set(l, (laneSize.get(l) || 0) + 1); }
+      // box across a neighbouring box's footprint (no two NODES overlap, since they're in different
+      // flow rows, so the same-row check below misses it; but the two cluster BOXES overlap). Build
+      // the real cluster→members map (matching the rendered boxes, NOT raw lane()) so we can reject
+      // a centring move that would make this node's box overlap another box.
+      const clusterKeyOf = new Map();
+      for (const c of laneClusters) {
+        if (c.subClusters) for (const s of c.subClusters) for (const m of s.members) clusterKeyOf.set(m, s.id);
+        else for (const m of c.members) clusterKeyOf.set(m, c.id);
+      }
+      for (const c of utilLines) for (const m of c.members) clusterKeyOf.set(m, c.id);
+      const clusterMembers = new Map();
+      for (const [mid, key] of clusterKeyOf) if (pos.get(mid)) { if (!clusterMembers.has(key)) clusterMembers.set(key, []); clusterMembers.get(key).push(mid); }
+      const boxedKeys = new Set([...clusterMembers].filter(([, m]) => m.length >= 2).map(([k]) => k));
+      // bbox of a cluster's members, optionally relocating one member to (ox,oy)
+      const clusterBox = (key, overId, ox, oy) => {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const m of clusterMembers.get(key)) {
+          const q = pos.get(m); const X = m === overId ? ox : q.x, Y = m === overId ? oy : q.y;
+          x0 = Math.min(x0, X); y0 = Math.min(y0, Y); x1 = Math.max(x1, X + NODE_W); y1 = Math.max(y1, Y + NODE_H);
+        }
+        return { x0, y0, x1, y1 };
+      };
       for (const id of toCenter) {
         const p = pos.get(id);
         if (!p) continue;
@@ -1229,7 +1245,8 @@
         if (!ins.length) continue;
         const c = ins.reduce((s, q) => s + crossCtr(q), 0) / ins.length;
         const newLead = c - span / 2;
-        const boxed = (laneSize.get(lane(id)) || 0) >= 2; // its lane draws a container box
+        const myKey = clusterKeyOf.get(id);
+        const guardBox = myKey != null && boxedKeys.has(myKey); // this node lives in a rendered box
         // Centre on the inputs even when the row is shared — only skip if the centred position
         // would actually COLLIDE with a same-row neighbour. "Same row" = same FLOW position, NOT
         // same rank: spineDrop drops the product/demand spine rows below the top-pinned util
@@ -1239,16 +1256,24 @@
         // Basic Fertilizer#fert sitting two screens above it). Compare actual flow instead.
         const myFlow = orientation === 'TB' ? p.y : p.x;
         let collides = false;
+        // (a) same-flow-row node overlap (the original guard — never stack two nodes in a row)
         for (const oid of pos.keys()) {
           if (oid === id) continue;
           const op = pos.get(oid);
-          // Block on a same-flow-row neighbour (node overlap) OR — for a boxed node — any node in
-          // a DIFFERENT lane whose column the new position would overlap (box overlap, any row).
-          const sameRow = Math.abs((orientation === 'TB' ? op.y : op.x) - myFlow) <= 1;
-          const otherLane = boxed && lane(oid) !== lane(id);
-          if (!sameRow && !otherLane) continue;
+          if (Math.abs((orientation === 'TB' ? op.y : op.x) - myFlow) > 1) continue;
           const ol = lead(op);
           if (newLead < ol + span + GAP_CROSS && ol < newLead + span + GAP_CROSS) { collides = true; break; }
+        }
+        // (b) box-vs-box overlap: if this node lives in a rendered box, reject the move when its
+        // box (with the node relocated) would overlap another box's footprint. A terminal node in
+        // no box (e.g. a bare demand) skips this and stays free to sit under its producer.
+        if (!collides && guardBox) {
+          const nb = orientation === 'TB' ? clusterBox(myKey, id, newLead, p.y) : clusterBox(myKey, id, p.x, newLead);
+          for (const okey of boxedKeys) {
+            if (okey === myKey) continue;
+            const ob = clusterBox(okey, null, 0, 0);
+            if (nb.x0 < ob.x1 + GAP_CROSS && ob.x0 < nb.x1 + GAP_CROSS && nb.y0 < ob.y1 && ob.y0 < nb.y1) { collides = true; break; }
+          }
         }
         if (collides) continue;
         if (orientation === 'TB') p.x = newLead; else p.y = newLead;
@@ -1475,11 +1500,26 @@
     // between. Reroute only those long back-edges (≥ SELF_FEED_BACK node-rows of backward span) as a
     // side rail bulging around the line's box, clear of its central nodes. Short feedback (self-fuel)
     // is left exactly as it was.
-    const SELF_FEED_BACK = 4; // node-heights of backward flow before a feedback edge gets rerouted
+    const SELF_FEED_BACK = 4; // node-heights of backward flow before a feedback edge is a rail candidate
     {
-      let gMinX = Infinity, gMaxX = -Infinity, gMinY = Infinity, gMaxY = -Infinity;
-      for (const p of pos.values()) { gMinX = Math.min(gMinX, p.x); gMaxX = Math.max(gMaxX, p.x + NODE_W); gMinY = Math.min(gMinY, p.y); gMaxY = Math.max(gMaxY, p.y + NODE_H); }
-      const RAIL_GAP = 28;
+      const RAIL_GAP = 28, SAMPLES = 24;
+      // How many OTHER node rects a candidate cubic-bezier passes through. We try the straight edge
+      // and a side rail off each box face, then keep whichever crosses the FEWEST nodes — straight
+      // wins ties, so a rail is adopted ONLY when it strictly helps (the self-fert loop up to a leaf
+      // nursery), never for the short self-fuel hops where the detour would cross more than it saves.
+      const curveCross = (s, c1, c2, t, fromId, toId) => {
+        let n = 0;
+        for (const [id, p] of pos) {
+          if (id === fromId || id === toId) continue;
+          for (let i = 0; i <= SAMPLES; i++) {
+            const u = i / SAMPLES, m = 1 - u;
+            const x = m * m * m * s.x + 3 * m * m * u * c1.x + 3 * m * u * u * c2.x + u * u * u * t.x;
+            const y = m * m * m * s.y + 3 * m * m * u * c1.y + 3 * m * u * u * c2.y + u * u * u * t.y;
+            if (x >= p.x && x <= p.x + NODE_W && y >= p.y && y <= p.y + NODE_H) { n++; break; }
+          }
+        }
+        return n;
+      };
       for (const e of graph.edges) {
         if (!(e.heat || e.nutrient)) continue;
         const a = pos.get(e.from), b = pos.get(e.to);
@@ -1488,19 +1528,34 @@
         if (key == null || boxKeyOf.get(e.from) !== key) continue; // intra-line only
         const box = boxByKey.get(key); const eo = edges.get(e.from + '\t' + e.to);
         if (!box || !eo) continue;
-        if (orientation === 'TB') {
-          if (b.y >= a.y - SELF_FEED_BACK * NODE_H) continue; // not a long back-edge
-          const left = (box.x - gMinX) >= (gMaxX - (box.x + box.w)); // route on the side with more margin
-          eo.start = { x: left ? a.x : a.x + NODE_W, y: a.y + NODE_H / 2 };
-          eo.end = { x: left ? b.x : b.x + NODE_W, y: b.y + NODE_H / 2 };
-          eo.bulge = left ? box.x - RAIL_GAP : box.x + box.w + RAIL_GAP;
-        } else {
-          if (b.x >= a.x - SELF_FEED_BACK * NODE_W) continue;
-          const top = (box.y - gMinY) >= (gMaxY - (box.y + box.h));
-          eo.start = { x: a.x + NODE_W / 2, y: top ? a.y : a.y + NODE_H };
-          eo.end = { x: b.x + NODE_W / 2, y: top ? b.y : b.y + NODE_H };
-          eo.bulgeY = top ? box.y - RAIL_GAP : box.y + box.h + RAIL_GAP;
+        const tb = orientation === 'TB';
+        const backSpan = tb ? a.y - b.y : a.x - b.x; // positive ⇒ destination is upstream (a back-edge)
+        if (backSpan < SELF_FEED_BACK * (tb ? NODE_H : NODE_W)) continue; // short / forward ⇒ leave straight
+        // candidate 0: the straight edge as currently anchored
+        const sd = tb ? (eo.end.y - eo.start.y) * 0.5 : (eo.end.x - eo.start.x) * 0.5;
+        const sc1 = tb ? { x: eo.start.x, y: eo.start.y + sd } : { x: eo.start.x + sd, y: eo.start.y };
+        const sc2 = tb ? { x: eo.end.x, y: eo.end.y - sd } : { x: eo.end.x - sd, y: eo.end.y };
+        let best = { cross: curveCross(eo.start, sc1, sc2, eo.end, e.from, e.to), rail: null };
+        // rails off each box face; the proximity side is tried first so it wins ties between rails
+        const proxLoFirst = tb
+          ? ((a.x - box.x) + (b.x - box.x) <= ((box.x + box.w) - (a.x + NODE_W)) + ((box.x + box.w) - (b.x + NODE_W)))
+          : ((a.y - box.y) + (b.y - box.y) <= ((box.y + box.h) - (a.y + NODE_H)) + ((box.y + box.h) - (b.y + NODE_H)));
+        for (const lo of (proxLoFirst ? [true, false] : [false, true])) {
+          let rail;
+          if (tb) {
+            const railX = lo ? box.x - RAIL_GAP : box.x + box.w + RAIL_GAP;
+            const start = { x: lo ? a.x : a.x + NODE_W, y: a.y + NODE_H / 2 };
+            const end = { x: lo ? b.x : b.x + NODE_W, y: b.y + NODE_H / 2 };
+            rail = { start, end, bulge: railX, cross: curveCross(start, { x: railX, y: start.y }, { x: railX, y: end.y }, end, e.from, e.to) };
+          } else {
+            const railY = lo ? box.y - RAIL_GAP : box.y + box.h + RAIL_GAP;
+            const start = { x: a.x + NODE_W / 2, y: lo ? a.y : a.y + NODE_H };
+            const end = { x: b.x + NODE_W / 2, y: lo ? b.y : b.y + NODE_H };
+            rail = { start, end, bulgeY: railY, cross: curveCross(start, { x: start.x, y: railY }, { x: end.x, y: railY }, end, e.from, e.to) };
+          }
+          if (rail.cross < best.cross) { const { cross, ...geom } = rail; best = { cross, rail: geom }; }
         }
+        if (best.rail) Object.assign(eo, best.rail);
       }
     }
 
