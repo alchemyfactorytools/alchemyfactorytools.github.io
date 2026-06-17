@@ -603,6 +603,8 @@ const UTIL_MODE_NEXT = { all: 'trunk', trunk: 'off', off: 'all' };
 let lastGraph = null;     // cached so the orientation toggle can re-render
 const CLUSTER_COLORS = ['#7a9cc6', '#c69c7a', '#7ac68f', '#c67a9c', '#9c7ac6', '#c6c07a'];
 const NODE_W = 260, NODE_H = 84;
+// experimental: ?pipeline=tiles draws the solver-owned tile-DAG IR instead of the layout3 path
+const TILES_PIPELINE = new URLSearchParams(location.search).get('pipeline') === 'tiles';
 const TITLE_CHARS = 30;
 // greedy word-wrap into ≤maxLines lines of ≤maxChars; overflow clipped with an ellipsis
 function wrapLabel(s, maxChars, maxLines) {
@@ -821,6 +823,15 @@ function renderGraph(rawGraph) {
   const root = document.createElementNS(SVGNS, 'g');
   root.setAttribute('id', 'viewport');
   svg.appendChild(root);
+
+  // Experimental tile-DAG pipeline (?pipeline=tiles): solver-owned IR drawn by the geometry-only
+  // renderer. Bypasses the layout3 clustering/blueprint path entirely. Pan/zoom/fit reuse #viewport.
+  if (TILES_PIPELINE && window.AlchRenderIR && AlchSolver.graphToIR) {
+    const ir = AlchSolver.graphToIR(rawGraph);
+    AlchRenderIR.drawIR(ir, AlchRenderIR.layoutIR(ir), root);
+    fitView();
+    return;
+  }
 
   const { pos, edges: edgePts, recycle, clusters, trunks, trunkedEdges } = ENGINE.layout(graph, { nodeW: NODE_W, nodeH: NODE_H, orientation, clusters: showClusters, utilEdges: utilEdgeMode });
 

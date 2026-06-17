@@ -8,6 +8,7 @@
 const { itemCatalog, solveComposerBody } = require('../src/composer-solve');
 const { toDot, toMermaid } = require('../src/flowgraph');
 const { assignClusters } = require('../src/layout');
+const { graphToIR } = require('../src/tile-ir');
 const { beltSpeed } = require('../src/config');
 const db = require('../data/alchemy_db.v41.json');
 const contracts = require('../data/contracts.json');
@@ -24,6 +25,8 @@ module.exports = {
   // AlchLayout.assignClusters, since web/layout.js was a copy of src/layout.js). Returns
   // { clusterOf, clusters }.
   assignClusters: (graph) => assignClusters(graph),
+  // Tile-DAG IR (solver-owned structure) for the experimental ?pipeline=tiles renderer.
+  graphToIR: (graph) => graphToIR(graph),
   // Belt throughput (items/min one belt carries) at a given Logistics level — used by the belt
   // supply editor so a blank rate means "one full belt at current skills" instead of unlimited.
   beltSpeed: (logisticsLvl) => beltSpeed(logisticsLvl || 0),
