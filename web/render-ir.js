@@ -157,14 +157,31 @@
   }
 
   function edgeClass(kind, back) { return 'edge' + (kind === 'fuel' ? ' heat' : kind === 'fert' ? ' nutrient' : kind === 'cash' ? ' cash' : back ? ' recycle' : ''); }
-  // Leaves the source going down, but ARRIVES aligned with the source→target direction so the
-  // arrowhead (orient=auto) points along the flow into the edge, not perpendicular to a flat top.
-  function curve(x1, y1, x2, y2) {
-    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, stub = Math.min(38, len * 0.45);
-    const c1y = y1 + Math.min(44, Math.abs(dy) * 0.4);
-    const c2x = x2 - (dx / len) * stub, c2y = y2 - (dy / len) * stub;
-    return `M${x1},${y1} C${x1},${c1y} ${c2x},${c2y} ${x2},${y2}`;
+  // Shared edge attachment: the exit point on the source and the entry point on the target, each on
+  // the edge FACING the other node (by dominant direction), with its outward normal. Incoming and
+  // outgoing placements use this same rule — that's the unification.
+  function attach(s, t) {
+    const sx = s.x + s.w / 2, sy = s.y + s.h / 2, tx = t.x + t.w / 2, ty = t.y + t.h / 2;
+    const dx = tx - sx, dy = ty - sy;
+    if (Math.abs(dy) >= Math.abs(dx)) {
+      return dy >= 0
+        ? { exit: { x: sx, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: tx, y: t.y, nx: 0, ny: -1 } }       // target below
+        : { exit: { x: sx, y: s.y, nx: 0, ny: -1 }, entry: { x: tx, y: t.y + t.h, nx: 0, ny: 1 } };       // target above
+    }
+    return dx >= 0
+      ? { exit: { x: s.x + s.w, y: sy, nx: 1, ny: 0 }, entry: { x: t.x, y: ty, nx: -1, ny: 0 } }          // target right
+      : { exit: { x: s.x, y: sy, nx: -1, ny: 0 }, entry: { x: t.x + t.w, y: ty, nx: 1, ny: 0 } };         // target left
   }
+  // Curve leaving `exit` along its edge normal and ARRIVING at `entry` aligned with the exit→entry
+  // direction, so the auto-oriented arrowhead points along the flow into the edge.
+  function link(exit, entry) {
+    const dx = entry.x - exit.x, dy = entry.y - exit.y, len = Math.hypot(dx, dy) || 1;
+    const out = Math.min(44, len * 0.4), stub = Math.min(38, len * 0.45);
+    const c1x = exit.x + exit.nx * out, c1y = exit.y + exit.ny * out;
+    const c2x = entry.x - (dx / len) * stub, c2y = entry.y - (dy / len) * stub;
+    return `M${exit.x},${exit.y} C${c1x},${c1y} ${c2x},${c2y} ${entry.x},${entry.y}`;
+  }
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
   function edgeLabel(g, x, y, text) { for (const cls of ['bg', '']) { const t = el('text', { x, y: y - 3, 'text-anchor': 'middle' }); if (cls) t.setAttribute('class', cls); t.textContent = text; g.appendChild(t); } }
 
   function drawIR(ir, layout, gEl) {
@@ -237,42 +254,32 @@
       let cx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
       let cy;
       if (lb) { cy = lb.y; cx = Math.min(Math.max(cx, lb.x + 24), lb.x + lb.w - 24); } else { cy = Math.min(...cs.map((p) => p.y)); }
+      const exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry = { x: cx, y: cy, nx: 0, ny: -1 };
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
-      g.appendChild(el('path', { d: curve(s.x + s.w / 2, s.y + s.h, cx, cy), 'marker-end': 'url(#arrow)' }));
-      edgeLabel(g, (s.x + s.w / 2 + cx) / 2, (s.y + s.h + cy) / 2, `${tr.item} ${fmt(tr.rate)}`);
+      g.appendChild(el('path', { d: link(exit, entry), 'marker-end': 'url(#arrow)' }));
+      const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${tr.item} ${fmt(tr.rate)}`);
       gEl.appendChild(g);
     }
     for (const { b, back } of individual) {
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
       const g = el('g', { class: edgeClass(b.kind, back) });
       if (back) {
-        // feedback loop: comes up the gap on the source's side of the target. Back edges always run
-        // from below (ancestor) up to above (descendant). When the approach is STEEP (target nearly
-        // overhead) a side-edge arrow gets half-covered by the box, so enter the BOTTOM edge with an
-        // upward arrow instead (sits cleanly in the gap, like a downward flow entering the top).
-        const sc = s.x + s.w / 2, tc = t.x + t.w / 2;
-        const rightSide = sc >= tc;
-        const dy = Math.abs((t.y + t.h / 2) - (s.y + s.h / 2));
-        const x1 = rightSide ? s.x : s.x + s.w, y1 = s.y + s.h / 2;
-        if (dy > 60) {
-          // any real upward loop arrives near-vertically up the rail, so a side-edge arrow clips on
-          // the box. Hug the near rail and enter the BOTTOM edge with an angled-up arrow (sits in the
-          // gap below the box, fully visible).
-          const ey = t.y + t.h;
-          const bx = rightSide ? t.x + t.w + 28 : t.x - 28;
-          const cx = rightSide ? t.x + t.w - 18 : t.x + 18;
-          g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
-          edgeLabel(g, bx + (rightSide ? 10 : -10), (y1 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
-        } else {
-          const x2 = rightSide ? t.x + t.w : t.x, y2 = t.y + t.h / 2;
-          const bx = rightSide ? t.x + t.w + 30 : t.x - 30;
-          g.appendChild(el('path', { d: `M${x1},${y1} C${bx},${y1} ${bx},${(y1 + y2) / 2} ${x2},${y2}`, 'marker-end': 'url(#arrow)' }));
-          edgeLabel(g, bx + (rightSide ? 8 : -8), (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
-        }
+        // Against the grain (ancestor below -> descendant above, across many ranks). Same edge
+        // selection as everything else (attach picks the source's facing edge), but the ROUTING is
+        // bespoke: detour up a side rail and enter the target's BOTTOM edge with an angled-up arrow —
+        // avoids both crossing the chain between them and a clipped side-edge arrowhead.
+        const { exit } = attach(s, t);
+        const rightSide = s.x + s.w / 2 >= t.x + t.w / 2;
+        const ey = t.y + t.h;
+        const bx = rightSide ? t.x + t.w + 28 : t.x - 28;
+        const cx = rightSide ? t.x + t.w - 18 : t.x + 18;
+        g.appendChild(el('path', { d: `M${exit.x},${exit.y} C${bx},${exit.y} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
+        edgeLabel(g, bx + (rightSide ? 10 : -10), (exit.y + ey) / 2, `${b.item} ${fmt(b.rate)}`);
       } else {
-        const x1 = s.x + s.w / 2, y1 = s.y + s.h, x2 = t.x + t.w / 2, y2 = t.y;
-        g.appendChild(el('path', { d: curve(x1, y1, x2, y2), 'marker-end': 'url(#arrow)' }));
-        edgeLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, `${b.item} ${fmt(b.rate)}`);
+        // with the grain (adjacent ranks): direct link between the facing edges
+        const { exit, entry } = attach(s, t);
+        g.appendChild(el('path', { d: link(exit, entry), 'marker-end': 'url(#arrow)' }));
+        const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${b.item} ${fmt(b.rate)}`);
       }
       gEl.appendChild(g);
     }
