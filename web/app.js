@@ -750,7 +750,12 @@ function splitBaseGoods(graph) {
     return res;
   };
 
-  const split = graph.nodes.filter((n) => replicated(n.id));
+  // The main-belt MONEY line (money:belt) is fungible — compose-graph makes it "a single source
+  // feeding every buy/mint". Unlike a physical item belt (tapped per consuming machine), it should
+  // NOT be replicated per line: coins are valued by their copper worth, so one belt of high-value
+  // coins covers the whole spend. Replicating it just spawned duplicate "Main belt: <Coin>" nodes
+  // (one per line it pays into). Keep it a single node; layout3 then trunks its cash edges per line.
+  const split = graph.nodes.filter((n) => n.id !== 'money:belt' && replicated(n.id));
   if (!split.length) return graph;
   const splitSet = new Set(split.map((n) => n.id));
   const copyId = (id, line) => `${id}@@${line}`;
