@@ -1454,23 +1454,63 @@
       trunks.push({ ...t, start, end });
     }
 
+    // Self-feed feedback edges — a self-fuel / self-fert line's carrier OUTPUT looping back to its
+    // OWN furnaces / nurseries. These are intra-line support edges, so trunking skips them (above);
+    // normally that's right (a line's own fuel feedback is a short 2-3 row hop). But a self-FERT loop
+    // feeds nurseries, which are source-leaves at the very top of the flow while the carrier output is
+    // the DEEPEST node — so the straight arrow slices the whole line top-to-bottom, crossing every node
+    // between. Reroute only those long back-edges (≥ SELF_FEED_BACK node-rows of backward span) as a
+    // side rail bulging around the line's box, clear of its central nodes. Short feedback (self-fuel)
+    // is left exactly as it was.
+    const SELF_FEED_BACK = 4; // node-heights of backward flow before a feedback edge gets rerouted
+    {
+      let gMinX = Infinity, gMaxX = -Infinity, gMinY = Infinity, gMaxY = -Infinity;
+      for (const p of pos.values()) { gMinX = Math.min(gMinX, p.x); gMaxX = Math.max(gMaxX, p.x + NODE_W); gMinY = Math.min(gMinY, p.y); gMaxY = Math.max(gMaxY, p.y + NODE_H); }
+      const RAIL_GAP = 28;
+      for (const e of graph.edges) {
+        if (!(e.heat || e.nutrient)) continue;
+        const a = pos.get(e.from), b = pos.get(e.to);
+        if (!a || !b) continue;
+        const key = boxKeyOf.get(e.to);
+        if (key == null || boxKeyOf.get(e.from) !== key) continue; // intra-line only
+        const box = boxByKey.get(key); const eo = edges.get(e.from + '\t' + e.to);
+        if (!box || !eo) continue;
+        if (orientation === 'TB') {
+          if (b.y >= a.y - SELF_FEED_BACK * NODE_H) continue; // not a long back-edge
+          const left = (box.x - gMinX) >= (gMaxX - (box.x + box.w)); // route on the side with more margin
+          eo.start = { x: left ? a.x : a.x + NODE_W, y: a.y + NODE_H / 2 };
+          eo.end = { x: left ? b.x : b.x + NODE_W, y: b.y + NODE_H / 2 };
+          eo.bulge = left ? box.x - RAIL_GAP : box.x + box.w + RAIL_GAP;
+        } else {
+          if (b.x >= a.x - SELF_FEED_BACK * NODE_W) continue;
+          const top = (box.y - gMinY) >= (gMaxY - (box.y + box.h));
+          eo.start = { x: a.x + NODE_W / 2, y: top ? a.y : a.y + NODE_H };
+          eo.end = { x: b.x + NODE_W / 2, y: top ? b.y : b.y + NODE_H };
+          eo.bulgeY = top ? box.y - RAIL_GAP : box.y + box.h + RAIL_GAP;
+        }
+      }
+    }
+
     // normalize: shift everything non-negative so the belt band's label (and any
     // top-row line label) isn't clipped by renderers that translate by a fixed margin
     let minX = Infinity, minY = Infinity;
     for (const p of pos.values()) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); }
     for (const b of clusterBoxes) { minX = Math.min(minX, b.x); minY = Math.min(minY, b.y); }
+    for (const e of edges.values()) { if (e.bulge != null) minX = Math.min(minX, e.bulge); if (e.bulgeY != null) minY = Math.min(minY, e.bulgeY); }
     const dx = Number.isFinite(minX) && minX < 0 ? -minX : 0;
     const dy = Number.isFinite(minY) && minY < 0 ? -minY : 0;
     if (dx || dy) {
       for (const p of pos.values()) { p.x += dx; p.y += dy; }
       for (const b of clusterBoxes) { b.x += dx; b.y += dy; }
-      for (const e of edges.values()) { e.start.x += dx; e.start.y += dy; e.end.x += dx; e.end.y += dy; }
+      for (const e of edges.values()) { e.start.x += dx; e.start.y += dy; e.end.x += dx; e.end.y += dy; if (e.bulge != null) e.bulge += dx; if (e.bulgeY != null) e.bulgeY += dy; }
       for (const t of trunks) { t.start.x += dx; t.start.y += dy; t.end.x += dx; t.end.y += dy; }
     }
 
     let width = 0;
     let height = 0;
     for (const p of pos.values()) { width = Math.max(width, p.x + NODE_W); height = Math.max(height, p.y + NODE_H); }
+    // a right/bottom self-feed rail can sit just past the deepest node — keep it inside the canvas
+    for (const e of edges.values()) { if (e.bulge != null) width = Math.max(width, e.bulge + 2); if (e.bulgeY != null) height = Math.max(height, e.bulgeY + 2); }
 
     // Dash only genuine FEEDBACK edges — ones that run backward against the flow
     // (consumer at an earlier column than its producer, e.g. a self-fertilizer loop
@@ -1555,15 +1595,20 @@
     if (!e) return '';
     const { start: s, end: t } = e;
     if (orientation === 'TB') {
+      // Side rail (self-feed feedback): leave/enter horizontally and sweep vertically at the rail x.
+      if (e.bulge != null) return `M${s.x},${s.y} C${e.bulge},${s.y} ${e.bulge},${t.y} ${t.x},${t.y}`;
       const dy = (t.y - s.y) * 0.5;
       return `M${s.x},${s.y} C${s.x},${s.y + dy} ${t.x},${t.y - dy} ${t.x},${t.y}`;
     }
+    if (e.bulgeY != null) return `M${s.x},${s.y} C${s.x},${e.bulgeY} ${t.x},${e.bulgeY} ${t.x},${t.y}`;
     const dx = (t.x - s.x) * 0.5;
     return `M${s.x},${s.y} C${s.x + dx},${s.y} ${t.x - dx},${t.y} ${t.x},${t.y}`;
   }
 
   function edgeMid(e) {
     if (!e) return { x: 0, y: 0 };
+    if (e.bulge != null) return { x: e.bulge, y: (e.start.y + e.end.y) / 2 };   // label rides the rail
+    if (e.bulgeY != null) return { x: (e.start.x + e.end.x) / 2, y: e.bulgeY };
     return { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 };
   }
 
