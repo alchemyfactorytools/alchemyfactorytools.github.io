@@ -74,7 +74,7 @@
       </section>
 
       <section>
-        <h2>Main belt supply</h2>
+        <h2>Main belt supply <span class="info" data-tip="Leave a rate blank to supply one full belt at your current Logistics level (belt speed: 60/min, +15 per level). Click a row's rate to set a fixed /min cap instead.">i</span></h2>
         <p class="hint">Items already arriving on your main belt — fuel, fertilizer,
           coins, anything. Treated as free incoming supply (optionally capped at a
           rate/min) instead of being crafted. A fertilizer's quality sets Nursery
@@ -82,7 +82,7 @@
         <div id="beltRows" class="belt-rows"></div>
         <div class="belt-add">
           <input type="text" id="beltItem" list="items" placeholder="item…" autocomplete="off">
-          <input type="number" id="beltRate" placeholder="/min (blank = ∞)" min="0" step="any">
+          <input type="number" id="beltRate" placeholder="/min (blank = full belt)" min="0" step="any">
           <button id="beltAdd" class="secondary">Add</button>
         </div>
       </section>

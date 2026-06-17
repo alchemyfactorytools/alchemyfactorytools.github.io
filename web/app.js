@@ -89,6 +89,27 @@ function fillOutputSelect(sel, selected) {
     sel.appendChild(o);
   }
 }
+// Belt-supply autocomplete: the same items as the output picker (produced, targetable, tier-gated)
+// PLUS raw feedstock (Raw Materials, Seeds) and currency (the money belt) — i.e. everything you'd
+// realistically put on an incoming supply belt. RAW_FEEDSTOCK_CATEGORIES mirrors composer-solve.js's
+// RAW_TARGET_CATEGORIES (the categories the output picker drops because you buy/mine, not build them).
+const RAW_FEEDSTOCK_CATEGORIES = new Set(['Raw Materials', 'Seeds']);
+function rebuildBeltList() {
+  const dl = $('items');
+  if (!dl) return;
+  const sel = $('maxTier').value;
+  const maxTier = sel === '' ? Infinity : Number(sel);
+  const names = CATALOG
+    .filter((it) => {
+      if (it.category === 'Currency') return true; // coins are minted, not tier-unlocked — always allow (money belt)
+      if (!(it.targetable || RAW_FEEDSTOCK_CATEGORIES.has(it.category))) return false;
+      return it.tier == null || it.tier <= maxTier;  // produced + raw feedstock track the output picker's tier gate
+    })
+    .map((it) => it.name)
+    .sort();
+  dl.innerHTML = '';
+  for (const name of names) { const o = document.createElement('option'); o.value = name; dl.appendChild(o); }
+}
 // Dispatch mode (primary picker only): the product list narrows to items with a dispatch contract.
 function fillDispatchSelect(sel, selected) {
   sel.innerHTML = '';
@@ -107,6 +128,7 @@ function rebuildOutputs() {
   if (!item) return;
   if ($('rateUnit').value === 'dispatch') fillDispatchSelect(item, item.value);
   else fillOutputSelect(item, item.value);
+  rebuildBeltList(); // keep the belt-supply list tier-synced with the output picker
   renderTargets();
 }
 
@@ -114,12 +136,8 @@ function rebuildOutputs() {
 async function init() {
   const items = AlchSolver.itemCatalog();
   CATALOG = items;
-  const itemList = $('items');
-  for (const it of items) {
-    const o = document.createElement('option');
-    o.value = it.name;
-    itemList.appendChild(o);
-  }
+  // The belt-supply datalist (#items) is built tier-aware by rebuildBeltList(), invoked from
+  // rebuildOutputs() below — not filled with the whole catalog here.
   const buyList = $('buyables');
   for (const it of items.filter((x) => x.buyPrice != null || x.mintable)) {
     const o = document.createElement('option');
@@ -142,6 +160,9 @@ async function init() {
   // persist any sidebar field edit (typing the output/rate, toggling a checkbox, …)
   $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); updateSteamUI(); updateMultiUI(); });
   $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
+  // Keep each "full belt" rate label in sync as Logistics changes (focus is in the Logistics field
+  // then, so this never clobbers an in-progress belt-rate edit elsewhere).
+  $('sk_logistics').addEventListener('input', renderBelt);
   // Switching INTO dispatch mode with a non-dispatchable item selected clears it (so you're not
   // left targeting an item with no contract). Only on the mode switch — not per keystroke, which
   // would erase partial typing. Validation + the filtered datalist handle the rest.
@@ -177,21 +198,63 @@ $('allowInput').addEventListener('change', (e) => {
 });
 
 // ---------- main belt supply editor ----------
-const beltSupply = []; // [{item, rate|null}]
+const beltSupply = []; // [{item, rate|null}] — rate null = one full belt at the current Logistics level
+// Throughput of one belt at the current Logistics skill. A blank/null belt rate means "one full
+// belt" rather than unlimited, so it tracks Logistics live (and falls back to 60 pre-bundle-load).
+function fullBeltRate() {
+  const lvl = Number($('sk_logistics').value) || 0;
+  return (window.AlchSolver && AlchSolver.beltSpeed) ? AlchSolver.beltSpeed(lvl) : 60;
+}
 function renderBelt() {
   const box = $('beltRows');
   box.innerHTML = '';
+  const fb = fullBeltRate();
+  const lvl = Number($('sk_logistics').value) || 0;
   beltSupply.forEach((b, i) => {
     const row = document.createElement('div');
     row.className = 'belt-row';
     const fert = CATALOG.find((c) => c.name === b.item);
     const tag = fert && fert.cauldronTarget == null && b.item.match(/Fertilizer|Potion|Catalyst/) ? ' 🌱' : '';
-    row.innerHTML = `<span class="belt-item">${esc(b.item)}${tag}</span><span class="belt-rate">${b.rate == null ? '∞' : fmt(b.rate) + '/min'}</span>`;
+    const item = document.createElement('span');
+    item.className = 'belt-item';
+    item.innerHTML = `${esc(b.item)}${tag}`;
+    const rate = document.createElement('span');
+    rate.className = 'belt-rate' + (b.rate == null ? ' belt-rate-auto' : '');
+    rate.textContent = `${fmt(b.rate == null ? fb : b.rate)}/min`;
+    rate.title = b.rate == null
+      ? `Full belt at Logistics ${lvl} (${fmt(fb)}/min) — click to set a fixed cap`
+      : 'Click to edit · clear to revert to a full belt';
+    rate.onclick = () => editBeltRate(i, rate);
     const x = document.createElement('button');
     x.textContent = '×';
     x.onclick = () => { beltSupply.splice(i, 1); renderBelt(); savePrefs(); };
-    row.appendChild(x);
+    row.append(item, rate, x);
     box.appendChild(row);
+  });
+}
+// Inline-edit a belt row's rate: swap the rate label for a number input. Empty commit reverts the
+// row to "full belt" (rate = null); any number sets a fixed /min cap. Enter/blur commit, Esc cancels.
+function editBeltRate(i, span) {
+  const b = beltSupply[i];
+  const input = document.createElement('input');
+  input.type = 'number'; input.min = '0'; input.step = 'any';
+  input.className = 'belt-rate-edit';
+  input.value = b.rate == null ? '' : b.rate;
+  input.placeholder = `${fmt(fullBeltRate())} (full belt)`;
+  span.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return; done = true;
+    const raw = input.value.trim();
+    const n = Number(raw);
+    b.rate = raw === '' || !Number.isFinite(n) || n < 0 ? null : n;
+    renderBelt(); savePrefs();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { done = true; renderBelt(); }
   });
 }
 $('beltAdd').onclick = () => {
@@ -295,7 +358,9 @@ function buildConfig() {
   cfg.selfFuel = $('selfFuel').checked;
   cfg.selfFert = $('selfFert').checked;
   cfg.steam = { enabled: $('useSteam').checked, mode: $('steamMode').value }; // composer: central steam for heat
-  cfg.belt = beltSupply.map((b) => (b.rate == null ? { item: b.item } : { item: b.item, rate: b.rate }));
+  // A null/blank belt rate means "one full belt at the current Logistics level", so resolve it to
+  // that concrete /min here instead of emitting an uncapped supply.
+  cfg.belt = beltSupply.map((b) => ({ item: b.item, rate: b.rate == null ? fullBeltRate() : b.rate }));
   cfg.machines.defaultCount = Number($('machines').value) || 1000;
   cfg.capital = { enabled: $('capital').checked }; // amortization knob removed; Model uses a fixed sane default
   cfg.buildabilityFraction = Number($('buildability').value) || 0; // × item value → per-machine penalty (server)

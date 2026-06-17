@@ -81,7 +81,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
    the label's top-right corner (out of flow, so it never pushes onto its own line the way an
    inline child of a flex-column label would). The bubble drops below it, right-anchored, so it
    can never overflow the 320px panel to the right. */
-label { position: relative; }
+label, h2 { position: relative; }
 .info {
   position: absolute; top: 0; right: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -121,7 +121,11 @@ button.secondary:hover { color: var(--ink); border-color: var(--accent); }
 .belt-rows { display: flex; flex-direction: column; gap: 4px; }
 .belt-row { display: flex; align-items: center; gap: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
 .belt-row .belt-item { flex: 1; color: var(--ink); }
-.belt-row .belt-rate { color: var(--accent); font-variant-numeric: tabular-nums; }
+.belt-row .belt-rate { color: var(--accent); font-variant-numeric: tabular-nums; cursor: pointer; border-bottom: 1px dotted transparent; }
+.belt-row .belt-rate:hover { border-bottom-color: currentColor; }
+/* a "full belt" (unset) rate reads as the muted default, distinct from an explicit cap */
+.belt-row .belt-rate-auto { color: var(--muted); font-style: italic; }
+.belt-row .belt-rate-edit { width: 84px; padding: 2px 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .belt-row button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
 .belt-row button:hover { color: var(--ink); }
 .belt-add { display: flex; gap: 5px; }
