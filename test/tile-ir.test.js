@@ -53,3 +53,17 @@ test('single-target build also round-trips faithfully', () => {
   assert.deepEqual(validateIR(ir), []);
   assert.deepEqual(machineTotalsFromIR(ir), out.graph.summary.machineTotals);
 });
+
+test('IR drops nothing — every graph node and edge is represented', () => {
+  for (const targets of [AF_BANDAGE, [{ item: 'Panacea Potion', rate: 60, rateMode: 'rate' }]]) {
+    const config = targets[0].item === 'Panacea Potion' ? { ...CONFIG, maxTier: 9 } : CONFIG;
+    const out = solveComposerBody({ item: targets[0].item, rate: targets[0].rate, rateMode: targets[0].rateMode, targets, config }, db);
+    assert.equal(out.status, 'Optimal', targets[0].item);
+    const ir = graphToIR(out.graph);
+    const irIds = new Set([...ir.tiles.map((t) => t.id), ...ir.ports.map((p) => p.id)]);
+    assert.equal(irIds.size, out.graph.nodes.length, `${targets[0].item}: every node represented`);
+    for (const n of out.graph.nodes) assert.ok(irIds.has(n.id), `node ${n.id} present`);
+    const edgeCount = out.graph.edges.filter((e) => e.from !== e.to).length;
+    assert.equal(ir.belts.length, edgeCount, `${targets[0].item}: every edge represented`);
+  }
+});
