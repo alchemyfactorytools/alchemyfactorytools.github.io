@@ -1025,7 +1025,33 @@
         return (colIdx.get(a) ?? 0) - (colIdx.get(b) ?? 0);
       });
       const roots = members.filter((m) => !parent.get(m));
-      roots.sort((a, b) => rank.get(a) - rank.get(b) || (colIdx.get(a) ?? 0) - (colIdx.get(b) ?? 0));
+      // Convergence-aware root order. Follow each root's chain downstream to the first
+      // node where another in-lane chain joins it (its merge point). Chains that merge
+      // EARLIER (lower-rank merge) stay grouped in the interior; a short feeder that
+      // only joins at the final producer falls to the lane edge instead of splitting an
+      // earlier-merging pair. Keeps a deep main chain (e.g. Limestone→Quicklime)
+      // contiguous with its sibling under their shared consumer and tucks a stub feeder
+      // (e.g. Rotten Log→Gloom Fungus) to the side, rather than raking its output edge
+      // down through the spine. Ties fall back to the prior rank/colIdx order, so
+      // symmetric convergences (one shared merge point) are left exactly as before.
+      const mergeRankOf = (r) => {
+        let cur = r; const guard = new Set();
+        while (!guard.has(cur)) {
+          guard.add(cur);
+          if (cur !== r && (up.get(cur) || []).filter((m) => mset.has(m)).length >= 2) return rank.get(cur);
+          // follow the real output, not a trashed/surplus byproduct (which can carry
+          // more flow than the product — e.g. Gloom Fungus's Plank trash at 253/min vs
+          // the 63/min Gloom Fungus output — and would walk us into a dead-end sink).
+          let outs = (down.get(cur) || []).filter((m) => mset.has(m));
+          const real = outs.filter((m) => !isSinkId(m));
+          if (real.length) outs = real;
+          if (!outs.length) return rank.get(cur);
+          cur = outs.reduce((best, m) => ((flowW.get(cur + '\t' + m) || 0) > (flowW.get(cur + '\t' + best) || 0) ? m : best), outs[0]);
+        }
+        return rank.get(cur);
+      };
+      const mergeRank = new Map(roots.map((r) => [r, mergeRankOf(r)]));
+      roots.sort((a, b) => mergeRank.get(a) - mergeRank.get(b) || rank.get(a) - rank.get(b) || (colIdx.get(a) ?? 0) - (colIdx.get(b) ?? 0));
       // post-order so a node's children are sized before it (iterative — chains can be deep)
       const postorder = (root) => {
         const stack = [[root, false]], order = [];
