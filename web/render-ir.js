@@ -162,15 +162,17 @@
   // outgoing placements use this same rule — that's the unification.
   function attach(s, t) {
     const sx = s.x + s.w / 2, sy = s.y + s.h / 2, tx = t.x + t.w / 2, ty = t.y + t.h / 2;
-    const dx = tx - sx, dy = ty - sy;
-    if (Math.abs(dy) >= Math.abs(dx)) {
-      return dy >= 0
-        ? { exit: { x: sx, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: tx, y: t.y, nx: 0, ny: -1 } }       // target below
-        : { exit: { x: sx, y: s.y, nx: 0, ny: -1 }, entry: { x: tx, y: t.y + t.h, nx: 0, ny: 1 } };       // target above
+    // Prefer VERTICAL (the layered flow). Only attach to the sides when the boxes genuinely overlap
+    // vertically (side-by-side); a merely-offset downward edge still reads as a clean top/bottom link.
+    const overlapY = Math.min(s.y + s.h, t.y + t.h) - Math.max(s.y, t.y);
+    if (overlapY <= Math.min(s.h, t.h) * 0.5) {
+      return ty >= sy
+        ? { exit: { x: sx, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: tx, y: t.y, nx: 0, ny: -1 } }        // target below
+        : { exit: { x: sx, y: s.y, nx: 0, ny: -1 }, entry: { x: tx, y: t.y + t.h, nx: 0, ny: 1 } };        // target above
     }
-    return dx >= 0
-      ? { exit: { x: s.x + s.w, y: sy, nx: 1, ny: 0 }, entry: { x: t.x, y: ty, nx: -1, ny: 0 } }          // target right
-      : { exit: { x: s.x, y: sy, nx: -1, ny: 0 }, entry: { x: t.x + t.w, y: ty, nx: 1, ny: 0 } };         // target left
+    return tx >= sx
+      ? { exit: { x: s.x + s.w, y: sy, nx: 1, ny: 0 }, entry: { x: t.x, y: ty, nx: -1, ny: 0 } }           // target right
+      : { exit: { x: s.x, y: sy, nx: -1, ny: 0 }, entry: { x: t.x + t.w, y: ty, nx: 1, ny: 0 } };          // target left
   }
   // Curve leaving `exit` along its edge normal and ARRIVING at `entry` aligned with the exit→entry
   // direction, so the auto-oriented arrowhead points along the flow into the edge.
@@ -264,17 +266,17 @@
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
       const g = el('g', { class: edgeClass(b.kind, back) });
       if (back) {
-        // Against the grain (ancestor below -> descendant above, across many ranks). Same edge
-        // selection as everything else (attach picks the source's facing edge), but the ROUTING is
-        // bespoke: detour up a side rail and enter the target's BOTTOM edge with an angled-up arrow —
-        // avoids both crossing the chain between them and a clipped side-edge arrowhead.
-        const { exit } = attach(s, t);
+        // Against the grain (ancestor below -> descendant above, across many ranks): fully bespoke
+        // routing. Leave the SOURCE'S SIDE (the rail is sideways), detour up a side rail, and enter
+        // the target's BOTTOM edge with an angled-up arrow — avoids crossing the chain between them
+        // AND a clipped side-edge arrowhead.
         const rightSide = s.x + s.w / 2 >= t.x + t.w / 2;
+        const ex = rightSide ? s.x : s.x + s.w, ey0 = s.y + s.h / 2;
         const ey = t.y + t.h;
         const bx = rightSide ? t.x + t.w + 28 : t.x - 28;
         const cx = rightSide ? t.x + t.w - 18 : t.x + 18;
-        g.appendChild(el('path', { d: `M${exit.x},${exit.y} C${bx},${exit.y} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
-        edgeLabel(g, bx + (rightSide ? 10 : -10), (exit.y + ey) / 2, `${b.item} ${fmt(b.rate)}`);
+        g.appendChild(el('path', { d: `M${ex},${ey0} C${bx},${ey0} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
+        edgeLabel(g, bx + (rightSide ? 10 : -10), (ey0 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
       } else {
         // with the grain (adjacent ranks): direct link between the facing edges
         const { exit, entry } = attach(s, t);
