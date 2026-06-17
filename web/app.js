@@ -542,6 +542,9 @@ function renderSummary(out, body) {
   const s = out.graph.summary;
   const machineList = Object.entries(s.machineTotals).sort((a, b) => b[1] - a[1]);
   const totalMachines = machineList.reduce((a, [, n]) => a + n, 0);
+  // furnaces are heating infrastructure, not production machines — summarised separately
+  const furnaceList = Object.entries(s.furnaces || {}).sort((a, b) => b[1] - a[1]);
+  const totalFurnaces = furnaceList.reduce((a, [, n]) => a + n, 0);
   let html = '<div class="stat-row">';
   html += `<div class="stat">Cost <b>${fmtCu(out.copperPerMin)}</b>/min</div>`;
   html += `<div class="stat">Per item <b>${fmtCu(out.copperPerItem)}</b></div>`;
@@ -565,14 +568,17 @@ function renderSummary(out, body) {
     html += `<div class="stat">Mat <b>${fmtCu(s.materialPerMin)}</b> · cap <b>${fmtCu(s.capitalPerMin)}</b>/min</div>`;
   }
   html += `<div class="stat">Machines <b>${totalMachines}</b></div>`;
+  if (totalFurnaces) html += `<div class="stat">🏭 Furnaces <b>${totalFurnaces}</b></div>`;
   if (s.externals.length) {
     html += `<div class="stat">Inputs <b>${s.externals.map((e) => `${esc(e.item)} ${fmt(e.ratePerMin)}/min`).join('</b>, <b>')}</b></div>`;
   }
   html += '</div>';
   // machine totals as compact wrapping chips (was a tall 20-row table)
-  if (machineList.length) {
+  if (machineList.length || furnaceList.length) {
     html += '<div class="machine-chips">' +
-      machineList.map(([m, n]) => `<span class="mchip">${esc(m)} <b>×${n}</b></span>`).join('') + '</div>';
+      machineList.map(([m, n]) => `<span class="mchip">${esc(m)} <b>×${n}</b></span>`).join('') +
+      furnaceList.map(([m, n]) => `<span class="mchip" title="heating device (infrastructure), not a production machine">🏭 ${esc(m)} <b>×${n}</b></span>`).join('') +
+      '</div>';
   }
   $('summary').innerHTML = html;
 }

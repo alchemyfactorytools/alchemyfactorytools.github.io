@@ -350,8 +350,10 @@ test('flow graph: heated machines show a fuel band and the Stone Furnace is coun
   const plantAsh = g.nodes.find((n) => n.id === 'recipe:Plant Ash');
   assert.ok(plantAsh.heatPerMin > 0 && plantAsh.fuelItem && plantAsh.fuelPerMin > 0,
     `Plant Ash shows fuel: ${plantAsh.fuelItem} ${plantAsh.fuelPerMin}/min`);
-  // Stone Furnaces are still counted in the machine totals (slot occupancy)
-  assert.ok(g.summary.machineTotals['Stone Furnace'] >= 1, 'furnaces counted in machine totals');
+  // Stone Furnaces are heating infrastructure, tallied separately (slot occupancy) and kept
+  // OUT of machineTotals (the production-machine summary).
+  assert.ok(g.summary.furnaces['Stone Furnace'] >= 1, 'furnaces counted in the separate furnaces tally');
+  assert.equal(g.summary.machineTotals['Stone Furnace'], undefined, 'furnaces excluded from production machine totals');
   // no HEAT box
   assert.equal(g.nodes.find((n) => n.id === 'resource:HEAT'), undefined);
 });

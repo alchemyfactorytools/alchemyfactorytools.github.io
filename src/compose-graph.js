@@ -312,6 +312,7 @@ function composeGraph(composed, db, cfg) {
     liquidItems: Object.keys(db.items).filter((k) => db.items[k].liquid),
     externals,
     machineTotals: composed.summary.machineTotals,
+    furnaces: composed.summary.furnaces,                    // heating devices, summarised separately from production machines
     mintedCoins: composed.summary.mintedCoins,
     coproductFeeds: composed.summary.coproductFeeds || [],
     cgRounds: null,

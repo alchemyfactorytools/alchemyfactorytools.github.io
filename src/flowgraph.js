@@ -404,9 +404,11 @@ function buildFlowGraph(result, model, demand, opts = {}) {
   for (const n of nodes) {
     if (n.machineCount) machineTotals[n.machine] = (machineTotals[n.machine] ?? 0) + n.machineCount;
   }
-  // furnaces (heat sources) are not recipe machines but are buildables you need
+  // furnaces (heat sources) are infrastructure, not production machines — keep them in their own
+  // `furnaces` tally and OUT of machineTotals (the production-machine summary).
+  const furnaces = {};
   for (const [fname, count] of Object.entries(furnaceTotals)) {
-    machineTotals[fname] = (machineTotals[fname] ?? 0) + count;
+    if (count > 0) furnaces[fname] = count;
   }
   // capital (amortized machine build) portion of the objective, split out so the
   // user can see how much of the cost is machines vs materials
@@ -425,6 +427,7 @@ function buildFlowGraph(result, model, demand, opts = {}) {
     materialPerMin: result.objective - capitalPerMin,
     externals,
     machineTotals,
+    furnaces,
     cgRounds: result.rounds,
     binding: result.binding ?? [],
     selfSustaining: demandTotal > 0 && spend < 1 && capitalPerMin < 1,

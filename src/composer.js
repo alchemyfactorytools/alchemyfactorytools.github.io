@@ -748,6 +748,8 @@ function makeComposer(db, cfg) {
     // Heating devices: count the parent furnaces that host the heated machines (slot-packed),
     // so the build shows e.g. "2× Stone Furnace" behind the 4 Crucibles. The leftover slots in
     // the last (partial) furnace are the source of the "awkward count" — they still get built.
+    // Furnaces are infrastructure, NOT production machines, so they stay in their own `furnaces`
+    // tally and are deliberately kept OUT of machineTotals (the production-machine summary).
     const furnaceSlots = {};
     for (const t of trees) tallyFurnaceSlots(t.tree, furnaceSlots);
     if (fuel && fuel.prodTile && !treeSet.has(fuel.prodTile)) tallyFurnaceSlots(fuel.prodTile, furnaceSlots);
@@ -755,7 +757,7 @@ function makeComposer(db, cfg) {
     const furnaces = {};
     for (const [fname, used] of Object.entries(furnaceSlots)) {
       const fc = Math.ceil(used / machines[fname].slots - 1e-9);
-      if (fc > 0) { furnaces[fname] = fc; machineTotals[fname] = (machineTotals[fname] || 0) + fc; }
+      if (fc > 0) furnaces[fname] = fc;
     }
 
     const totals = { heatPerMin: heatMain, nutrientPerMin: nutrientMain, fuelPerMin: F, fertPerMin: G, copperPerMin: acc.copperPerMin, mintedCoins: acc.mintedCoins };
