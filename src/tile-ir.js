@@ -60,8 +60,21 @@ function graphToIR(graph) {
   const ports = [];
   for (const n of graph.nodes) {
     const common = { id: n.id, item: n.label, line: lineOf(n), parent: parentOf(n.id, idSet) };
-    if (isProcess(n)) tiles.push({ ...common, machine: n.machine, count: n.machineCount, out: n.ratePerMin || 0 });
-    else ports.push({ ...common, role: isSupplyBelt(n) ? 'belt' : (n.type || n.kind || 'node') });
+    if (isProcess(n)) {
+      tiles.push({
+        ...common, machine: n.machine, count: n.machineCount, out: n.ratePerMin || 0,
+        // display detail carried straight from the solver (no re-derivation) so the renderer can
+        // match the original look: utilization, the fuel/furnace/fert bands, and recirculation.
+        utilization: n.utilization, fuelItem: n.fuelItem, fuelPerMin: n.fuelPerMin,
+        fertItem: n.fertItem, fertPerMin: n.fertPerMin, furnaces: n.furnaces, furnaceItem: n.furnaceItem,
+        heatPerMin: n.heatPerMin, nutrientPerMin: n.nutrientPerMin, recirc: n.recirc, badges: n.badges,
+      });
+    } else {
+      ports.push({
+        ...common, role: isSupplyBelt(n) ? 'belt' : (n.type || n.kind || 'node'),
+        rate: n.ratePerMin || 0, cost: n.copperPerMin, supplyRate: n.supplyRate, beltLanes: n.beltLanes, beltSpeed: n.beltSpeed,
+      });
+    }
   }
   const belts = [];
   for (const e of graph.edges) {
