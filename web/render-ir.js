@@ -43,18 +43,21 @@
   }
 
   // recursive tidy layout of a material-tree subtree -> {w,h,place,boxes}
-  function layoutSubtree(id, childrenOf, sizeFn, depth) {
+  // suppressSelf: top (line-root) call — the line box wraps it, so it gets no own box/header.
+  function layoutSubtree(id, childrenOf, sizeFn, depth, suppressSelf) {
     const kids = childrenOf.get(id) || [];
     const self = sizeFn(id);
     if (!kids.length) return { w: self.w, h: self.h, place: new Map([[id, { x: 0, y: 0, w: self.w, h: self.h }]]), boxes: [] };
     const HGAP = U * 3, VGAP = U * 2, PAD = U;
-    const blocks = kids.map((k) => layoutSubtree(k, childrenOf, sizeFn, depth + 1));
+    const boxed = !suppressSelf && kids.length >= 2;
+    const HDR = boxed ? U * 3 : 0;                // header clearance inside a branch box
+    const blocks = kids.map((k) => layoutSubtree(k, childrenOf, sizeFn, depth + 1, false));
     const childRowH = Math.max(...blocks.map((b) => b.h));
     const place = new Map();
     const boxes = [];
     let x = 0;
     blocks.forEach((b) => {
-      const oy = childRowH - b.h;
+      const oy = childRowH - b.h + HDR;            // push children below this box's header
       for (const [nid, p] of b.place) place.set(nid, { x: p.x + x, y: p.y + oy, w: p.w, h: p.h });
       for (const bx of b.boxes) boxes.push({ ...bx, x: bx.x + x, y: bx.y + oy });
       x += b.w + HGAP;
@@ -62,10 +65,10 @@
     const childrenW = x - HGAP;
     const totalW = Math.max(childrenW, self.w);
     const selfX = Math.round((totalW - self.w) / 2 / U) * U;
-    const selfY = childRowH + VGAP;
+    const selfY = HDR + childRowH + VGAP;
     place.set(id, { x: selfX, y: selfY, w: self.w, h: self.h });
     const w = totalW, h = selfY + self.h;
-    if (kids.length >= 2) boxes.push({ key: id, x: -PAD, y: -PAD, w: w + 2 * PAD, h: h + 2 * PAD, depth });
+    if (boxed) boxes.push({ key: id, x: -PAD, y: -PAD, w: w + 2 * PAD, h: h + 2 * PAD, depth, headerH: HDR });
     return { w, h, place, boxes };
   }
 
@@ -104,17 +107,18 @@
     const bandBottom = supply.length ? TOPHDR + supplyH + U : 0;
 
     // line blocks
+    const SIDEPAD = U * 2;                          // horizontal inset so branch boxes clear the line edge
     const lineTop = bandBottom ? bandBottom + GAP : 0;
     let lineX = 0, lineBottom = lineTop;
     const lineCenterX = new Map();
     for (const rootId of lineRoots) {
-      const sub = layoutSubtree(rootId, childrenOf, sizeFn, 1);
-      for (const [nid, p] of sub.place) pos.set(nid, { x: p.x + lineX + U, y: p.y + lineTop + TOPHDR, w: p.w, h: p.h });
-      // skip the root's OWN branch box — the line box (below) already wraps the same subtree
-      for (const bx of sub.boxes) if (bx.key !== rootId) boxes.push({ ...bx, x: bx.x + lineX + U, y: bx.y + lineTop + TOPHDR });
-      boxes.push({ key: rootId, line: nodeById.get(rootId).line, x: lineX, y: lineTop, w: sub.w + 2 * U, h: sub.h + TOPHDR + U, depth: 0 });
-      lineCenterX.set(nodeById.get(rootId).line, lineX + (sub.w + 2 * U) / 2);
-      lineX += sub.w + 2 * U + GAP;
+      const sub = layoutSubtree(rootId, childrenOf, sizeFn, 1, true); // root: line box wraps it
+      for (const [nid, p] of sub.place) pos.set(nid, { x: p.x + lineX + SIDEPAD, y: p.y + lineTop + TOPHDR, w: p.w, h: p.h });
+      for (const bx of sub.boxes) boxes.push({ ...bx, x: bx.x + lineX + SIDEPAD, y: bx.y + lineTop + TOPHDR });
+      const boxW = sub.w + 2 * SIDEPAD;
+      boxes.push({ key: rootId, line: nodeById.get(rootId).line, x: lineX, y: lineTop, w: boxW, h: sub.h + TOPHDR + U, depth: 0 });
+      lineCenterX.set(nodeById.get(rootId).line, lineX + boxW / 2);
+      lineX += boxW + GAP;
       lineBottom = Math.max(lineBottom, lineTop + sub.h + TOPHDR + U);
     }
 
@@ -192,9 +196,15 @@
         const sum = (lineTiles.get(b.line) || []).map((t) => `${t.count}× ${t.machine}`).join(' + ');
         const ms = el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub', fill: col }); ms.textContent = clip(sum, maxc); gEl.appendChild(ms);
       } else if (b.key) {
-        // branch sub-box: label it with the item its subtree produces
+        // branch sub-box: same metadata as the line box, scoped to this subtree
         const n = nodeById.get(b.key);
-        if (n) { const lb = el('text', { x: b.x + 10, y: b.y + 15, class: 'clustersub', fill: col }); lb.textContent = n.item; gEl.appendChild(lb); }
+        if (n) {
+          const maxc = Math.floor((b.w - 20) / 6);
+          const name = el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col }); name.textContent = n.item; gEl.appendChild(name);
+          const out = el('text', { x: b.x + 10, y: b.y + 29, class: 'clustersub', fill: col }); out.textContent = `● ${fmt(n.out)} ${n.item}/min`; gEl.appendChild(out);
+          const sub = ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>'));
+          const ms = el('text', { x: b.x + 10, y: b.y + 43, class: 'clustersub', fill: col }); ms.textContent = clip(sub.map((t) => `${t.count}× ${t.machine}`).join(' + '), maxc); gEl.appendChild(ms);
+        }
       }
     }
 
