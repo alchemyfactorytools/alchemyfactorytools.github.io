@@ -174,14 +174,18 @@
 
     // ---- group boxes (behind), deepest first ----
     for (const b of [...layout.boxes].sort((a, c) => (c.depth || 0) - (a.depth || 0))) {
-      gEl.appendChild(el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, class: 'cluster' + (b.belt ? ' belt' : '') }));
-      if (b.belt) { const lb = el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel' }); lb.textContent = b.label; gEl.appendChild(lb); continue; }
+      // .cluster CSS only sets opacities/stroke-width — the original supplies fill+stroke colour
+      // inline, so we must too (otherwise labels default to black). Gold for the Main belt, slate
+      // for production lines / branch boxes.
+      const col = b.belt ? '#c9a14a' : '#7a9cc6';
+      gEl.appendChild(el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, class: 'cluster' + (b.belt ? ' belt' : ''), fill: col, stroke: col }));
+      if (b.belt) { const lb = el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col }); lb.textContent = b.label; gEl.appendChild(lb); continue; }
       if (b.depth === 0 && b.line) {
         const maxc = Math.floor((b.w - 20) / 6);
-        const name = el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel' }); name.textContent = `${b.line} line`; gEl.appendChild(name);
-        const out = el('text', { x: b.x + 10, y: b.y + 31, class: 'clustersub' }); out.textContent = `● ${fmt(lineOutput(b.line))} ${b.line}/min`; gEl.appendChild(out);
+        const name = el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col }); name.textContent = `${b.line} line`; gEl.appendChild(name);
+        const out = el('text', { x: b.x + 10, y: b.y + 31, class: 'clustersub', fill: col }); out.textContent = `● ${fmt(lineOutput(b.line))} ${b.line}/min`; gEl.appendChild(out);
         const sum = (lineTiles.get(b.line) || []).map((t) => `${t.count}× ${t.machine}`).join(' + ');
-        const ms = el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub' }); ms.textContent = clip(sum, maxc); gEl.appendChild(ms);
+        const ms = el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub', fill: col }); ms.textContent = clip(sum, maxc); gEl.appendChild(ms);
       }
     }
 
