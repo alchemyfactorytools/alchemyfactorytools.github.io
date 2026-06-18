@@ -55,7 +55,9 @@
     const badge = hasBadge(node) ? BADGE_W : 0;
     const w = snap(Math.max(minW + badge, Math.min(300 + badge, String(label).length * CHAR_W + 24 + badge)));
     const titleLines = String(label).length * CHAR_W > w - 16 - badge ? 2 : 1;
-    const h = snap(titleLines * 16 + 16 + bandsOf(node) * BAND_H + 14);
+    // tiles carry two sub-lines (count line + rate line) so a "N×/tile (M× total)" breakdown fits
+    const subLines = isTile ? 2 : 1;
+    const h = snap(titleLines * 16 + subLines * 15 + 15 + bandsOf(node) * BAND_H);
     return { w, h };
   }
 
@@ -411,6 +413,7 @@
     const edgeGroups = [];   // { g, from, to, fb }
     const trunkGroups = [];  // { g, from, tos:[id], fb:true }
     const clusterEls = [];   // { members:Set(id), els:[el] }
+    const tiledBoxes = [];   // { depth, members:Set(id), K } for boxes stamped K>1 → per-tile node counts
 
     // per-line header content (output rate + machine summary), all from the IR (faithful)
     const lineTiles = new Map();
@@ -450,9 +453,11 @@
         const name = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); name.textContent = `${b.line} line`;
         subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 31 + i * 15, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         members = new Set([...nodeById.values()].filter((n) => n.line === b.line).map((n) => n.id));
+        if (K > 1) tiledBoxes.push({ depth: 0, members, K });
       } else if (b.key) {
         // branch sub-box: same metadata as the line box, scoped to this subtree
         const n = nodeById.get(b.key);
+        members = new Set(ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>')).map((t) => t.id));
         if (n) {
           const maxc = Math.floor((b.w - 20) / 6);
           const sub = ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>'));
@@ -462,8 +467,8 @@
           subs.push(cellSummary(sub));
           const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
           subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 29 + i * 14, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
+          if (K > 1) tiledBoxes.push({ depth: b.depth || 1, members, K });
         }
-        members = new Set(ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>')).map((t) => t.id));
       }
       if (members) clusterEls.push({ members, els, line: b.depth === 0 && b.line ? b.line : null });
     }
@@ -553,6 +558,9 @@
       edgeGroups.push({ g, from: b.from, to: b.to, fb: b.kind !== 'material' || back });
     }
 
+    // a node's per-tile divisor = K of the DEEPEST tiled box containing it (branch beats line)
+    const nodeK = (id) => { let K = 1, d = -1; for (const tb of tiledBoxes) if (tb.members.has(id) && tb.depth >= d) { d = tb.depth; K = tb.K; } return K; };
+
     // ---- tiles + ports ----
     for (const [id, p] of pos) {
       if (explodedIds.has(id)) continue; // re-drawn per line as belt instances above
@@ -567,7 +575,11 @@
         const titleLines = wrap(`${tile.machine} → ${tile.item}`, titleMaxc, 2);
         titleLines.forEach((ln, i) => { const t = el('text', { x: 10, y: 19 + i * 15 }); t.textContent = ln; g.appendChild(t); });
         const subY = titleLines.length === 2 ? 50 : 37;
-        const sub = el('text', { x: 10, y: subY, class: 'sub' }); sub.textContent = `${tile.count}× · ${fmt(tile.out)}/min`; g.appendChild(sub);
+        // count line — per-tile breakdown when the node sits in a stamped (K>1) box, else the bare total
+        const K = nodeK(id);
+        const countLine = K > 1 ? `⬢ ${Math.max(1, Math.ceil(tile.count / K - 1e-6))}×/tile (${tile.count}× total)` : `${tile.count}×`;
+        const sub = el('text', { x: 10, y: subY, class: 'sub' }); sub.textContent = clip(countLine, maxc); g.appendChild(sub);
+        const rateLine = el('text', { x: 10, y: subY + 15, class: 'sub' }); rateLine.textContent = clip(`${fmt(tile.out)}/min`, maxc); g.appendChild(rateLine);
         if (tile.utilization != null && Math.round(tile.utilization * 100) < 90) {
           const u = el('text', { x: p.w - 8, y: 18, 'text-anchor': 'end', class: 'util' }); u.textContent = `⚙ ${Math.round(tile.utilization * 100)}%`; g.appendChild(u);
         }
