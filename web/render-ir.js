@@ -19,7 +19,23 @@
   const BELTHDR = U + 12;                         // Main-belt box header — just the one "Main belt" label
 
   const fmt = (n) => (n == null ? '' : Math.abs(n) >= 100 ? String(Math.round(n)) : Math.abs(n) >= 1 ? String(Math.round(n * 10) / 10) : String(Math.round(n * 1000) / 1000));
-  const fmtCu = (n) => (n == null ? '' : n >= 1000 ? `${Math.round(n)}c` : `${Math.round(n * 10) / 10}c`);
+  // Copper-denominated money shown in coin units (matches app.js fmtCu): 1 silver = 1,000 copper,
+  // 1 gold = 100,000 copper. e.g. 280000 → "2g 80s", 3411 → "3s 411c". Two most-significant denoms.
+  const fmtCu = (n) => {
+    if (n == null) return '';
+    const neg = n < 0 ? '-' : '';
+    let c = Math.round(Math.abs(n));
+    if (c === 0) return '0c';
+    const g = Math.floor(c / 100000); c -= g * 100000;
+    const s = Math.floor(c / 1000); c -= s * 1000;
+    const parts = [];
+    if (g) parts.push(g + 'g');
+    if (s) parts.push(s + 's');
+    if (c || !parts.length) parts.push(c + 'c');
+    return neg + parts.slice(0, 2).join(' ');
+  };
+  // Cash flows read as pretty money (🪙 3s 411c); material/fuel/fert keep item + rate.
+  const beltLabel = (kind, item, rate) => (kind === 'cash' ? `🪙 ${fmtCu(rate)}` : `${item} ${fmt(rate)}`);
 
   const bandsOf = (n) => {
     if (n.machine == null) return 0;
@@ -317,7 +333,7 @@
       const exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry = { x: cx, y: cy, nx: 0, ny: -1 };
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
       g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
-      const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${tr.item} ${fmt(tr.rate)}`);
+      const m = mid(exit, entry); edgeLabel(g, m.x, m.y, beltLabel(tr.kind, tr.item, tr.rate));
       gEl.appendChild(g);
       trunkGroups.push({ g, from: tr.from, tos: tr.tos }); // trunks are fuel/fert/cash → fb
     }
@@ -335,7 +351,7 @@
         const bx = rightSide ? t.x + t.w + 28 : t.x - 28;
         const cx = rightSide ? t.x + t.w - 18 : t.x + 18;
         g.appendChild(el('path', { d: `M${ex},${ey0} C${bx},${ey0} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
-        edgeLabel(g, bx + (rightSide ? 10 : -10), (ey0 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
+        edgeLabel(g, bx + (rightSide ? 10 : -10), (ey0 + ey) / 2, beltLabel(b.kind, b.item, b.rate));
       } else {
         // with the grain (adjacent ranks): direct link between the facing edges. Main-belt drops
         // run straight DOWN from the tile center (the tile is placed above its anchor); everything
@@ -345,7 +361,7 @@
           ? { exit: { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: s.x + s.w / 2, y: t.y, nx: 0, ny: -1 } }
           : attach(s, t);
         g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
-        const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${b.item} ${fmt(b.rate)}`);
+        const m = mid(exit, entry); edgeLabel(g, m.x, m.y, beltLabel(b.kind, b.item, b.rate));
       }
       gEl.appendChild(g);
       // material forward edges are the lineage (recurse); fuel/fert/cash and any back/feedback
@@ -387,7 +403,9 @@
       } else {
         const t = el('text', { x: 10, y: 19 }); t.textContent = clip(port.item || port.id, maxc); g.appendChild(t);
         let subText = '';
+        const coinBelt = port.role === 'belt' && (port.cost > 0 || /\bcoin\b/i.test(port.item || ''));
         if (port.role === 'demand') subText = `${fmt(port.rate)}/min target`;
+        else if (coinBelt) subText = `🪙 ${fmtCu(port.rate)}/min drawn`;
         else if (port.role === 'belt') subText = `${fmt(port.rate)}/min drawn${port.supplyRate != null ? ` · ${fmt(port.supplyRate)}/min belt supply` : ''}`;
         else if (port.role === 'surplus' || port.role === 'trash') subText = `${fmt(port.rate)}/min`;
         else subText = `${fmt(port.rate)}/min${port.cost ? ` · ${fmtCu(port.cost)}/min` : ' · free'}`;
