@@ -134,12 +134,15 @@
     const lineTop = bandBottom ? bandBottom + GAP : 0;
     let lineX = 0, lineBottom = lineTop;
     const lineCenterX = new Map();
+    const lineBoxByLine = new Map();
     for (const rootId of lineRoots) {
       const sub = layoutSubtree(rootId, childrenOf, sizeFn, 1, true); // root: line box wraps it
       for (const [nid, p] of sub.place) pos.set(nid, { x: p.x + lineX + SIDEPAD, y: p.y + lineTop + TOPHDR, w: p.w, h: p.h });
       for (const bx of sub.boxes) boxes.push({ ...bx, x: bx.x + lineX + SIDEPAD, y: bx.y + lineTop + TOPHDR });
       const boxW = sub.w + 2 * SIDEPAD;
-      boxes.push({ key: rootId, line: nodeById.get(rootId).line, x: lineX, y: lineTop, w: boxW, h: sub.h + TOPHDR + U, depth: 0 });
+      const lineBoxObj = { key: rootId, line: nodeById.get(rootId).line, x: lineX, y: lineTop, w: boxW, h: sub.h + TOPHDR + U, depth: 0 };
+      boxes.push(lineBoxObj);
+      lineBoxByLine.set(nodeById.get(rootId).line, lineBoxObj);
       lineCenterX.set(nodeById.get(rootId).line, lineX + boxW / 2);
       lineX += boxW + GAP;
       lineBottom = Math.max(lineBottom, lineTop + sub.h + TOPHDR + U);
@@ -148,20 +151,38 @@
     // rather than hugging just its two tiles.
     if (beltBox && lineX > GAP) beltBox.w = Math.max(beltBox.w, lineX - GAP);
 
-    // Now place the supply tiles: each centered above its consumers' centroid so its trunk drops
-    // straight down. Order by anchor L→R and push right on collision so tiles never overlap.
+    // Re-draw the Main belt per consuming LINE: one belt instance per (resource, line) sitting above
+    // that line's drop point, so each line has its own labeled tap that drops straight in — instead
+    // of one tile branching out to many lines. Order all instances L→R by anchor and push right on
+    // collision so they never overlap.
+    const beltInstances = []; // { id, line, x, y, w, h }
     if (supply.length) {
-      const items = supply.map((id, i) => {
-        const cs = ir.belts.filter((b) => b.from === id).map((b) => pos.get(b.to)).filter(Boolean);
-        const anchor = cs.length ? cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length : null;
-        return { id, s: supplySizes[i], anchor };
-      }).sort((p, q) => (p.anchor == null ? Infinity : p.anchor) - (q.anchor == null ? Infinity : q.anchor));
+      const want = [];
+      supply.forEach((id, i) => {
+        const byLine = new Map();
+        for (const b of ir.belts) {
+          if (b.from !== id) continue;
+          const ln = (nodeById.get(b.to) || {}).line; if (ln == null) continue;
+          const cp = pos.get(b.to); if (!cp) continue;
+          if (!byLine.has(ln)) byLine.set(ln, []);
+          byLine.get(ln).push(cp.x + cp.w / 2);
+        }
+        for (const [ln, xs] of byLine) {
+          const lb = lineBoxByLine.get(ln);
+          let anchor = xs.reduce((a, v) => a + v, 0) / xs.length;
+          if (lb) anchor = Math.min(Math.max(anchor, lb.x + 24), lb.x + lb.w - 24);
+          want.push({ id, line: ln, anchor, s: supplySizes[i] });
+        }
+      });
+      want.sort((p, q) => p.anchor - q.anchor);
       let minX = U;
-      for (const it of items) {
-        const x = Math.max(minX, it.anchor != null ? Math.round(it.anchor - it.s.w / 2) : minX);
-        pos.set(it.id, { x, y: BELTHDR, w: it.s.w, h: it.s.h });
+      for (const it of want) {
+        const x = Math.max(minX, Math.round(it.anchor - it.s.w / 2));
+        beltInstances.push({ id: it.id, line: it.line, x, y: BELTHDR, w: it.s.w, h: it.s.h });
         minX = x + it.s.w + U;
       }
+      // canonical pos per port = its first instance (so the IR's port id is placed & belt endpoints resolve)
+      for (const inst of beltInstances) if (!pos.has(inst.id)) pos.set(inst.id, { x: inst.x, y: inst.y, w: inst.w, h: inst.h });
       if (beltBox) beltBox.w = Math.max(beltBox.w, minX);
     }
 
@@ -181,10 +202,12 @@
     const M = U * 2;
     for (const p of pos.values()) { p.x += M; p.y += M; }
     for (const b of boxes) { b.x += M; b.y += M; }
+    for (const inst of beltInstances) { inst.x += M; inst.y += M; }
     let width = 0, height = 0;
     for (const p of pos.values()) { width = Math.max(width, p.x + p.w); height = Math.max(height, p.y + p.h); }
     for (const b of boxes) { width = Math.max(width, b.x + b.w); height = Math.max(height, b.y + b.h); }
-    return { pos, boxes, backEdges, width: width + M, height: height + M };
+    for (const inst of beltInstances) { width = Math.max(width, inst.x + inst.w); height = Math.max(height, inst.y + inst.h); }
+    return { pos, boxes, backEdges, beltInstances, width: width + M, height: height + M };
   }
 
   // ---------------- DOM drawing ----------------
@@ -333,45 +356,58 @@
       if (members) clusterEls.push({ members, els, line: b.depth === 0 && b.line ? b.line : null });
     }
 
-    // ---- belts: only MAIN-BELT util/cash (supply-belt source) is trunked into the line-box top —
-    // those drop straight down and read cleanly. Cross-tile flows produced by a tile (e.g. self-fert
-    // from the fertilizer line into nurseries elsewhere) are drawn INDIVIDUALLY to the consuming tile,
-    // so the line points at what actually consumes it instead of raking to a far box's top edge.
-    const trunks = new Map(); // `${from}|${line}|${kind}` -> {from, kind, item, rate, tos:[]}
+    // ---- belts. The Main belt is re-drawn per consuming LINE (layout.beltInstances): a belt that
+    // feeds N lines becomes N labeled tiles, one above each line, each dropping STRAIGHT in. So we
+    // group each exploded belt's flows by (port, line) → that line's instance, and drop from it.
+    // Tile-produced cross-tile flows (self-fert into other lines) stay individual to the consumer.
+    const explodedIds = new Set((layout.beltInstances || []).map((i) => i.id));
+    const instOf = new Map((layout.beltInstances || []).map((i) => [i.id + '|' + i.line, i]));
+    const trunks = new Map(); // `${id}|${line}` -> { inst, line, kind, item, rate, tos:[] }
     const individual = [];
     for (const b of ir.belts) {
       const back = layout.backEdges.has(b.from + '\t' + b.to);
-      const beltSrc = (portById.get(b.from) || {}).role === 'belt';
-      if ((b.kind === 'fuel' || b.kind === 'fert' || b.kind === 'cash') && !back && beltSrc) {
-        const line = (nodeById.get(b.to) || {}).line || '·';
-        const k = `${b.from}|${line}|${b.kind}`;
-        if (!trunks.has(k)) trunks.set(k, { from: b.from, kind: b.kind, item: b.item, rate: 0, tos: [], line });
+      const line = (nodeById.get(b.to) || {}).line;
+      const inst = !back && explodedIds.has(b.from) ? instOf.get(b.from + '|' + line) : null;
+      if (inst) {
+        const k = b.from + '|' + line;
+        if (!trunks.has(k)) trunks.set(k, { inst, line, kind: b.kind, item: b.item, rate: 0, tos: [] });
         const tr = trunks.get(k); tr.rate += b.rate; tr.tos.push(b.to);
       } else individual.push({ b, back });
     }
-    // Main-belt bus: a belt that feeds several lines drops to a shared horizontal lane (one per
-    // belt source) just below the Main belt box, runs across, then drops STRAIGHT into each
-    // consuming line-box top — so every line it feeds gets a vertical entry, not just the one
-    // directly beneath the belt tile. Single-line belts collapse to a clean straight drop.
-    const mbBox = layout.boxes.find((b) => b.belt);
-    const busBase = (mbBox ? mbBox.y + mbBox.h : 0) + Math.round(U / 2);
-    const busLane = new Map();
-    for (const tr of trunks.values()) if (!busLane.has(tr.from)) busLane.set(tr.from, busLane.size);
+    // each instance drops straight down into its line-box top (a tiny jog only if it was pushed off
+    // its line to avoid overlapping a neighbour).
     for (const tr of trunks.values()) {
-      const s = pos.get(tr.from); if (!s) continue;
+      const s = tr.inst;
       const cs = tr.tos.map((id) => pos.get(id)).filter(Boolean);
       if (!cs.length) continue;
       const lb = lineBox.get(tr.line);
-      let tx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
-      let ty;
-      if (lb) { ty = lb.y; tx = Math.min(Math.max(tx, lb.x + 24), lb.x + lb.w - 24); } else { ty = Math.min(...cs.map((p) => p.y)); }
       const ex = s.x + s.w / 2, ey = s.y + s.h;
-      const busY = busBase + busLane.get(tr.from) * 12;
+      const ty = lb ? lb.y : Math.min(...cs.map((p) => p.y));
+      const landX = lb ? Math.min(Math.max(ex, lb.x + 12), lb.x + lb.w - 12) : ex;
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
-      addEdge(g, `M${ex},${ey} V${busY} H${tx} V${ty}`);
-      edgeLabel(g, tx, (busY + ty) / 2 + 4, beltLabel(tr.kind, tr.item, tr.rate));
+      addEdge(g, Math.abs(landX - ex) < 1 ? `M${ex},${ey} V${ty}` : `M${ex},${ey} V${ty - 14} H${landX} V${ty}`);
+      edgeLabel(g, landX, (ey + ty) / 2 + 4, beltLabel(tr.kind, tr.item, tr.rate));
       gEl.appendChild(g);
-      trunkGroups.push({ g, from: tr.from, tos: tr.tos }); // trunks are fuel/fert/cash → fb
+      trunkGroups.push({ g, from: s.id + '|' + tr.line, tos: tr.tos }); // synthetic per-instance key
+    }
+    // belt instance tiles (one per resource per consuming line), drawn above their drops
+    const drawBeltTile = (inst, port, drawnRate, kind) => {
+      const g = el('g', { class: 'node external', transform: `translate(${inst.x},${inst.y})` });
+      const ttl = el('title', {}); ttl.textContent = titleFor(port); g.appendChild(ttl);
+      g.appendChild(el('rect', { width: inst.w, height: inst.h, rx: 7 }));
+      const maxc = Math.floor((inst.w - 16) / 7);
+      const t = el('text', { x: 10, y: 19 }); t.textContent = clip(port.item || port.id, maxc); g.appendChild(t);
+      const coin = kind === 'cash' || port.cost > 0 || /\bcoin\b/i.test(port.item || '');
+      const subText = coin ? `🪙 ${fmtCu(drawnRate)}/min drawn` : `${fmt(drawnRate)}/min drawn`;
+      const sub = el('text', { x: 10, y: 36, class: 'sub' }); sub.textContent = clip(subText, maxc); g.appendChild(sub);
+      gEl.appendChild(g);
+      return g;
+    };
+    for (const inst of (layout.beltInstances || [])) {
+      const port = portById.get(inst.id); if (!port) continue;
+      let rate = 0, kind = 'material';
+      for (const b of ir.belts) if (b.from === inst.id && (nodeById.get(b.to) || {}).line === inst.line) { rate += b.rate; kind = b.kind; }
+      nodeGroups.set(inst.id + '|' + inst.line, drawBeltTile(inst, port, rate, kind));
     }
     for (const { b, back } of individual) {
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
@@ -407,6 +443,7 @@
 
     // ---- tiles + ports ----
     for (const [id, p] of pos) {
+      if (explodedIds.has(id)) continue; // re-drawn per line as belt instances above
       const tile = tileById.get(id), port = portById.get(id);
       const role = tile ? 'process' : (port.role === 'belt' ? 'external' : port.role);
       const g = el('g', { class: `node ${role}`, transform: `translate(${p.x},${p.y})` });
