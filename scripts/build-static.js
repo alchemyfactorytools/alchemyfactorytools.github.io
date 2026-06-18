@@ -34,8 +34,9 @@ esbuild.buildSync({
   minify: true,
 });
 
-// 2) Copy the static front-end assets verbatim.
-for (const f of ['index.html', 'style.css', 'layout3.js', 'app.js']) {
+// 2) Copy the static front-end assets verbatim. render-ir.js is the default tile-IR renderer —
+// without it app.js silently falls back to the layout3 path, so it MUST ship.
+for (const f of ['index.html', 'style.css', 'layout3.js', 'render-ir.js', 'app.js']) {
   fs.copyFileSync(path.join(web, f), path.join(dist, f));
 }
 
