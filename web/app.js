@@ -830,12 +830,13 @@ function renderGraph(rawGraph) {
   // Experimental tile-DAG pipeline (?pipeline=tiles): solver-owned IR drawn by the geometry-only
   // renderer. Bypasses the layout3 clustering/blueprint path entirely. Pan/zoom/fit reuse #viewport.
   if (TILES_PIPELINE && window.AlchRenderIR && AlchSolver.graphToIR) {
+    const drawOpts = { beltSpeed: AlchSolver.beltSpeed((lastConfig && lastConfig.skills && lastConfig.skills.logistics) || 0), isLiquid: AlchSolver.isLiquid };
     if (TILES2 && AlchSolver.composeTilesIR) {
       const ir = AlchSolver.composeTilesIR(rawGraph, lastConfig);
-      AlchRenderIR.drawIR(ir, AlchRenderIR.layoutTilesDAG(ir), root);
+      AlchRenderIR.drawIR(ir, AlchRenderIR.layoutTilesDAG(ir), root, drawOpts);
     } else {
       const ir = AlchSolver.graphToIR(rawGraph);
-      AlchRenderIR.drawIR(ir, AlchRenderIR.layoutIR(ir), root);
+      AlchRenderIR.drawIR(ir, AlchRenderIR.layoutIR(ir), root, drawOpts);
     }
     fitView();
     return;

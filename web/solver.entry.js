@@ -34,5 +34,7 @@ module.exports = {
   // Belt throughput (items/min one belt carries) at a given Logistics level — used by the belt
   // supply editor so a blank rate means "one full belt at current skills" instead of unlimited.
   beltSpeed: (logisticsLvl) => beltSpeed(logisticsLvl || 0),
+  // whether an item is a piped liquid (no belt cap) — used by the renderer's tile-blueprint badge.
+  isLiquid: (item) => !!(db.items[item] && db.items[item].liquid),
   db,
 };

@@ -388,7 +388,14 @@
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
   function edgeLabel(g, x, y, text) { for (const cls of ['bg', '']) { const t = el('text', { x, y: y - 3, 'text-anchor': 'middle' }); if (cls) t.setAttribute('class', cls); t.textContent = text; g.appendChild(t); } }
 
-  function drawIR(ir, layout, gEl) {
+  function drawIR(ir, layout, gEl, opts) {
+    const o = opts || {};
+    const BELT = o.beltSpeed || 60;
+    const isLiquid = o.isLiquid || (() => false);
+    // A line/branch is a TILEABLE blueprint stamped K times — K = the fewest belts its output needs
+    // (liquids are piped → one tile). perTile = output per stamp. Mirrors web/layout3.js blueprint().
+    const tilesFor = (output, item) => { const K = isLiquid(item) ? 1 : Math.max(1, Math.min(200, Math.ceil((output || 0) / BELT - 1e-6))); return { K, perTile: K ? (output || 0) / K : output }; };
+    const cellSummary = (tlist, K) => tlist.map((t) => `${K > 1 ? Math.max(1, Math.ceil(t.count / K - 1e-6)) : t.count}× ${t.machine}`).join(' + ');
     const tileById = new Map(ir.tiles.map((t) => [t.id, t]));
     const portById = new Map(ir.ports.map((p) => [p.id, p]));
     const nodeById = new Map([...tileById, ...portById]);
@@ -433,20 +440,26 @@
         members = new Set(ir.ports.filter((p) => p.line === 'supply').map((p) => p.id));
       } else if (b.depth === 0 && b.line) {
         const maxc = Math.floor((b.w - 20) / 6);
+        const output = lineOutput(b.line);
+        const { K, perTile } = tilesFor(output, b.line);
+        const subs = [`● ${fmt(output)} ${b.line}/min`];
+        if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${b.line}/min each`);
+        subs.push(cellSummary(lineTiles.get(b.line) || [], K));
         const name = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); name.textContent = `${b.line} line`;
-        const out = add(el('text', { x: b.x + 10, y: b.y + 31, class: 'clustersub', fill: col })); out.textContent = `● ${fmt(lineOutput(b.line))} ${b.line}/min`;
-        const sum = (lineTiles.get(b.line) || []).map((t) => `${t.count}× ${t.machine}`).join(' + ');
-        const ms = add(el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub', fill: col })); ms.textContent = clip(sum, maxc);
+        subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 31 + i * 15, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         members = new Set([...nodeById.values()].filter((n) => n.line === b.line).map((n) => n.id));
       } else if (b.key) {
         // branch sub-box: same metadata as the line box, scoped to this subtree
         const n = nodeById.get(b.key);
         if (n) {
           const maxc = Math.floor((b.w - 20) / 6);
-          const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
-          const out = add(el('text', { x: b.x + 10, y: b.y + 29, class: 'clustersub', fill: col })); out.textContent = `● ${fmt(n.out)} ${n.item}/min`;
           const sub = ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>'));
-          const ms = add(el('text', { x: b.x + 10, y: b.y + 43, class: 'clustersub', fill: col })); ms.textContent = clip(sub.map((t) => `${t.count}× ${t.machine}`).join(' + '), maxc);
+          const { K, perTile } = tilesFor(n.out, n.item);
+          const subs = [`● ${fmt(n.out)} ${n.item}/min`];
+          if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${n.item}/min each`);
+          subs.push(cellSummary(sub, K));
+          const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
+          subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 29 + i * 14, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         }
         members = new Set(ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>')).map((t) => t.id));
       }
