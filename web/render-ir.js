@@ -199,7 +199,29 @@
     return lines;
   }
 
-  function edgeClass(kind, back) { return 'edge' + (kind === 'fuel' ? ' heat' : kind === 'fert' ? ' nutrient' : kind === 'cash' ? ' cash' : back ? ' recycle' : ''); }
+  function edgeClass(kind, back) { return 'edge' + (kind === 'fuel' ? ' heat' : kind === 'fert' ? ' nutrient' : kind === 'cash' ? ' cash' : back ? ' recycle' : '') + (back ? ' back' : ''); }
+  // Native SVG <title> tooltip content for a tile or port — mirrors app.js makeTitle, from IR fields.
+  function titleFor(n) {
+    if (n.machine != null) {
+      let txt = `${n.machine} → ${n.item}`;
+      txt += n.utilization != null
+        ? `\n${n.count}× ${n.machine} at ${Math.round(n.utilization * 100)}% utilization\n${fmt(n.out)} runs/min`
+        : `\n${n.count}× ${n.machine}\n${fmt(n.out)}/min`;
+      if (n.fuelItem && n.fuelPerMin > 0) txt += `\n🔥 ${fmt(n.fuelPerMin)} ${n.fuelItem}/min`;
+      if (n.furnaces) txt += `\nhosted in ${n.furnaces}× ${n.furnaceItem} (heating device)`;
+      if (n.fertItem && n.fertPerMin > 0) txt += `\n🌱 ${fmt(n.fertPerMin)} ${n.fertItem}/min`;
+      if (n.recirc) for (const rc of n.recirc) txt += `\n♻ ${fmt(rc.ratePerMin)} ${rc.item}/min`;
+      if (n.badges && n.badges.length) txt += `\n[${n.badges.join(', ')}]`;
+      return txt;
+    }
+    let txt = n.item || n.id;
+    const coin = n.role === 'belt' && (n.cost > 0 || /\bcoin\b/i.test(n.item || ''));
+    if (n.role === 'demand') txt += `\n${fmt(n.rate)}/min target`;
+    else if (coin) txt += `\n🪙 ${fmtCu(n.rate)}/min drawn`;
+    else if (n.role === 'belt') txt += `\n${fmt(n.rate)}/min drawn${n.supplyRate != null ? ` · ${fmt(n.supplyRate)}/min belt supply` : ''}`;
+    else txt += `\n${fmt(n.rate)}/min${n.cost ? ` · ${fmtCu(n.cost)}/min` : ' · free'}`;
+    return txt;
+  }
   // Shared edge attachment: the exit point on the source and the entry point on the target, each on
   // the edge FACING the other node (by dominant direction), with its outward normal. Incoming and
   // outgoing placements use this same rule — that's the unification.
@@ -374,6 +396,7 @@
       const tile = tileById.get(id), port = portById.get(id);
       const role = tile ? 'process' : (port.role === 'belt' ? 'external' : port.role);
       const g = el('g', { class: `node ${role}`, transform: `translate(${p.x},${p.y})` });
+      const ttl = el('title', {}); ttl.textContent = titleFor(tile || port); g.appendChild(ttl);
       g.appendChild(el('rect', { width: p.w, height: p.h, rx: 7 }));
       const maxc = Math.floor((p.w - 16) / 7);
       if (tile) {
