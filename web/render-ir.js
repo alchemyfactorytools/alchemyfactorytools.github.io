@@ -349,23 +349,27 @@
         const tr = trunks.get(k); tr.rate += b.rate; tr.tos.push(b.to);
       } else individual.push({ b, back });
     }
-    // trunks: one aggregated line from the source DOWN to the TOP of the consuming line box (a short
-    // hop into the box, label in the clear gap above it — not a deep rake to the consumer centroid).
+    // Main-belt bus: a belt that feeds several lines drops to a shared horizontal lane (one per
+    // belt source) just below the Main belt box, runs across, then drops STRAIGHT into each
+    // consuming line-box top — so every line it feeds gets a vertical entry, not just the one
+    // directly beneath the belt tile. Single-line belts collapse to a clean straight drop.
+    const mbBox = layout.boxes.find((b) => b.belt);
+    const busBase = (mbBox ? mbBox.y + mbBox.h : 0) + Math.round(U / 2);
+    const busLane = new Map();
+    for (const tr of trunks.values()) if (!busLane.has(tr.from)) busLane.set(tr.from, busLane.size);
     for (const tr of trunks.values()) {
       const s = pos.get(tr.from); if (!s) continue;
       const cs = tr.tos.map((id) => pos.get(id)).filter(Boolean);
       if (!cs.length) continue;
       const lb = lineBox.get(tr.line);
-      const beltSrc = (portById.get(tr.from) || {}).role === 'belt';
-      let cx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
-      let cy;
-      if (lb) { cy = lb.y; cx = Math.min(Math.max(cx, lb.x + 24), lb.x + lb.w - 24); } else { cy = Math.min(...cs.map((p) => p.y)); }
-      // Belt tiles are placed directly above their anchor, so drop straight down from the tile center.
-      if (beltSrc) cx = s.x + s.w / 2;
-      const exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry = { x: cx, y: cy, nx: 0, ny: -1 };
+      let tx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
+      let ty;
+      if (lb) { ty = lb.y; tx = Math.min(Math.max(tx, lb.x + 24), lb.x + lb.w - 24); } else { ty = Math.min(...cs.map((p) => p.y)); }
+      const ex = s.x + s.w / 2, ey = s.y + s.h;
+      const busY = busBase + busLane.get(tr.from) * 12;
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
-      addEdge(g, (beltSrc ? straight : link)(exit, entry));
-      const m = mid(exit, entry); edgeLabel(g, m.x, m.y, beltLabel(tr.kind, tr.item, tr.rate));
+      addEdge(g, `M${ex},${ey} V${busY} H${tx} V${ty}`);
+      edgeLabel(g, tx, (busY + ty) / 2 + 4, beltLabel(tr.kind, tr.item, tr.rate));
       gEl.appendChild(g);
       trunkGroups.push({ g, from: tr.from, tos: tr.tos }); // trunks are fuel/fert/cash → fb
     }
