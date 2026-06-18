@@ -27,9 +27,10 @@ function buildIR(targets, o = {}) {
   const t0 = targets[0];
   const out = solve({ item: t0.item, rate: t0.rate || 60, rateMode: t0.rateMode || 'rate', targets, config });
   if (out.status !== 'Optimal') return { status: out.status };
-  const ir = composeTilesIR(out.graph, { solve, config, mode: o.mode || 'hybrid' });
+  const ir = composeTilesIR(out.graph, { solve, config, mode: o.mode || 'hybrid', isLiquid });
   return { status: 'Optimal', graph: out.graph, ir, BELT: beltSpeed(config.skills.logistics) };
 }
+const isLiquid = (item) => !!(db.items[item] && db.items[item].liquid);
 
 // ---- helpers ----
 const itemOf = (label) => String(label || '').split(' ⬅ ')[0]; // cauldron labels read "Item ⬅ cauldron(...)"
@@ -62,8 +63,8 @@ test('belt caps — tiles and physical belts never exceed one belt', () => {
   for (const item of ['Advanced Fertilizer', 'Steel Ingot', 'Bandage', 'Quicklime']) {
     const r = buildIR([{ item, rate: 60, rateMode: 'rate' }]);
     if (r.status !== 'Optimal') continue;
-    for (const t of r.ir.tiles) assert.ok(t.out <= r.BELT + 1e-6, `${item}: tile ${t.id} out ${t.out} > belt ${r.BELT}`);
-    for (const b of r.ir.belts) if (b.kind !== 'cash') assert.ok(b.rate <= r.BELT + 1e-6, `${item}: belt ${b.from}->${b.to} ${b.rate} > belt`);
+    for (const t of r.ir.tiles) if (!isLiquid(t.item)) assert.ok(t.out <= r.BELT + 1e-6, `${item}: tile ${t.id} out ${t.out} > belt ${r.BELT}`);
+    for (const b of r.ir.belts) if (b.kind !== 'cash' && !isLiquid(b.item)) assert.ok(b.rate <= r.BELT + 1e-6, `${item}: belt ${b.from}->${b.to} ${b.rate} > belt`);
   }
 });
 
@@ -109,8 +110,8 @@ test('Panacea Potion composes without crashing and stays belt-capped', () => {
   const r = buildIR([{ item: 'Panacea Potion', rate: 6, rateMode: 'rate' }], { maxTier: 9 });
   if (r.status !== 'Optimal') return; // infeasible config is acceptable; the assertion is "no crash"
   assert.ok(r.ir.tiles.length > 0);
-  for (const t of r.ir.tiles) assert.ok(t.out <= r.BELT + 1e-6, `Panacea tile ${t.id} over belt`);
-  for (const b of r.ir.belts) if (b.kind !== 'cash') assert.ok(b.rate <= r.BELT + 1e-6, 'Panacea belt over cap');
+  for (const t of r.ir.tiles) if (!isLiquid(t.item)) assert.ok(t.out <= r.BELT + 1e-6, `Panacea tile ${t.id} over belt`);
+  for (const b of r.ir.belts) if (b.kind !== 'cash' && !isLiquid(b.item)) assert.ok(b.rate <= r.BELT + 1e-6, 'Panacea belt over cap');
   const ids = new Set([...r.ir.tiles.map((t) => t.id), ...r.ir.ports.map((p) => p.id)]);
   for (const b of r.ir.belts) { assert.ok(ids.has(b.from)); assert.ok(ids.has(b.to)); }
 });

@@ -93,6 +93,23 @@ function unitTile(item, mode, profile, BELT) {
   };
 }
 
+// A single BULK tile covering all of `gross` in one node — for liquids (piped, not belt-limited),
+// where belt-stamping into 60/min lanes is nonsensical (a liquid runs at thousands/min).
+function bulkStamp(item, gross, profile, BELT) {
+  const u = unitTile(item, 'machine', profile, BELT);
+  if (!u) return null;
+  const count = Math.max(1, Math.ceil(gross / u.out - 1e-9));
+  const k = count;
+  const unit = {
+    ...u, count, out: gross,
+    fuelPerMin: u.fuelPerMin * k, fertPerMin: u.fertPerMin * k, heatPerMin: u.heatPerMin * k, nutrientPerMin: u.nutrientPerMin * k,
+    furnaces: u.furnaces ? Math.max(1, Math.round(u.furnaces * k)) : null,
+    recirc: u.recirc ? u.recirc.map((r) => ({ item: r.item, ratePerMin: r.ratePerMin * k })) : null,
+    utilization: 1,
+  };
+  return [{ unit, n: 1 }];
+}
+
 // Stamp list for one item at total demand `gross`: [{ unit, n }]. hybrid = whole belt-tiles for the
 // bulk + machine-tiles for the remainder (matches the exact machine count, consolidates belts).
 function stampsFor(item, gross, mode, profile, BELT) {
@@ -130,6 +147,7 @@ function composeTilesIR(buildGraph, opts) {
   const config = o.config || {};
   const BELT = beltSpeed((config.skills && config.skills.logistics) || 0) || 60;
   const profile = makeProfiler(o.solve, config);
+  const isLiquid = o.isLiquid || (() => false); // liquids are piped, not belt-limited → bulk tiles, uncapped belts
 
   const nodeById = new Map(buildGraph.nodes.map((n) => [n.id, n]));
   const isRecipe = (n) => !!(n && n.machine && n.machineCount);
@@ -142,7 +160,7 @@ function composeTilesIR(buildGraph, opts) {
   const tiles = [];
   const stampIdsOf = new Map(); // item -> [tileId...]  (producer/consumer stamp pool for belt assignment)
   for (const [item, gross] of [...grossOf].sort((a, b) => b[1] - a[1])) {
-    const stamps = stampsFor(item, gross, mode, profile, BELT);
+    const stamps = isLiquid(item) ? bulkStamp(item, gross, profile, BELT) : stampsFor(item, gross, mode, profile, BELT);
     if (!stamps) continue;                 // shouldn't happen (it's a produced item) — guard
     const ids = [];
     let k = 0;
@@ -202,9 +220,10 @@ function composeTilesIR(buildGraph, opts) {
   for (const f of flows.values()) {
     const srcIds = idsFor(f.src), dstIds = idsFor(f.dst);
     if (!srcIds || !dstIds || !srcIds.length || !dstIds.length) continue;
-    // material/fuel/fert are physical items on 60/min belts → chop to lanes. cash is coins (face
-    // value, not item throughput) → one aggregated line, never chopped by belt speed.
-    chopBelts(f.rate, srcIds, dstIds, f.item, f.kind, f.kind === 'cash' ? Infinity : BELT, belts);
+    // material/fuel/fert are physical items on 60/min belts → chop to lanes. cash (coins, face value)
+    // and liquids (piped) aren't item-belt-limited → one aggregated line, never chopped by belt speed.
+    const cap = (f.kind === 'cash' || isLiquid(f.item)) ? Infinity : BELT;
+    chopBelts(f.rate, srcIds, dstIds, f.item, f.kind, cap, belts);
   }
 
   return { tiles, ports, belts, meta: { mode, beltSpeed: BELT } };

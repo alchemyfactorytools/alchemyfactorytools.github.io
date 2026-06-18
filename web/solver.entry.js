@@ -30,7 +30,7 @@ module.exports = {
   graphToIR: (graph) => graphToIR(graph),
   // Level-2 canonical belt-sized stamped-tile IR (?pipeline=tiles2). Needs the build config to do
   // standalone per-item solves for the canonical units; injects the in-browser composer as `solve`.
-  composeTilesIR: (graph, config) => composeTilesIR(graph, { solve: (body) => solveComposerBody(body, db), config: config || {}, mode: 'hybrid' }),
+  composeTilesIR: (graph, config) => composeTilesIR(graph, { solve: (body) => solveComposerBody(body, db), config: config || {}, mode: 'hybrid', isLiquid: (item) => !!(db.items[item] && db.items[item].liquid) }),
   // Belt throughput (items/min one belt carries) at a given Logistics level — used by the belt
   // supply editor so a blank rate means "one full belt at current skills" instead of unlimited.
   beltSpeed: (logisticsLvl) => beltSpeed(logisticsLvl || 0),
