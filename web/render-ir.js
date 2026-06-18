@@ -55,8 +55,9 @@
     const badge = hasBadge(node) ? BADGE_W : 0;
     const w = snap(Math.max(minW + badge, Math.min(300 + badge, String(label).length * CHAR_W + 24 + badge)));
     const titleLines = String(label).length * CHAR_W > w - 16 - badge ? 2 : 1;
-    // tiles carry two sub-lines (count line + rate line) so a "N×/tile (M× total)" breakdown fits
-    const subLines = isTile ? 2 : 1;
+    // tiles + co-product/buy ports carry two sub-lines so a "per tile / total" breakdown fits
+    // (graphToIR roles: buys='external', trash/surplus='surplus'; composeTilesIR uses 'resource'/'trash')
+    const subLines = (isTile || ['external', 'surplus', 'trash', 'resource'].includes(node.role)) ? 2 : 1;
     const h = snap(titleLines * 16 + subLines * 15 + 15 + bandsOf(node) * BAND_H);
     return { w, h };
   }
@@ -458,7 +459,8 @@
       } else if (b.key) {
         // branch sub-box: same metadata as the line box, scoped to this subtree
         const n = nodeById.get(b.key);
-        members = new Set(ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>')).map((t) => t.id));
+        // members include ports hanging off tiles in this subtree (trash/buy) so they inherit the box K
+        members = new Set([...ir.tiles, ...ir.ports].filter((nd) => nd.id === b.key || nd.id.startsWith(b.key + '>') || (nd.parent && (nd.parent === b.key || nd.parent.startsWith(b.key + '>')))).map((nd) => nd.id));
         if (n) {
           const maxc = Math.floor((b.w - 20) / 6);
           const sub = ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>'));
@@ -602,14 +604,21 @@
         if (tile.recirc) for (const rc of tile.recirc) band('recircband', `♻ ${fmt(rc.ratePerMin)} ${rc.item}/min`);
       } else {
         const t = el('text', { x: 10, y: 19 }); t.textContent = clip(port.item || port.id, maxc); g.appendChild(t);
-        let subText = '';
+        const K = nodeK(id);
         const coinBelt = port.role === 'belt' && (port.cost > 0 || /\bcoin\b/i.test(port.item || ''));
-        if (port.role === 'demand') subText = `${fmt(port.rate)}/min target`;
-        else if (coinBelt) subText = `🪙 ${fmtCu(port.rate)}/min drawn`;
-        else if (port.role === 'belt') subText = `${fmt(port.rate)}/min drawn${port.supplyRate != null ? ` · ${fmt(port.supplyRate)}/min belt supply` : ''}`;
-        else if (port.role === 'surplus' || port.role === 'trash') subText = `${fmt(port.rate)}/min`;
-        else subText = `${fmt(port.rate)}/min${port.cost ? ` · ${fmtCu(port.cost)}/min` : ' · free'}`;
-        const sub = el('text', { x: 10, y: 36, class: 'sub' }); sub.textContent = clip(subText, maxc); g.appendChild(sub);
+        // trash/surplus/buy hanging off a stamped tile get the same per-tile (total) breakdown
+        const isBuy = port.role === 'external' || port.role === 'resource';
+        const isSink = port.role === 'surplus' || port.role === 'trash';
+        const perTileable = K > 1 && (isBuy || isSink);
+        let l1, l2 = '';
+        if (port.role === 'demand') l1 = `${fmt(port.rate)}/min target`;
+        else if (coinBelt) l1 = `🪙 ${fmtCu(port.rate)}/min drawn`;
+        else if (port.role === 'belt') l1 = `${fmt(port.rate)}/min drawn${port.supplyRate != null ? ` · ${fmt(port.supplyRate)}/min belt supply` : ''}`;
+        else if (perTileable) { l1 = `⬢ ${fmt(port.rate / K)}/min per tile`; l2 = `${fmt(port.rate)}/min total${isBuy && port.cost ? ` · ${fmtCu(port.cost)}/min` : ''}`; }
+        else if (isSink) l1 = `${fmt(port.rate)}/min`;
+        else l1 = `${fmt(port.rate)}/min${port.cost ? ` · ${fmtCu(port.cost)}/min` : ' · free'}`;
+        const s1 = el('text', { x: 10, y: 36, class: 'sub' }); s1.textContent = clip(l1, maxc); g.appendChild(s1);
+        if (l2) { const s2 = el('text', { x: 10, y: 51, class: 'sub' }); s2.textContent = clip(l2, maxc); g.appendChild(s2); }
       }
       gEl.appendChild(g);
       nodeGroups.set(id, g);
