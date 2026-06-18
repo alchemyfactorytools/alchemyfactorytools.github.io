@@ -92,7 +92,10 @@
     for (const id of ids) { const par = parentOf.get(id); if (par != null && childrenOf.has(par)) childrenOf.get(par).push(id); }
     for (const arr of childrenOf.values()) arr.sort((a, c) => (sizeFn(c).w - sizeFn(a).w) || (a < c ? -1 : 1));
 
-    const supply = ir.ports.filter((p) => p.line === 'supply').map((p) => p.id);
+    // Only genuinely top-level belts go in the Main belt band. A supply belt can also be nested
+    // inside a subtree (it has a tree parent) — those flow through the normal subtree layout and
+    // stay inside their box, so they must NOT be hoisted into the band.
+    const supply = ir.ports.filter((p) => p.line === 'supply' && parentOf.get(p.id) == null).map((p) => p.id);
     const demand = ir.ports.filter((p) => p.role === 'demand').map((p) => p.id);
     const special = new Set([...supply, ...demand]);
     const lineRoots = [...ids].filter((id) => parentOf.get(id) == null && !special.has(id)).sort();
@@ -101,11 +104,13 @@
     const boxes = [];
     const GAP = U * 2;
 
-    // supply band (top), wrapped in a Main belt box
-    let cursorX = U, supplyH = 0;
-    supply.forEach((id) => { const s = sizeFn(id); pos.set(id, { x: cursorX, y: BELTHDR, w: s.w, h: s.h }); cursorX += s.w + U; supplyH = Math.max(supplyH, s.h); });
+    // supply band (top), wrapped in a Main belt box. Tile X positions are decided AFTER the lines
+    // (below) so each supply tile can sit directly above its drop point and trunk straight down;
+    // here we only need the band height to reserve vertical space.
+    const supplySizes = supply.map((id) => sizeFn(id));
+    const supplyH = supplySizes.reduce((m, s) => Math.max(m, s.h), 0);
     let beltBox = null;
-    if (supply.length) { beltBox = { key: '__mainbelt__', belt: true, label: 'Main belt', x: 0, y: 0, w: cursorX, h: BELTHDR + supplyH + U, depth: 0 }; boxes.push(beltBox); }
+    if (supply.length) { beltBox = { key: '__mainbelt__', belt: true, label: 'Main belt', x: 0, y: 0, w: U, h: BELTHDR + supplyH + U, depth: 0 }; boxes.push(beltBox); }
     const bandBottom = supply.length ? BELTHDR + supplyH + U : 0;
 
     // line blocks
@@ -126,6 +131,23 @@
     // Main belt is the spine of the whole build — stretch it to span the line row beneath it
     // rather than hugging just its two tiles.
     if (beltBox && lineX > GAP) beltBox.w = Math.max(beltBox.w, lineX - GAP);
+
+    // Now place the supply tiles: each centered above its consumers' centroid so its trunk drops
+    // straight down. Order by anchor L→R and push right on collision so tiles never overlap.
+    if (supply.length) {
+      const items = supply.map((id, i) => {
+        const cs = ir.belts.filter((b) => b.from === id).map((b) => pos.get(b.to)).filter(Boolean);
+        const anchor = cs.length ? cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length : null;
+        return { id, s: supplySizes[i], anchor };
+      }).sort((p, q) => (p.anchor == null ? Infinity : p.anchor) - (q.anchor == null ? Infinity : q.anchor));
+      let minX = U;
+      for (const it of items) {
+        const x = Math.max(minX, it.anchor != null ? Math.round(it.anchor - it.s.w / 2) : minX);
+        pos.set(it.id, { x, y: BELTHDR, w: it.s.w, h: it.s.h });
+        minX = x + it.s.w + U;
+      }
+      if (beltBox) beltBox.w = Math.max(beltBox.w, minX);
+    }
 
     // demand sinks under their line
     const demandY = lineBottom + GAP;
@@ -286,11 +308,13 @@
       const cs = tr.tos.map((id) => pos.get(id)).filter(Boolean);
       if (!cs.length) continue;
       const lb = lineBox.get(tr.line);
+      const beltSrc = (portById.get(tr.from) || {}).role === 'belt';
       let cx = cs.reduce((a, p) => a + p.x + p.w / 2, 0) / cs.length;
       let cy;
       if (lb) { cy = lb.y; cx = Math.min(Math.max(cx, lb.x + 24), lb.x + lb.w - 24); } else { cy = Math.min(...cs.map((p) => p.y)); }
+      // Belt tiles are placed directly above their anchor, so drop straight down from the tile center.
+      if (beltSrc) cx = s.x + s.w / 2;
       const exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry = { x: cx, y: cy, nx: 0, ny: -1 };
-      const beltSrc = (portById.get(tr.from) || {}).role === 'belt';
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
       g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
       const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${tr.item} ${fmt(tr.rate)}`);
@@ -314,9 +338,12 @@
         edgeLabel(g, bx + (rightSide ? 10 : -10), (ey0 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
       } else {
         // with the grain (adjacent ranks): direct link between the facing edges. Main-belt drops
-        // run straight; everything else curves into the facing edge.
-        const { exit, entry } = attach(s, t);
+        // run straight DOWN from the tile center (the tile is placed above its anchor); everything
+        // else curves into the facing edge.
         const beltSrc = (portById.get(b.from) || {}).role === 'belt';
+        const { exit, entry } = beltSrc
+          ? { exit: { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: s.x + s.w / 2, y: t.y, nx: 0, ny: -1 } }
+          : attach(s, t);
         g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
         const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${b.item} ${fmt(b.rate)}`);
       }
