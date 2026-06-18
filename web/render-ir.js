@@ -397,9 +397,10 @@
     // A line/branch is a TILEABLE blueprint stamped K times — K = the fewest belts its output needs
     // (liquids are piped → one tile). perTile = output per stamp. Mirrors web/layout3.js blueprint().
     const tilesFor = (output, item) => { const K = isLiquid(item) ? 1 : Math.max(1, Math.min(200, Math.ceil((output || 0) / BELT - 1e-6))); return { K, perTile: K ? (output || 0) / K : output }; };
-    // machine list is the BUILD TOTAL (matches the machine boxes + edge rates); the ⬢ badge is the
-    // single place that conveys the per-tile blueprint, so the two conventions never mix in one view.
-    const cellSummary = (tlist) => tlist.map((t) => `${t.count}× ${t.machine}`).join(' + ');
+    // machine list is PER-TILE (one stamp's contents) — matches the per-tile counts on the machine
+    // boxes, and the ⬢ badge says how many tiles. A stamped total is perTile×K (≥ demand: the extra
+    // is idle headroom), so per-tile × tiles is self-consistent everywhere.
+    const cellSummary = (tlist, K) => tlist.map((t) => `${K > 1 ? Math.max(1, Math.ceil(t.count / K - 1e-6)) : t.count}× ${t.machine}`).join(' + ');
     const tileById = new Map(ir.tiles.map((t) => [t.id, t]));
     const portById = new Map(ir.ports.map((p) => [p.id, p]));
     const nodeById = new Map([...tileById, ...portById]);
@@ -449,7 +450,7 @@
         const { K, perTile } = tilesFor(output, b.line);
         const subs = [`● ${fmt(output)} ${b.line}/min`];
         if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${b.line}/min each`);
-        subs.push(cellSummary(lineTiles.get(b.line) || []));
+        subs.push(cellSummary(lineTiles.get(b.line) || [], K));
         const name = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); name.textContent = `${b.line} line`;
         subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 31 + i * 15, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         members = new Set([...nodeById.values()].filter((n) => n.line === b.line).map((n) => n.id));
@@ -464,7 +465,7 @@
           const { K, perTile } = tilesFor(n.out, n.item);
           const subs = [`● ${fmt(n.out)} ${n.item}/min`];
           if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${n.item}/min each`);
-          subs.push(cellSummary(sub));
+          subs.push(cellSummary(sub, K));
           const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
           subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 29 + i * 14, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
           if (K > 1) tiledBoxes.push({ depth: b.depth || 1, members, K });
@@ -577,7 +578,8 @@
         const subY = titleLines.length === 2 ? 50 : 37;
         // count line — per-tile breakdown when the node sits in a stamped (K>1) box, else the bare total
         const K = nodeK(id);
-        const countLine = K > 1 ? `⬢ ${Math.max(1, Math.ceil(tile.count / K - 1e-6))}×/tile (${tile.count}× total)` : `${tile.count}×`;
+        const pc = Math.max(1, Math.ceil(tile.count / K - 1e-6));
+        const countLine = K > 1 ? `⬢ ${pc}×/tile (${pc * K}× total)` : `${tile.count}×`;
         const sub = el('text', { x: 10, y: subY, class: 'sub' }); sub.textContent = clip(countLine, maxc); g.appendChild(sub);
         const rateLine = el('text', { x: 10, y: subY + 15, class: 'sub' }); rateLine.textContent = clip(`${fmt(tile.out)}/min`, maxc); g.appendChild(rateLine);
         if (tile.utilization != null && Math.round(tile.utilization * 100) < 90) {
