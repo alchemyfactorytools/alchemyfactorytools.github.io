@@ -190,6 +190,8 @@
   // ---------------- DOM drawing ----------------
   const NS = 'http://www.w3.org/2000/svg';
   const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  // Draw an edge as a fat transparent hit path (easy to grab on a busy graph) + the visible path.
+  const addEdge = (g, d) => { g.appendChild(el('path', { d, class: 'hit' })); g.appendChild(el('path', { d, 'marker-end': 'url(#arrow)' })); };
   const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
   function wrap(text, maxChars, maxLines) {
     const words = String(text).split(' '); const lines = []; let cur = '';
@@ -354,7 +356,7 @@
       if (beltSrc) cx = s.x + s.w / 2;
       const exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry = { x: cx, y: cy, nx: 0, ny: -1 };
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
-      g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
+      addEdge(g, (beltSrc ? straight : link)(exit, entry));
       const m = mid(exit, entry); edgeLabel(g, m.x, m.y, beltLabel(tr.kind, tr.item, tr.rate));
       gEl.appendChild(g);
       trunkGroups.push({ g, from: tr.from, tos: tr.tos }); // trunks are fuel/fert/cash → fb
@@ -372,7 +374,7 @@
         const ey = t.y + t.h;
         const bx = rightSide ? t.x + t.w + 28 : t.x - 28;
         const cx = rightSide ? t.x + t.w - 18 : t.x + 18;
-        g.appendChild(el('path', { d: `M${ex},${ey0} C${bx},${ey0} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
+        addEdge(g, `M${ex},${ey0} C${bx},${ey0} ${bx},${ey + 40} ${cx},${ey}`);
         edgeLabel(g, bx + (rightSide ? 10 : -10), (ey0 + ey) / 2, beltLabel(b.kind, b.item, b.rate));
       } else {
         // with the grain (adjacent ranks): direct link between the facing edges. Main-belt drops
@@ -382,7 +384,7 @@
         const { exit, entry } = beltSrc
           ? { exit: { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: s.x + s.w / 2, y: t.y, nx: 0, ny: -1 } }
           : attach(s, t);
-        g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
+        addEdge(g, (beltSrc ? straight : link)(exit, entry));
         const m = mid(exit, entry); edgeLabel(g, m.x, m.y, beltLabel(b.kind, b.item, b.rate));
       }
       gEl.appendChild(g);
@@ -494,6 +496,30 @@
         for (const e of svg.querySelectorAll('.hl')) e.classList.remove('hl');
       });
     }
+
+    // Hovering an EDGE itself: fade everything, light just this line + its from/to box(es), and
+    // raise it to the top of the draw order (SVG z = document order) so it reads clearly on a
+    // busy graph. On leave, restore its original stacking position.
+    const lightBoxes = (ids) => { for (const ce of clusterEls) if ([...ce.members].some((m) => ids.has(m))) for (const e of ce.els) e.classList.add('hl'); };
+    const wireEdge = (g, nodeIds) => {
+      let restoreBefore;
+      g.addEventListener('mouseenter', () => {
+        svg.classList.add('hovering');
+        g.classList.add('hl');
+        const ids = new Set(nodeIds);
+        for (const id of ids) nodeGroups.get(id)?.classList.add('hl');
+        lightBoxes(ids);
+        restoreBefore = g.nextSibling;
+        g.parentNode.appendChild(g); // bring to front
+      });
+      g.addEventListener('mouseleave', () => {
+        svg.classList.remove('hovering');
+        for (const e of svg.querySelectorAll('.hl')) e.classList.remove('hl');
+        if (restoreBefore !== undefined) { g.parentNode.insertBefore(g, restoreBefore); restoreBefore = undefined; }
+      });
+    };
+    for (const { g, from, to } of edgeGroups) wireEdge(g, [from, to]);
+    for (const { g, from, tos } of trunkGroups) wireEdge(g, [from, ...tos]);
   }
 
   return { layoutIR, drawIR, defaultSizeOf };
