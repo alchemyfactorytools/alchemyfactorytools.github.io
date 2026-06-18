@@ -16,6 +16,7 @@
   const CHAR_W = 7.2;
   const BAND_H = 17;
   const TOPHDR = U * 4;                           // line-box header clearance (name + output + machines)
+  const BELTHDR = U + 12;                         // Main-belt box header — just the one "Main belt" label
 
   const fmt = (n) => (n == null ? '' : Math.abs(n) >= 100 ? String(Math.round(n)) : Math.abs(n) >= 1 ? String(Math.round(n * 10) / 10) : String(Math.round(n * 1000) / 1000));
   const fmtCu = (n) => (n == null ? '' : n >= 1000 ? `${Math.round(n)}c` : `${Math.round(n * 10) / 10}c`);
@@ -102,9 +103,10 @@
 
     // supply band (top), wrapped in a Main belt box
     let cursorX = U, supplyH = 0;
-    supply.forEach((id) => { const s = sizeFn(id); pos.set(id, { x: cursorX, y: TOPHDR, w: s.w, h: s.h }); cursorX += s.w + U; supplyH = Math.max(supplyH, s.h); });
-    if (supply.length) boxes.push({ key: '__mainbelt__', belt: true, label: 'Main belt', x: 0, y: 0, w: cursorX, h: TOPHDR + supplyH + U, depth: 0 });
-    const bandBottom = supply.length ? TOPHDR + supplyH + U : 0;
+    supply.forEach((id) => { const s = sizeFn(id); pos.set(id, { x: cursorX, y: BELTHDR, w: s.w, h: s.h }); cursorX += s.w + U; supplyH = Math.max(supplyH, s.h); });
+    let beltBox = null;
+    if (supply.length) { beltBox = { key: '__mainbelt__', belt: true, label: 'Main belt', x: 0, y: 0, w: cursorX, h: BELTHDR + supplyH + U, depth: 0 }; boxes.push(beltBox); }
+    const bandBottom = supply.length ? BELTHDR + supplyH + U : 0;
 
     // line blocks
     const SIDEPAD = U * 2;                          // horizontal inset so branch boxes clear the line edge
@@ -121,6 +123,9 @@
       lineX += boxW + GAP;
       lineBottom = Math.max(lineBottom, lineTop + sub.h + TOPHDR + U);
     }
+    // Main belt is the spine of the whole build — stretch it to span the line row beneath it
+    // rather than hugging just its two tiles.
+    if (beltBox && lineX > GAP) beltBox.w = Math.max(beltBox.w, lineX - GAP);
 
     // demand sinks under their line
     const demandY = lineBottom + GAP;
@@ -192,6 +197,8 @@
     const c2x = entry.x - (dx / len) * stub, c2y = entry.y - (dy / len) * stub;
     return `M${exit.x},${exit.y} C${c1x},${c1y} ${c2x},${c2y} ${entry.x},${entry.y}`;
   }
+  // Straight run from exit to entry — used for Main-belt drops, where a curve just looks fussy.
+  const straight = (exit, entry) => `M${exit.x},${exit.y} L${entry.x},${entry.y}`;
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
   function edgeLabel(g, x, y, text) { for (const cls of ['bg', '']) { const t = el('text', { x, y: y - 3, 'text-anchor': 'middle' }); if (cls) t.setAttribute('class', cls); t.textContent = text; g.appendChild(t); } }
 
@@ -283,8 +290,9 @@
       let cy;
       if (lb) { cy = lb.y; cx = Math.min(Math.max(cx, lb.x + 24), lb.x + lb.w - 24); } else { cy = Math.min(...cs.map((p) => p.y)); }
       const exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry = { x: cx, y: cy, nx: 0, ny: -1 };
+      const beltSrc = (portById.get(tr.from) || {}).role === 'belt';
       const g = el('g', { class: edgeClass(tr.kind, false) + ' trunk' });
-      g.appendChild(el('path', { d: link(exit, entry), 'marker-end': 'url(#arrow)' }));
+      g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
       const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${tr.item} ${fmt(tr.rate)}`);
       gEl.appendChild(g);
       trunkGroups.push({ g, from: tr.from, tos: tr.tos }); // trunks are fuel/fert/cash → fb
@@ -305,9 +313,11 @@
         g.appendChild(el('path', { d: `M${ex},${ey0} C${bx},${ey0} ${bx},${ey + 40} ${cx},${ey}`, 'marker-end': 'url(#arrow)' }));
         edgeLabel(g, bx + (rightSide ? 10 : -10), (ey0 + ey) / 2, `${b.item} ${fmt(b.rate)}`);
       } else {
-        // with the grain (adjacent ranks): direct link between the facing edges
+        // with the grain (adjacent ranks): direct link between the facing edges. Main-belt drops
+        // run straight; everything else curves into the facing edge.
         const { exit, entry } = attach(s, t);
-        g.appendChild(el('path', { d: link(exit, entry), 'marker-end': 'url(#arrow)' }));
+        const beltSrc = (portById.get(b.from) || {}).role === 'belt';
+        g.appendChild(el('path', { d: (beltSrc ? straight : link)(exit, entry), 'marker-end': 'url(#arrow)' }));
         const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${b.item} ${fmt(b.rate)}`);
       }
       gEl.appendChild(g);
