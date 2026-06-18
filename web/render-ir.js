@@ -395,7 +395,9 @@
     // A line/branch is a TILEABLE blueprint stamped K times — K = the fewest belts its output needs
     // (liquids are piped → one tile). perTile = output per stamp. Mirrors web/layout3.js blueprint().
     const tilesFor = (output, item) => { const K = isLiquid(item) ? 1 : Math.max(1, Math.min(200, Math.ceil((output || 0) / BELT - 1e-6))); return { K, perTile: K ? (output || 0) / K : output }; };
-    const cellSummary = (tlist, K) => tlist.map((t) => `${K > 1 ? Math.max(1, Math.ceil(t.count / K - 1e-6)) : t.count}× ${t.machine}`).join(' + ');
+    // machine list is the BUILD TOTAL (matches the machine boxes + edge rates); the ⬢ badge is the
+    // single place that conveys the per-tile blueprint, so the two conventions never mix in one view.
+    const cellSummary = (tlist) => tlist.map((t) => `${t.count}× ${t.machine}`).join(' + ');
     const tileById = new Map(ir.tiles.map((t) => [t.id, t]));
     const portById = new Map(ir.ports.map((p) => [p.id, p]));
     const nodeById = new Map([...tileById, ...portById]);
@@ -444,7 +446,7 @@
         const { K, perTile } = tilesFor(output, b.line);
         const subs = [`● ${fmt(output)} ${b.line}/min`];
         if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${b.line}/min each`);
-        subs.push(cellSummary(lineTiles.get(b.line) || [], K));
+        subs.push(cellSummary(lineTiles.get(b.line) || []));
         const name = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); name.textContent = `${b.line} line`;
         subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 31 + i * 15, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         members = new Set([...nodeById.values()].filter((n) => n.line === b.line).map((n) => n.id));
@@ -457,7 +459,7 @@
           const { K, perTile } = tilesFor(n.out, n.item);
           const subs = [`● ${fmt(n.out)} ${n.item}/min`];
           if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${n.item}/min each`);
-          subs.push(cellSummary(sub, K));
+          subs.push(cellSummary(sub));
           const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
           subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 29 + i * 14, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         }
