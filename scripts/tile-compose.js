@@ -40,55 +40,15 @@ const cfg = () => ({
 });
 const solve = (targets) => solveComposerBody({ item: targets[0].item, rate: targets[0].rate, rateMode: targets[0].rateMode || 'rate', targets, config: cfg() }, db);
 const ok = (o) => o && o.status === 'Optimal' && o.graph;
-const loadOf = (n) => (n.utilization != null ? n.machineCount * n.utilization : (n.tileLoad != null ? n.tileLoad : n.machineCount));
 
-// saturated single-machine output of an item's terminal step (from its standalone solve)
-const perMachCache = new Map();
-function perMachine(item) {
-  if (perMachCache.has(item)) return perMachCache.get(item);
-  const o = solve([{ item, rate: 60, rateMode: 'rate' }]);
-  let pm = null, machine = null;
-  if (ok(o)) {
-    const prods = o.graph.nodes.filter((n) => n.label === item && n.machine && n.machineCount);
-    if (prods.length) {
-      machine = prods[0].machine;
-      const gross = prods.reduce((s, n) => s + (n.ratePerMin || 0), 0);
-      const load = prods.reduce((s, n) => s + loadOf(n), 0);
-      pm = load > 1e-9 ? gross / load : null;
-    }
-  }
-  const res = pm ? { machine, perMachine: pm } : null;
-  perMachCache.set(item, res);
-  return res;
-}
-// the canonical unit tile for an item at a given size mode
-function unitTile(item, mode) {
-  const pm = perMachine(item);
-  if (!pm) return null;
-  const count = mode === 'belt' ? Math.max(1, Math.ceil(BELT / pm.perMachine - 1e-9)) : 1;
-  const out = mode === 'belt' ? Math.min(count * pm.perMachine, BELT) : pm.perMachine;
-  return { item, machine: pm.machine, count, out };
-}
+// Canonical-unit + stamp logic now lives in src/tile-compose-ir.js (one home, unit-tested). This
+// prototype just drives it for human-readable property output. makeProfiler wants a (body)->result
+// solver; stampsFor/unitTile take (…, profile, BELT).
+const { makeProfiler, unitTile: unitTileFn, stampsFor: stampsForFn } = require(path.join(ROOT, 'src/tile-compose-ir'));
+const profile = makeProfiler((body) => solveComposerBody(body, db), cfg());
+const unitTile = (item, mode) => unitTileFn(item, mode, profile, BELT);
+const stampsFor = (item, gross, mode) => stampsForFn(item, gross, mode, profile, BELT);
 const tileSig = (t) => (t ? `${t.count}× ${t.machine} → ${t.item} @ ${t.out.toFixed(1)}/min` : '∅(bought)');
-
-// stamps for one item at total demand `gross`: a list of {unit, n} (belt and/or machine units)
-function stampsFor(item, gross, mode) {
-  if (!perMachine(item)) return null; // raw / leaf -> bought
-  const belt = unitTile(item, 'belt'), mach = unitTile(item, 'machine');
-  if (mode === 'machine') return [{ unit: mach, n: Math.max(1, Math.ceil(gross / mach.out - 1e-9)) }];
-  if (mode === 'belt') return [{ unit: belt, n: Math.max(1, Math.ceil(gross / belt.out - 1e-9)) }];
-  // hybrid: whole belts for the bulk, machine tiles for the remainder
-  const nBelt = Math.floor(gross / belt.out + 1e-9);
-  const rem = gross - nBelt * belt.out;
-  const out = [];
-  if (nBelt > 0) out.push({ unit: belt, n: nBelt });
-  if (rem > 1e-6) out.push({ unit: mach, n: Math.ceil(rem / mach.out - 1e-9) });
-  if (!out.length) out.push({ unit: mach, n: 1 });
-  // merge identical units (when one machine already fills a belt, belt unit == machine unit)
-  const merged = new Map();
-  for (const st of out) { const k = st.unit.machine + '\t' + st.unit.count; if (merged.has(k)) merged.get(k).n += st.n; else merged.set(k, { unit: st.unit, n: st.n }); }
-  return [...merged.values()];
-}
 
 function composeBuild(targets, mode) {
   const o = solve(targets);
