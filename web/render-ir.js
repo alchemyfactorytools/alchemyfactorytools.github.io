@@ -531,7 +531,11 @@
     }
     for (const { b, back } of individual) {
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
-      const g = el('g', { class: edgeClass(b.kind, back) });
+      // fuel/fert that's PRODUCED and fed back to sustain the same or sister tiles is a feeder loop —
+      // de-emphasised (dimmed) and routed off the SIDE like a recirculation rail, so it reads as
+      // support plumbing rather than a main material flow.
+      const feeder = b.kind === 'fuel' || b.kind === 'fert';
+      const g = el('g', { class: edgeClass(b.kind, back) + (feeder ? ' feeder' : '') });
       if (back) {
         // Against the grain (ancestor below -> descendant above, across many ranks): fully bespoke
         // routing. Leave the SOURCE'S SIDE (the rail is sideways), detour up a side rail, and enter
@@ -549,9 +553,17 @@
         // run straight DOWN from the tile center (the tile is placed above its anchor); everything
         // else curves into the facing edge.
         const beltSrc = (portById.get(b.from) || {}).role === 'belt';
-        const { exit, entry } = beltSrc
-          ? { exit: { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }, entry: { x: s.x + s.w / 2, y: t.y, nx: 0, ny: -1 } }
-          : attach(s, t);
+        let exit, entry;
+        if (feeder && !beltSrc) {
+          // side-to-side feeder rail: leave the source's facing side, arrive on the target's facing side
+          const tgtRight = (t.x + t.w / 2) >= (s.x + s.w / 2);
+          exit = tgtRight ? { x: s.x + s.w, y: s.y + s.h / 2, nx: 1, ny: 0 } : { x: s.x, y: s.y + s.h / 2, nx: -1, ny: 0 };
+          entry = tgtRight ? { x: t.x, y: t.y + t.h / 2, nx: -1, ny: 0 } : { x: t.x + t.w, y: t.y + t.h / 2, nx: 1, ny: 0 };
+        } else if (beltSrc) {
+          exit = { x: s.x + s.w / 2, y: s.y + s.h, nx: 0, ny: 1 }; entry = { x: s.x + s.w / 2, y: t.y, nx: 0, ny: -1 };
+        } else {
+          ({ exit, entry } = attach(s, t));
+        }
         addEdge(g, (beltSrc ? straight : link)(exit, entry));
         const m = mid(exit, entry); edgeLabel(g, m.x, m.y, beltLabel(b.kind, b.item, b.rate));
       }

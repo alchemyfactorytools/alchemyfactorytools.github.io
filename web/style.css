@@ -239,6 +239,9 @@ rect.cluster.belt { fill-opacity: 0.1; stroke-opacity: 0.7; stroke-dasharray: no
 /* return/feedback lines (fuel/fert/trash routed against the flow) are de-emphasised */
 .edge.back path { opacity: 0.66; }
 .edge.back text { opacity: 0.66; }
+/* produced fuel/fert fed back to sustain the same/sister tiles — support plumbing, dimmed */
+.edge.feeder path { opacity: 0.55; }
+.edge.feeder text { opacity: 0.7; }
 .edge text { fill: var(--muted); font-size: 10px; }
 .edge text.bg { stroke: var(--panel); stroke-width: 3; paint-order: stroke; }
 
