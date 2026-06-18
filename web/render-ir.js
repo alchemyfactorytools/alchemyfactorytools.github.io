@@ -333,12 +333,16 @@
       if (members) clusterEls.push({ members, els, line: b.depth === 0 && b.line ? b.line : null });
     }
 
-    // ---- belts: trunk the util/cash flows; material + feedback drawn individually ----
+    // ---- belts: only MAIN-BELT util/cash (supply-belt source) is trunked into the line-box top —
+    // those drop straight down and read cleanly. Cross-tile flows produced by a tile (e.g. self-fert
+    // from the fertilizer line into nurseries elsewhere) are drawn INDIVIDUALLY to the consuming tile,
+    // so the line points at what actually consumes it instead of raking to a far box's top edge.
     const trunks = new Map(); // `${from}|${line}|${kind}` -> {from, kind, item, rate, tos:[]}
     const individual = [];
     for (const b of ir.belts) {
       const back = layout.backEdges.has(b.from + '\t' + b.to);
-      if ((b.kind === 'fuel' || b.kind === 'fert' || b.kind === 'cash') && !back) {
+      const beltSrc = (portById.get(b.from) || {}).role === 'belt';
+      if ((b.kind === 'fuel' || b.kind === 'fert' || b.kind === 'cash') && !back && beltSrc) {
         const line = (nodeById.get(b.to) || {}).line || '·';
         const k = `${b.from}|${line}|${b.kind}`;
         if (!trunks.has(k)) trunks.set(k, { from: b.from, kind: b.kind, item: b.item, rate: 0, tos: [], line });
