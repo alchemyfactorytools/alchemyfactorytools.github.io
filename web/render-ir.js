@@ -191,7 +191,11 @@
   const NS = 'http://www.w3.org/2000/svg';
   const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
   // Draw an edge as a fat transparent hit path (easy to grab on a busy graph) + the visible path.
-  const addEdge = (g, d) => { g.appendChild(el('path', { d, class: 'hit' })); g.appendChild(el('path', { d, 'marker-end': 'url(#arrow)' })); };
+  // Transparency is set inline so .edge.recycle/.back stroke rules can't repaint the hit band.
+  const addEdge = (g, d) => {
+    g.appendChild(el('path', { d, class: 'hit', stroke: 'transparent', fill: 'none', 'stroke-width': 14, 'pointer-events': 'stroke' }));
+    g.appendChild(el('path', { d, 'marker-end': 'url(#arrow)' }));
+  };
   const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
   function wrap(text, maxChars, maxLines) {
     const words = String(text).split(' '); const lines = []; let cur = '';
@@ -498,24 +502,30 @@
     }
 
     // Hovering an EDGE itself: fade everything, light just this line + its from/to box(es), and
-    // raise it to the top of the draw order (SVG z = document order) so it reads clearly on a
-    // busy graph. On leave, restore its original stacking position.
+    // raise it above the tiles so it reads clearly on a busy graph. Rather than reparent the real
+    // edge (which makes its own mouseleave unreliable), we draw a highlighted CLONE into a top
+    // overlay layer (pointer-events: none) and clear it on leave — the original keeps its handlers.
+    const overlay = el('g', { 'pointer-events': 'none' });
+    gEl.appendChild(overlay);
     const lightBoxes = (ids) => { for (const ce of clusterEls) if ([...ce.members].some((m) => ids.has(m))) for (const e of ce.els) e.classList.add('hl'); };
+    const clearOverlay = () => { while (overlay.firstChild) overlay.removeChild(overlay.firstChild); };
     const wireEdge = (g, nodeIds) => {
-      let restoreBefore;
       g.addEventListener('mouseenter', () => {
         svg.classList.add('hovering');
         g.classList.add('hl');
         const ids = new Set(nodeIds);
         for (const id of ids) nodeGroups.get(id)?.classList.add('hl');
         lightBoxes(ids);
-        restoreBefore = g.nextSibling;
-        g.parentNode.appendChild(g); // bring to front
+        // raised copy on top (no hit path, no pointer events) so the line sits above the tiles
+        const c = g.cloneNode(true);
+        c.querySelectorAll('.hit').forEach((h) => h.remove());
+        c.classList.add('hl');
+        overlay.appendChild(c);
       });
       g.addEventListener('mouseleave', () => {
         svg.classList.remove('hovering');
         for (const e of svg.querySelectorAll('.hl')) e.classList.remove('hl');
-        if (restoreBefore !== undefined) { g.parentNode.insertBefore(g, restoreBefore); restoreBefore = undefined; }
+        clearOverlay();
       });
     };
     for (const { g, from, to } of edgeGroups) wireEdge(g, [from, to]);

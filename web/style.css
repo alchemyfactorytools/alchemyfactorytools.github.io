@@ -226,8 +226,6 @@ rect.cluster.belt { fill-opacity: 0.1; stroke-opacity: 0.7; stroke-dasharray: no
 .node .badge.FRAGILE, .node .badge.TIE { fill: var(--warn); }
 .node .badge.ASSUMPTION { fill: var(--accent2); }
 .edge path { fill: none; stroke: #6a9fd4; stroke-width: 1.4; opacity: 0.85; }
-/* fat invisible hit target so thin edges are easy to hover on a busy graph */
-.edge path.hit { stroke: transparent; stroke-width: 14; opacity: 1; pointer-events: stroke; }
 .edge.heat path { stroke: #b5654a; }       /* fuel → red */
 .edge.heat text { fill: #c98a76; }
 .edge.nutrient path { stroke: #5aa37a; }   /* fertilizer → green */
