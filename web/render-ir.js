@@ -210,6 +210,103 @@
     return { pos, boxes, backEdges, beltInstances, width: width + M, height: height + M };
   }
 
+  // ---------------- Level-2 layered DAG layout ----------------
+  // composeTilesIR emits a DAG of per-item STAMPED tiles (tile.group = item) connected by belts,
+  // not a tree — so the recursive layoutIR doesn't apply. This is a rough Sugiyama-lite layered
+  // layout: group an item's stamps, layer groups by production depth (raws/buys on top → target at
+  // the bottom), and box each group. Returns the SAME shape so drawIR renders it unchanged. Layout
+  // polish is a later increment; correctness + readable layering is the bar here.
+  function layoutTilesDAG(ir, opts) {
+    const o = opts || {};
+    const sizeOpt = o.sizeOf;
+    const nodeById = new Map();
+    for (const t of ir.tiles) nodeById.set(t.id, t);
+    for (const p of ir.ports) nodeById.set(p.id, p);
+    const sizeFn = (id) => { const n = nodeById.get(id); return (sizeOpt && sizeOpt(n)) || defaultSizeOf(n); };
+
+    // group key: tiles cluster by item; each port is its own group
+    const groupKey = (id) => { const n = nodeById.get(id); return n && n.group ? 'item:' + n.group : id; };
+    const groups = new Map(); // key -> { key, item, members:[id], isItem }
+    const addMember = (id) => { const k = groupKey(id); if (!groups.has(k)) { const n = nodeById.get(id); groups.set(k, { key: k, item: n && n.group, isItem: !!(n && n.group), role: n && n.role, members: [] }); } groups.get(k).members.push(id); };
+    for (const t of ir.tiles) addMember(t.id);
+    for (const p of ir.ports) addMember(p.id);
+
+    // group DAG from MATERIAL belts (the production spine); fuel/fert/cash excluded from layering
+    const gOut = new Map([...groups.keys()].map((k) => [k, new Set()]));
+    const gIn = new Map([...groups.keys()].map((k) => [k, new Set()]));
+    for (const b of ir.belts) {
+      if (b.kind !== 'material') continue;
+      const a = groupKey(b.from), c = groupKey(b.to);
+      if (a === c || !groups.has(a) || !groups.has(c)) continue;
+      gOut.get(a).add(c); gIn.get(c).add(a);
+    }
+    // longest-path layer (raws/sources at 0). Demand groups forced to the bottom.
+    const layer = new Map();
+    const calc = (k, seen) => {
+      if (layer.has(k)) return layer.get(k);
+      if (seen.has(k)) return 0;                     // cycle guard (shouldn't happen for material)
+      seen.add(k);
+      let L = 0;
+      for (const p of gIn.get(k)) L = Math.max(L, calc(p, seen) + 1);
+      seen.delete(k); layer.set(k, L); return L;
+    };
+    for (const k of groups.keys()) calc(k, new Set());
+    let maxL = 0; for (const L of layer.values()) maxL = Math.max(maxL, L);
+    for (const [k, g] of groups) if (g.role === 'demand') layer.set(k, maxL + 1);
+    maxL = 0; for (const L of layer.values()) maxL = Math.max(maxL, L);
+
+    // measure each group: stamps in a row under a header; box = bbox + padding
+    const HDR = U * 4, PADX = U, GAPX = U * 1.5, ROWGAP = U * 4, COLGAP = U * 3;
+    const measure = (g) => {
+      let w = 0, h = 0;
+      for (const id of g.members) { const s = sizeFn(id); w += s.w + GAPX; h = Math.max(h, s.h); }
+      w = Math.max(0, w - GAPX);
+      g.w = w + 2 * PADX; g.h = h + HDR + PADX; g.innerH = h;
+      return g;
+    };
+    for (const g of groups.values()) measure(g);
+
+    // bucket groups by layer, order each layer by item name for stability
+    const byLayer = [];
+    for (let L = 0; L <= maxL; L++) byLayer[L] = [];
+    for (const [k, g] of groups) byLayer[layer.get(k)].push(g);
+    for (const row of byLayer) row.sort((a, c) => (a.item || a.key) < (c.item || c.key) ? -1 : 1);
+
+    const pos = new Map();
+    const boxes = [];
+    let y = 0;
+    for (let L = 0; L <= maxL; L++) {
+      const row = byLayer[L]; if (!row.length) continue;
+      const rowH = Math.max(...row.map((g) => g.h));
+      let x = 0;
+      for (const g of row) {
+        // place members left→right under the header
+        let mx = x + PADX;
+        for (const id of g.members) { const s = sizeFn(id); pos.set(id, { x: mx, y: y + HDR, w: s.w, h: s.h }); mx += s.w + GAPX; }
+        if (g.isItem) boxes.push({ key: g.item, line: g.item, x, y, w: g.w, h: rowH, depth: 0 });
+        x += g.w + COLGAP;
+      }
+      y += rowH + ROWGAP;
+    }
+
+    // back edges: belts that run UP the layering (fuel/fert/recirc self-loops) or against material flow
+    const backEdges = new Set();
+    for (const b of ir.belts) {
+      const a = groupKey(b.from), c = groupKey(b.to);
+      if (!groups.has(a) || !groups.has(c)) continue;
+      if ((layer.get(a) || 0) >= (layer.get(c) || 0) && a !== c) backEdges.add(b.from + '\t' + b.to);
+    }
+
+    // outer margin
+    const M = U * 2;
+    for (const p of pos.values()) { p.x += M; p.y += M; }
+    for (const b of boxes) { b.x += M; b.y += M; }
+    let width = 0, height = 0;
+    for (const p of pos.values()) { width = Math.max(width, p.x + p.w); height = Math.max(height, p.y + p.h); }
+    for (const b of boxes) { width = Math.max(width, b.x + b.w); height = Math.max(height, b.y + b.h); }
+    return { pos, boxes, backEdges, beltInstances: [], width: width + M, height: height + M };
+  }
+
   // ---------------- DOM drawing ----------------
   const NS = 'http://www.w3.org/2000/svg';
   const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
@@ -577,5 +674,5 @@
     for (const { g, from, tos } of trunkGroups) wireEdge(g, [from, ...tos]);
   }
 
-  return { layoutIR, drawIR, defaultSizeOf };
+  return { layoutIR, layoutTilesDAG, drawIR, defaultSizeOf };
 }));

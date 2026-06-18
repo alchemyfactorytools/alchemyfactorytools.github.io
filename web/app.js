@@ -508,6 +508,7 @@ async function solve() {
   if (out.status !== 'Optimal') { setStatus('Solve returned: ' + out.status, 'error'); return; }
 
   renderSummary(out, body);
+  lastConfig = body.config;
   renderGraph(out.graph);
   $('explain').textContent = out.explainText || '';
   let status;
@@ -599,10 +600,14 @@ const COLLAPSE_ENABLED = false; // line collapse/drill-down temporarily disabled
 let utilEdgeMode = 'trunk';
 const UTIL_MODE_LABEL = { all: '🔥 Fuel/fert: all', trunk: '🔥 Fuel/fert: trunk', off: '🔥 Fuel/fert: off' };
 let lastGraph = null;     // cached so a re-render can reuse the last solve
+let lastConfig = null;    // config of the last solve (Level-2 needs it for standalone unit solves)
 const CLUSTER_COLORS = ['#7a9cc6', '#c69c7a', '#7ac68f', '#c67a9c', '#9c7ac6', '#c6c07a'];
 const NODE_W = 260, NODE_H = 84;
-// The solver-owned tile-DAG IR is the default renderer; ?pipeline=legacy falls back to layout3.
-const TILES_PIPELINE = new URLSearchParams(location.search).get('pipeline') !== 'legacy';
+// The solver-owned tile-DAG IR is the default renderer; ?pipeline=legacy falls back to layout3,
+// ?pipeline=tiles2 uses the Level-2 canonical belt-sized stamped-tile producer + layered DAG layout.
+const PIPELINE = new URLSearchParams(location.search).get('pipeline') || 'tiles';
+const TILES_PIPELINE = PIPELINE !== 'legacy';
+const TILES2 = PIPELINE === 'tiles2';
 const TITLE_CHARS = 30;
 // greedy word-wrap into ≤maxLines lines of ≤maxChars; overflow clipped with an ellipsis
 function wrapLabel(s, maxChars, maxLines) {
@@ -825,8 +830,13 @@ function renderGraph(rawGraph) {
   // Experimental tile-DAG pipeline (?pipeline=tiles): solver-owned IR drawn by the geometry-only
   // renderer. Bypasses the layout3 clustering/blueprint path entirely. Pan/zoom/fit reuse #viewport.
   if (TILES_PIPELINE && window.AlchRenderIR && AlchSolver.graphToIR) {
-    const ir = AlchSolver.graphToIR(rawGraph);
-    AlchRenderIR.drawIR(ir, AlchRenderIR.layoutIR(ir), root);
+    if (TILES2 && AlchSolver.composeTilesIR) {
+      const ir = AlchSolver.composeTilesIR(rawGraph, lastConfig);
+      AlchRenderIR.drawIR(ir, AlchRenderIR.layoutTilesDAG(ir), root);
+    } else {
+      const ir = AlchSolver.graphToIR(rawGraph);
+      AlchRenderIR.drawIR(ir, AlchRenderIR.layoutIR(ir), root);
+    }
     fitView();
     return;
   }

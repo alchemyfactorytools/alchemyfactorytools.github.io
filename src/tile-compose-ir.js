@@ -148,7 +148,7 @@ function composeTilesIR(buildGraph, opts) {
     let k = 0;
     for (const st of stamps) for (let i = 0; i < st.n; i++) {
       const id = `${item}#${k++}`;
-      tiles.push({ id, group: item, ...st.unit, item, out: st.unit.out });
+      tiles.push({ id, group: item, line: item, ...st.unit, item, out: st.unit.out });
       ids.push(id);
     }
     stampIdsOf.set(item, ids);
