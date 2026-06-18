@@ -830,7 +830,7 @@ function renderGraph(rawGraph) {
   // Experimental tile-DAG pipeline (?pipeline=tiles): solver-owned IR drawn by the geometry-only
   // renderer. Bypasses the layout3 clustering/blueprint path entirely. Pan/zoom/fit reuse #viewport.
   if (TILES_PIPELINE && window.AlchRenderIR && AlchSolver.graphToIR) {
-    const drawOpts = { beltSpeed: AlchSolver.beltSpeed((lastConfig && lastConfig.skills && lastConfig.skills.logistics) || 0), isLiquid: AlchSolver.isLiquid };
+    const drawOpts = { beltSpeed: AlchSolver.beltSpeed((lastConfig && lastConfig.skills && lastConfig.skills.logistics) || 0), isLiquid: AlchSolver.isLiquid, fullBelt: $('fullBeltTiles') ? $('fullBeltTiles').checked : true };
     if (TILES2 && AlchSolver.composeTilesIR) {
       const ir = AlchSolver.composeTilesIR(rawGraph, lastConfig);
       AlchRenderIR.drawIR(ir, AlchRenderIR.layoutTilesDAG(ir), root, drawOpts);
@@ -1215,6 +1215,8 @@ function fitView() {
   $('zoomIn').onclick = () => { viewState.k *= 1.15; applyView(); };
   $('zoomOut').onclick = () => { viewState.k /= 1.15; applyView(); };
   $('zoomFit').onclick = fitView;
+  // full-belt tile toggle: a render-only setting — re-draw the cached solve, no re-solve
+  $('fullBeltTiles')?.addEventListener('change', () => { savePrefs(); if (lastGraph) renderGraph(lastGraph); });
   $('mermaidBtn').onclick = async () => {
     const body = requestBody();
     if (!body.item) { setStatus('Pick an item first.', 'error'); return; }

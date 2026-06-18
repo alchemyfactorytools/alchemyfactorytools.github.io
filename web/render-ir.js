@@ -395,13 +395,33 @@
     const o = opts || {};
     const BELT = o.beltSpeed || 60;
     const isLiquid = o.isLiquid || (() => false);
-    // A line/branch is a TILEABLE blueprint stamped K times — K = the fewest belts its output needs
-    // (liquids are piped → one tile). perTile = output per stamp. Mirrors web/layout3.js blueprint().
-    const tilesFor = (output, item) => { const K = isLiquid(item) ? 1 : Math.max(1, Math.min(200, Math.ceil((output || 0) / BELT - 1e-6))); return { K, perTile: K ? (output || 0) / K : output }; };
-    // machine list is PER-TILE (one stamp's contents) — matches the per-tile counts on the machine
-    // boxes, and the ⬢ badge says how many tiles. A stamped total is perTile×K (≥ demand: the extra
-    // is idle headroom), so per-tile × tiles is self-consistent everywhere.
-    const cellSummary = (tlist, K) => tlist.map((t) => `${K > 1 ? Math.max(1, Math.ceil(t.count / K - 1e-6)) : t.count}× ${t.machine}`).join(' + ');
+    const fullBelt = o.fullBelt !== false; // tiles sized to a full belt vs split exactly to demand (toggle; default on)
+    // A line/branch is a TILEABLE blueprint stamped K times. Two modes:
+    //   full belt (default): size each tile so its TERMINAL machine fills one belt (~60/min) — a real
+    //     stampable unit — then stamp K=⌈demand/60⌉. Slight over-build (extra idles via backpressure).
+    //   demand-split: K=⌈demand/belt⌉ tiles each carrying demand/K (e.g. 44.7/min), machine counts split
+    //     to exact demand. Both keep the ⬢ badge; the toggle only changes the per-tile sizing.
+    // `scale` = per-tile machine fraction. Mirrors web/layout3.js blueprint().
+    const loadOf = (t) => t.count * (t.utilization != null ? t.utilization : 1);
+    const boxBlueprint = (boxTiles, termIds, output, item) => {
+      if (isLiquid(item) || !(output > 0)) return { K: 1, perTileOut: output, scale: 1 };
+      const netBelts = Math.max(1, Math.min(200, Math.ceil(output / BELT - 1e-6)));
+      const evenSplit = { K: netBelts, perTileOut: output / netBelts, scale: netBelts > 1 ? 1 / netBelts : 1 };
+      if (!fullBelt) return evenSplit;
+      const term = boxTiles.filter((t) => termIds.has(t.id));
+      const termLoad = term.reduce((a, t) => a + loadOf(t), 0);
+      const termRate = term.reduce((a, t) => a + (t.out || 0), 0);
+      const s = termLoad > 1e-9 ? termRate / termLoad : 0;          // saturated output per terminal machine
+      if (!(s > 1e-9)) return evenSplit;
+      const termPerBelt = Math.max(1, Math.floor(BELT / s + 1e-6)); // terminal machines that fill ≤ one belt
+      const perTileOut = termPerBelt * s;
+      const K = Math.max(1, Math.min(200, Math.ceil(output / perTileOut - 1e-6)));
+      const scale = K > 1 ? termPerBelt / termLoad : 1;
+      return { K, perTileOut, scale };
+    };
+    // machine list is PER-TILE (one stamp's blueprint) — scaled by the box's `scale` so the terminal
+    // fills a belt; the ⬢ badge says how many tiles. Self-consistent: per-tile × K is the stamped total.
+    const cellSummary = (tlist, scale) => tlist.map((t) => `${scale < 1 ? Math.max(1, Math.ceil(t.count * scale - 1e-6)) : t.count}× ${t.machine}`).join(' + ');
     const tileById = new Map(ir.tiles.map((t) => [t.id, t]));
     const portById = new Map(ir.ports.map((p) => [p.id, p]));
     const nodeById = new Map([...tileById, ...portById]);
@@ -448,14 +468,16 @@
       } else if (b.depth === 0 && b.line) {
         const maxc = Math.floor((b.w - 20) / 6);
         const output = lineOutput(b.line);
-        const { K, perTile } = tilesFor(output, b.line);
+        const lt = lineTiles.get(b.line) || [];
+        const termIds = new Set(lt.filter((t) => !t.parent).map((t) => t.id)); // line root(s) = output machine(s)
+        const { K, perTileOut, scale } = boxBlueprint(lt, termIds, output, b.line);
         const subs = [`● ${fmt(output)} ${b.line}/min`];
-        if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${b.line}/min each`);
-        subs.push(cellSummary(lineTiles.get(b.line) || [], K));
+        if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTileOut)} ${b.line}/min each`);
+        subs.push(cellSummary(lt, scale));
         const name = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); name.textContent = `${b.line} line`;
         subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 31 + i * 15, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
         members = new Set([...nodeById.values()].filter((n) => n.line === b.line).map((n) => n.id));
-        if (K > 1) tiledBoxes.push({ depth: 0, members, K });
+        if (K > 1) tiledBoxes.push({ depth: 0, members, K, scale });
       } else if (b.key) {
         // branch sub-box: same metadata as the line box, scoped to this subtree
         const n = nodeById.get(b.key);
@@ -464,13 +486,13 @@
         if (n) {
           const maxc = Math.floor((b.w - 20) / 6);
           const sub = ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>'));
-          const { K, perTile } = tilesFor(n.out, n.item);
+          const { K, perTileOut, scale } = boxBlueprint(sub, new Set([b.key]), n.out, n.item); // terminal = the branch output tile
           const subs = [`● ${fmt(n.out)} ${n.item}/min`];
-          if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTile)} ${n.item}/min each`);
-          subs.push(cellSummary(sub, K));
+          if (K > 1) subs.push(`⬢ ${K}× tiles · ${fmt(perTileOut)} ${n.item}/min each`);
+          subs.push(cellSummary(sub, scale));
           const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
           subs.forEach((txt, i) => { const t = add(el('text', { x: b.x + 10, y: b.y + 29 + i * 14, class: 'clustersub', fill: col })); t.textContent = clip(txt, maxc); });
-          if (K > 1) tiledBoxes.push({ depth: b.depth || 1, members, K });
+          if (K > 1) tiledBoxes.push({ depth: b.depth || 1, members, K, scale });
         }
       }
       if (members) clusterEls.push({ members, els, line: b.depth === 0 && b.line ? b.line : null });
@@ -574,7 +596,8 @@
     }
 
     // a node's per-tile divisor = K of the DEEPEST tiled box containing it (branch beats line)
-    const nodeK = (id) => { let K = 1, d = -1; for (const tb of tiledBoxes) if (tb.members.has(id) && tb.depth >= d) { d = tb.depth; K = tb.K; } return K; };
+    // a node inherits the blueprint of the DEEPEST tiled box containing it (branch beats line)
+    const nodeBP = (id) => { let bp = { K: 1, scale: 1 }, d = -1; for (const tb of tiledBoxes) if (tb.members.has(id) && tb.depth >= d) { d = tb.depth; bp = tb; } return bp; };
 
     // ---- tiles + ports ----
     for (const [id, p] of pos) {
@@ -591,8 +614,8 @@
         titleLines.forEach((ln, i) => { const t = el('text', { x: 10, y: 19 + i * 15 }); t.textContent = ln; g.appendChild(t); });
         const subY = titleLines.length === 2 ? 50 : 37;
         // count line — per-tile breakdown when the node sits in a stamped (K>1) box, else the bare total
-        const K = nodeK(id);
-        const pc = Math.max(1, Math.ceil(tile.count / K - 1e-6));
+        const { K, scale } = nodeBP(id);
+        const pc = Math.max(1, Math.ceil(tile.count * scale - 1e-6));
         const countLine = K > 1 ? `⬢ ${pc}×/tile (${pc * K}× total)` : `${tile.count}×`;
         const sub = el('text', { x: 10, y: subY, class: 'sub' }); sub.textContent = clip(countLine, maxc); g.appendChild(sub);
         const rateLine = el('text', { x: 10, y: subY + 15, class: 'sub' }); rateLine.textContent = clip(`${fmt(tile.out)}/min`, maxc); g.appendChild(rateLine);
@@ -616,7 +639,7 @@
         if (tile.recirc) for (const rc of tile.recirc) band('recircband', `♻ ${fmt(rc.ratePerMin)} ${rc.item}/min`);
       } else {
         const t = el('text', { x: 10, y: 19 }); t.textContent = clip(port.item || port.id, maxc); g.appendChild(t);
-        const K = nodeK(id);
+        const { K } = nodeBP(id);
         const coinBelt = port.role === 'belt' && (port.cost > 0 || /\bcoin\b/i.test(port.item || ''));
         // trash/surplus/buy hanging off a stamped tile get the same per-tile (total) breakdown
         const isBuy = port.role === 'external' || port.role === 'resource';
