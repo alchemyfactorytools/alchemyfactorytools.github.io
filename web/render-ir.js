@@ -201,6 +201,15 @@
     const nodeById = new Map([...tileById, ...portById]);
     const pos = layout.pos;
 
+    // hover-spotlight bookkeeping (mirrors the layout3 path in app.js): node id -> its <g>,
+    // edges as {g, from, to(s), fb}, and box wrappers as {members, els} so a lit node un-fades
+    // the box(es) holding it. fb = followed only ONE hop on the lineage walk (fuel/fert/cash or
+    // a feedback/back edge), so a self-feeding loop doesn't light up everything.
+    const nodeGroups = new Map();
+    const edgeGroups = [];   // { g, from, to, fb }
+    const trunkGroups = [];  // { g, from, tos:[id], fb:true }
+    const clusterEls = [];   // { members:Set(id), els:[el] }
+
     // per-line header content (output rate + machine summary), all from the IR (faithful)
     const lineTiles = new Map();
     for (const t of ir.tiles) { if (!lineTiles.has(t.line)) lineTiles.set(t.line, []); lineTiles.get(t.line).push(t); }
@@ -222,25 +231,33 @@
       // inline, so we must too (otherwise labels default to black). Gold for the Main belt, slate
       // for production lines / branch boxes.
       const col = b.belt ? '#c9a14a' : '#7a9cc6';
-      gEl.appendChild(el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, class: 'cluster' + (b.belt ? ' belt' : ''), fill: col, stroke: col }));
-      if (b.belt) { const lb = el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col }); lb.textContent = b.label; gEl.appendChild(lb); continue; }
-      if (b.depth === 0 && b.line) {
+      const els = []; // collected for hover so un-fading the box lights its label too
+      const add = (e) => { els.push(e); gEl.appendChild(e); return e; };
+      add(el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, class: 'cluster' + (b.belt ? ' belt' : ''), fill: col, stroke: col }));
+      let members;
+      if (b.belt) {
+        const lb = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); lb.textContent = b.label;
+        members = new Set(ir.ports.filter((p) => p.line === 'supply').map((p) => p.id));
+      } else if (b.depth === 0 && b.line) {
         const maxc = Math.floor((b.w - 20) / 6);
-        const name = el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col }); name.textContent = `${b.line} line`; gEl.appendChild(name);
-        const out = el('text', { x: b.x + 10, y: b.y + 31, class: 'clustersub', fill: col }); out.textContent = `● ${fmt(lineOutput(b.line))} ${b.line}/min`; gEl.appendChild(out);
+        const name = add(el('text', { x: b.x + 10, y: b.y + 16, class: 'clusterlabel', fill: col })); name.textContent = `${b.line} line`;
+        const out = add(el('text', { x: b.x + 10, y: b.y + 31, class: 'clustersub', fill: col })); out.textContent = `● ${fmt(lineOutput(b.line))} ${b.line}/min`;
         const sum = (lineTiles.get(b.line) || []).map((t) => `${t.count}× ${t.machine}`).join(' + ');
-        const ms = el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub', fill: col }); ms.textContent = clip(sum, maxc); gEl.appendChild(ms);
+        const ms = add(el('text', { x: b.x + 10, y: b.y + 46, class: 'clustersub', fill: col })); ms.textContent = clip(sum, maxc);
+        members = new Set([...nodeById.values()].filter((n) => n.line === b.line).map((n) => n.id));
       } else if (b.key) {
         // branch sub-box: same metadata as the line box, scoped to this subtree
         const n = nodeById.get(b.key);
         if (n) {
           const maxc = Math.floor((b.w - 20) / 6);
-          const name = el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col }); name.textContent = n.item; gEl.appendChild(name);
-          const out = el('text', { x: b.x + 10, y: b.y + 29, class: 'clustersub', fill: col }); out.textContent = `● ${fmt(n.out)} ${n.item}/min`; gEl.appendChild(out);
+          const name = add(el('text', { x: b.x + 10, y: b.y + 15, class: 'clusterlabel', fill: col })); name.textContent = n.item;
+          const out = add(el('text', { x: b.x + 10, y: b.y + 29, class: 'clustersub', fill: col })); out.textContent = `● ${fmt(n.out)} ${n.item}/min`;
           const sub = ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>'));
-          const ms = el('text', { x: b.x + 10, y: b.y + 43, class: 'clustersub', fill: col }); ms.textContent = clip(sub.map((t) => `${t.count}× ${t.machine}`).join(' + '), maxc); gEl.appendChild(ms);
+          const ms = add(el('text', { x: b.x + 10, y: b.y + 43, class: 'clustersub', fill: col })); ms.textContent = clip(sub.map((t) => `${t.count}× ${t.machine}`).join(' + '), maxc);
         }
+        members = new Set(ir.tiles.filter((t) => t.id === b.key || t.id.startsWith(b.key + '>')).map((t) => t.id));
       }
+      if (members) clusterEls.push({ members, els, line: b.depth === 0 && b.line ? b.line : null });
     }
 
     // ---- belts: trunk the util/cash flows; material + feedback drawn individually ----
@@ -270,6 +287,7 @@
       g.appendChild(el('path', { d: link(exit, entry), 'marker-end': 'url(#arrow)' }));
       const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${tr.item} ${fmt(tr.rate)}`);
       gEl.appendChild(g);
+      trunkGroups.push({ g, from: tr.from, tos: tr.tos }); // trunks are fuel/fert/cash → fb
     }
     for (const { b, back } of individual) {
       const s = pos.get(b.from), t = pos.get(b.to); if (!s || !t) continue;
@@ -293,6 +311,9 @@
         const m = mid(exit, entry); edgeLabel(g, m.x, m.y, `${b.item} ${fmt(b.rate)}`);
       }
       gEl.appendChild(g);
+      // material forward edges are the lineage (recurse); fuel/fert/cash and any back/feedback
+      // edge are 1-hop only (fb), matching the layout3 spotlight rules.
+      edgeGroups.push({ g, from: b.from, to: b.to, fb: b.kind !== 'material' || back });
     }
 
     // ---- tiles + ports ----
@@ -336,6 +357,64 @@
         const sub = el('text', { x: 10, y: 36, class: 'sub' }); sub.textContent = clip(subText, maxc); g.appendChild(sub);
       }
       gEl.appendChild(g);
+      nodeGroups.set(id, g);
+    }
+
+    wireHover(gEl, ir, nodeGroups, edgeGroups, trunkGroups, clusterEls);
+  }
+
+  // Hover spotlight: fade everything (svg gets `.hovering`) and re-light the hovered node's
+  // production lineage — UPSTREAM (its inputs) + DOWNSTREAM (its consumers) — by adding `.hl`.
+  // Lifted verbatim in spirit from app.js's layout3 path so the CSS (svg#graph.hovering …)
+  // drives both renderers identically.
+  function wireHover(gEl, ir, nodeGroups, edgeGroups, trunkGroups, clusterEls) {
+    const svg = gEl.ownerSVGElement || gEl.closest('svg');
+    if (!svg) return;
+    const outAdj = new Map(), inAdj = new Map();
+    for (const id of nodeGroups.keys()) { outAdj.set(id, []); inAdj.set(id, []); }
+    const link2 = (from, to, g, fb) => { outAdj.get(from)?.push({ id: to, g, fb }); inAdj.get(to)?.push({ id: from, g, fb }); };
+    for (const { g, from, to, fb } of edgeGroups) link2(from, to, g, fb);
+    for (const { g, from, tos } of trunkGroups) for (const to of tos) link2(from, to, g, true);
+
+    // node → its line cluster (for fully lighting a fuel/fert source line on hover)
+    const nodeToCluster = new Map();
+    for (const ce of clusterEls) if (ce.line) for (const m of ce.members) nodeToCluster.set(m, ce);
+
+    const walk = (startId, adjMap, seen, fbNodes, edges, suppliers) => {
+      const stack = [startId];
+      while (stack.length) {
+        for (const { id: nb, g, fb } of adjMap.get(stack.pop()) || []) {
+          edges.add(g);
+          if (fb) { fbNodes.add(nb); if (suppliers) suppliers.add(nb); continue; }
+          if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
+        }
+      }
+    };
+    for (const [id, g] of nodeGroups) {
+      g.addEventListener('mouseenter', () => {
+        svg.classList.add('hovering');
+        const seen = new Set([id]), fbNodes = new Set(), edges = new Set(), suppliers = new Set();
+        walk(id, inAdj, seen, fbNodes, edges, suppliers); // everything feeding this node (+ fuel/fert suppliers)
+        walk(id, outAdj, seen, fbNodes, edges, null);     // everything this node feeds (consumers stay 1-hop)
+        // a fuel/fert source line powering the lineage lights in full (its members + internal edges)
+        const litLines = new Set();
+        for (const s of suppliers) { const ce = nodeToCluster.get(s); if (ce) litLines.add(ce); }
+        for (const ce of litLines) {
+          const mem = ce.members;
+          for (const m of mem) fbNodes.add(m);
+          for (const { g: eg, from, to } of edgeGroups) if (mem.has(from) && mem.has(to)) edges.add(eg);
+          for (const { g: tg, from, tos } of trunkGroups) if (mem.has(from) && tos.length && tos.every((t) => mem.has(t))) edges.add(tg);
+        }
+        for (const nid of seen) nodeGroups.get(nid)?.classList.add('hl');
+        for (const nid of fbNodes) nodeGroups.get(nid)?.classList.add('hl');
+        for (const eg of edges) eg.classList.add('hl');
+        // keep a box's wrapper + label lit while any of its members is in focus
+        for (const ce of clusterEls) if ([...ce.members].some((m) => seen.has(m) || fbNodes.has(m))) for (const e of ce.els) e.classList.add('hl');
+      });
+      g.addEventListener('mouseleave', () => {
+        svg.classList.remove('hovering');
+        for (const e of svg.querySelectorAll('.hl')) e.classList.remove('hl');
+      });
     }
   }
 
