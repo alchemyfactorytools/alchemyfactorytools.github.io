@@ -43,13 +43,12 @@ function loadPrefs() {
     renderTargets();
   }
   if (Array.isArray(prefs.allowed)) { allowed.clear(); prefs.allowed.forEach((n) => allowed.add(n)); renderChips(); }
+  // orientation / clusters / util-edge mode only affect the legacy layout3 path (?pipeline=legacy);
+  // their toolbar toggles were removed when the IR renderer became the default.
   if (prefs.orientation === 'LR' || prefs.orientation === 'TB') orientation = prefs.orientation;
-  $('orientToggle').textContent = orientation === 'LR' ? '⇄ Horizontal' : '⇅ Vertical';
   if (typeof prefs.showClusters === 'boolean') showClusters = prefs.showClusters;
-  $('clusterToggle').style.opacity = showClusters ? '1' : '0.5';
   if (typeof prefs.utilEdgeMode === 'string' && UTIL_MODE_LABEL[prefs.utilEdgeMode]) utilEdgeMode = prefs.utilEdgeMode;
   else if (typeof prefs.showUtilEdges === 'boolean') utilEdgeMode = prefs.showUtilEdges ? 'all' : 'off';
-  $('utilEdgeToggle').textContent = UTIL_MODE_LABEL[utilEdgeMode];
   if (Array.isArray(prefs.collapsed)) { collapsed.clear(); prefs.collapsed.forEach((k) => collapsed.add(k)); }
 }
 
@@ -599,12 +598,11 @@ const COLLAPSE_ENABLED = false; // line collapse/drill-down temporarily disabled
 // aggregated edge per line box, 'off' = rely on the per-machine bands only.
 let utilEdgeMode = 'trunk';
 const UTIL_MODE_LABEL = { all: '🔥 Fuel/fert: all', trunk: '🔥 Fuel/fert: trunk', off: '🔥 Fuel/fert: off' };
-const UTIL_MODE_NEXT = { all: 'trunk', trunk: 'off', off: 'all' };
-let lastGraph = null;     // cached so the orientation toggle can re-render
+let lastGraph = null;     // cached so a re-render can reuse the last solve
 const CLUSTER_COLORS = ['#7a9cc6', '#c69c7a', '#7ac68f', '#c67a9c', '#9c7ac6', '#c6c07a'];
 const NODE_W = 260, NODE_H = 84;
-// experimental: ?pipeline=tiles draws the solver-owned tile-DAG IR instead of the layout3 path
-const TILES_PIPELINE = new URLSearchParams(location.search).get('pipeline') === 'tiles';
+// The solver-owned tile-DAG IR is the default renderer; ?pipeline=legacy falls back to layout3.
+const TILES_PIPELINE = new URLSearchParams(location.search).get('pipeline') !== 'legacy';
 const TITLE_CHARS = 30;
 // greedy word-wrap into ≤maxLines lines of ≤maxChars; overflow clipped with an ellipsis
 function wrapLabel(s, maxChars, maxLines) {
@@ -1206,24 +1204,6 @@ function fitView() {
   $('zoomIn').onclick = () => { viewState.k *= 1.15; applyView(); };
   $('zoomOut').onclick = () => { viewState.k /= 1.15; applyView(); };
   $('zoomFit').onclick = fitView;
-  $('orientToggle').onclick = () => {
-    orientation = orientation === 'LR' ? 'TB' : 'LR';
-    $('orientToggle').textContent = orientation === 'LR' ? '⇄ Horizontal' : '⇅ Vertical';
-    savePrefs();
-    if (lastGraph) { renderGraph(lastGraph); }
-  };
-  $('clusterToggle').onclick = () => {
-    showClusters = !showClusters;
-    $('clusterToggle').style.opacity = showClusters ? '1' : '0.5';
-    savePrefs();
-    if (lastGraph) { renderGraph(lastGraph); }
-  };
-  $('utilEdgeToggle').onclick = () => {
-    utilEdgeMode = UTIL_MODE_NEXT[utilEdgeMode];
-    $('utilEdgeToggle').textContent = UTIL_MODE_LABEL[utilEdgeMode];
-    savePrefs();
-    if (lastGraph) { renderGraph(lastGraph); }
-  };
   $('mermaidBtn').onclick = async () => {
     const body = requestBody();
     if (!body.item) { setStatus('Pick an item first.', 'error'); return; }
