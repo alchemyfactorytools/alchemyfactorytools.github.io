@@ -203,21 +203,29 @@ test('nursery fertilizer is charged on the op axis (a grown crop is never free)'
 
 test('Phase 7: within-tile co-product reuse feeds a co-product into matching demand (Saturn Sand), independent of byproducts.mode', () => {
   // Saturn = Shaper{Salt, Brick, Glass}. Its Salt comes from Stone Crusher{Rock Salt} → Salt +
-  // Sand co-product, and its Glass needs Sand. Within-tile reuse routes that Sand straight into the
-  // Glass demand instead of grinding dedicated Sand for it. This reuse is ALWAYS on — decoupled from
-  // byproducts.mode (which the composer no longer reads; it now governs only UNCLAIMED surplus, and
-  // Saturn's Sand is fully claimed). So 'reuse' and 'trash' compose identically here. (Older
-  // behaviour, now retired: trash mode disabled the feed and ground every grain of Sand itself.)
+  // Sand co-product, and its Glass needs Sand. Reuse routes that Sand straight into the Glass demand
+  // instead of grinding dedicated Sand for it. This reuse is ALWAYS on — decoupled from byproducts.mode
+  // (which the composer no longer reads; it now governs only UNCLAIMED surplus). So 'reuse' and 'trash'
+  // compose identically here. The reuse pool is GLOBAL — it spans the main tree AND the fuel/fert trunks
+  // — so Sand the fert/fuel trunk co-produces is reused too, not just the main Stone Crusher's.
   const reuse = composer({ byproducts: { mode: 'reuse' } }).compose('Saturn', 1);
   const trash = composer({ byproducts: { mode: 'trash' } }).compose('Saturn', 1);
 
-  // The Sand co-product is fed across steps in BOTH modes. Claiming it (buildTree) is the same code
-  // path that drops the consumer's dedicated production, so a populated feed IS the farm saving —
-  // and it can never exceed the gross co-supply (Stone Crusher throws off 600 Sand/min here).
+  // The genuine gross Sand co-supply = every Sand byproduct across the forest trees AND the non-self
+  // trunk prodTiles. A feed can never exceed it (material is conserved) — the claim is the same code
+  // path that drops the consumer's dedicated grinding, so a populated feed IS the farm saving.
+  const grossSand = (r) => {
+    let v = 0;
+    const walk = (t) => { v += (t.byproducts && t.byproducts.Sand) || 0; for (const c of t.inputs || []) walk(c); };
+    const roots = new Set(r.trees.map((t) => t.tree));
+    for (const t of r.trees) walk(t.tree);
+    for (const tr of [r.fuel, r.fert]) if (tr && tr.prodTile && !roots.has(tr.prodTile)) walk(tr.prodTile);
+    return v;
+  };
   for (const [name, r] of [['reuse', reuse], ['trash', trash]]) {
     const fed = r.summary.coproductFeeds.find((f) => f.item === 'Sand');
     assert.ok(fed && fed.rate > 1, `Sand is fed across tiles in ${name} mode`);
-    assert.ok(fed.rate <= 600 + 1e-6, `feed bounded by genuine co-production in ${name} mode`);
+    assert.ok(fed.rate <= grossSand(r) + 1e-6, `feed bounded by genuine co-production (forest + trunks) in ${name} mode`);
   }
 
   // Always-on reuse ⇒ a fully-claimed co-product composes identically in both modes: same farms, same spend.
@@ -253,8 +261,13 @@ test('multi-target: compose([Glass, Brick]) builds a forest; shared fuel trunk i
   assert.ok(Math.abs(both.totals.fuelPerMin - (glass.totals.fuelPerMin + brick.totals.fuelPerMin)) < 1e-6,
     'fuel is additive across the forest (linear in combined heat)');
 
-  // Total money-line spend is the sum of the two builds (Glass and Brick share no bought inputs here).
-  assert.ok(Math.abs(both.summary.copperPerMin - (glass.summary.copperPerMin + brick.summary.copperPerMin)) < 1e-6);
+  // Money-line spend is the sum of the two builds MINUS any cross-tile co-product reuse the forest
+  // unlocks. Built alone, Brick over-produces Sand (trashed) and Glass grinds dedicated Sand; combined,
+  // Brick's Sand surplus feeds Glass's demand, so the forest spends strictly LESS than the sum. The
+  // reuse pool spans the whole forest, so building together can only ever help (≤ the separate sum).
+  assert.ok(both.summary.coproductFeeds.some((f) => f.item === 'Sand'), 'forest reuses Brick\'s Sand surplus into Glass');
+  assert.ok(both.summary.copperPerMin <= glass.summary.copperPerMin + brick.summary.copperPerMin + 1e-6,
+    'forest spend never exceeds the sum of the separate builds (cross-tile co-product reuse only helps)');
 });
 
 test('multi-target: a single-element array is byte-identical to the scalar call (back-compat)', () => {

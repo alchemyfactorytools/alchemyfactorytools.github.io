@@ -137,16 +137,20 @@ test('Phase 7: co-product feed wires source → consumer and conserves material'
   assert.ok(sandFed <= sandRouted + 1e-6, 'co-fed Sand never exceeds the co-product supply');
 });
 
-test('Phase 7: trash mode still reuses within-tile, then trashes the unclaimed surplus', () => {
+test('Phase 7: trash mode still reuses co-products, then trashes the unclaimed surplus', () => {
   const trashCfg = resolveConfig({ maxTier: 6, byproducts: { mode: 'trash' }, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } });
-  const g = composeGraph(makeComposer(db, trashCfg).compose('Saturn', 1), db, trashCfg);
-  // Within-tile co-product reuse is always on, even in trash mode: the Sand thrown off making Saturn's
-  // Salt feeds its Glass demand, so co-feed edges appear here too. byproducts.mode governs only the
-  // UNCLAIMED surplus — Saturn over-produces Sand, so the leftover beyond the reused amount is still
-  // trashed. (Older behaviour, now retired: trash mode trashed ALL co-products and drew no feed edges.)
-  assert.ok(g.edges.filter((e) => e.coproduct).length > 0, 'within-tile co-feed edges appear in trash mode');
-  assert.ok(g.nodes.some((n) => n.type === 'surplus' && /Sand/.test(n.label)), 'the unclaimed surplus Sand is still trashed');
-  assert.equal(g.summary.validation.length, 0);
+  // Co-product reuse is always on, even in trash mode: the Sand thrown off making Saturn's Salt feeds
+  // its Glass demand (and the reuse pool now spans the fuel/fert trunks too, so Saturn claims ALL of
+  // its Sand — none left to trash). byproducts.mode is not read by the composer; it governs only the
+  // UNCLAIMED surplus. (Older behaviour, now retired: trash mode trashed ALL co-products, drew no feeds.)
+  const saturn = composeGraph(makeComposer(db, trashCfg).compose('Saturn', 1), db, trashCfg);
+  assert.ok(saturn.edges.filter((e) => e.coproduct).length > 0, 'co-feed edges appear in trash mode');
+  assert.equal(saturn.summary.validation.length, 0);
+  // The unclaimed surplus IS still trashed: making Salt alone over-produces Sand (Stone Crusher throws
+  // it off) with nothing to consume it, so the whole co-output becomes a surplus → trash node.
+  const salt = composeGraph(makeComposer(db, trashCfg).compose('Salt', 60), db, trashCfg);
+  assert.ok(salt.nodes.some((n) => n.type === 'surplus' && /Sand/.test(n.label)), 'unclaimed surplus Sand is trashed');
+  assert.equal(salt.summary.validation.length, 0);
 });
 
 test('multi-target: composeGraph emits one demand sink per target and stays structurally complete', () => {

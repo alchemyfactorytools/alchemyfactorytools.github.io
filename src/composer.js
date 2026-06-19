@@ -518,7 +518,7 @@ function makeComposer(db, cfg) {
       }
       if (needRate > 1e-9) inputs.push(buildTree(inItem, needRate, `${path}>${inItem}`, seen2, acc, coBudget, coFeeds, allowMerge));
     }
-    const byproducts = {}; // co-products other than the primary → trash/surplus (v1: no cross-tile feed)
+    const byproducts = {}; // co-products other than the primary → offered to the shared coSupply pool (Phase 7)
     for (const [out, q] of Object.entries(r.outputs || {})) {
       if (out === item) continue;
       byproducts[out] = q * yieldMult * runsPerMin;
@@ -641,102 +641,102 @@ function makeComposer(db, cfg) {
     }
     const buildTargets = carrierTargets.size ? targets.filter((t) => !carrierTargets.has(t.item)) : targets;
 
-    // Phase 7 — WITHIN-TILE co-product reuse (ALWAYS on, including trash mode). A co-product offsets
-    // dedicated production of the same item elsewhere in the SAME tree: the Sand thrown off making
-    // Saturn's Salt covers part of the Sand for its Glass (fewer Sand farms), and the Charcoal that
-    // Coke co-produces re-grinds into the Charcoal Powder Coke itself eats. Recycling what a line
-    // already makes is free and must never be trashed when a sibling/downstream step in the same line
-    // wants it — so it is decoupled from byproducts.mode. The mode now governs only the UNCLAIMED
-    // surplus (trashed, or — future — pooled cross-tile). Because offsetting a consumer's production
-    // can in turn shrink a co-product's OWN source, the supply pool is the fixpoint of "build with this
-    // budget → measure the resulting gross co-supply"; it only ever decreases, so it converges fast.
-    let coBudget = new Map();
-    {
-      let prev = null;
-      for (let i = 0; i < 8; i++) {
-        // Probe ALL targets into one shared budget so the measured co-supply is the whole forest's.
-        const pacc = freshAcc(); const pb = new Map(coBudget); const measured = new Map();
-        for (const t of buildTargets) measureCoSupply(buildTree(t.item, rateOf(t), t.item, new Set(), pacc, pb, null), measured);
-        if (prev && mapsClose(measured, prev)) break;
-        prev = measured; coBudget = measured;
+    // Phase 7 — co-product reuse. A co-product offsets dedicated production of the same item ANYWHERE
+    // in the build: the Sand thrown off making Saturn's Salt covers part of the Sand for its Glass; the
+    // Charcoal Coke co-produces re-grinds into the Charcoal Powder Coke itself eats; the Plank a Gloom-
+    // Fungus line throws off feeds another target's Plank demand instead of buying Logs. Recycling what
+    // a line already makes is free and must never be trashed when ANOTHER line wants it — be it a
+    // sibling target tree OR a fuel/fert trunk. byproducts.mode governs only the UNCLAIMED surplus.
+    //
+    // The pool is GLOBAL across the whole forest AND the fuel/fert trunks, so it can't be one forward
+    // pass: a trunk's co-supply (e.g. the Plank off the fert carrier's Gloom-Fungus line) must reach a
+    // target tree built earlier, and a target's co-supply must reach the trunks built later. So the
+    // entire build (forest → trunk sizing → trunk prodTiles) runs inside an outer fixpoint over
+    // `coSupply` — the gross co-product supply of everything built last round. Each round drains a
+    // fresh copy as lines claim from it (greedy, walk order) then re-measures the gross supply; claims
+    // only ever shrink dedicated production, so it settles in a couple of rounds (bounded + early-exit).
+    let coSupply = new Map();
+    let trees, tree, acc, coFeeds, heatMain, nutrientMain, Mf, Mg, F, G, fuel, fert, warnings;
+    let prevSupply = null;
+    for (let outer = 0; outer < 8; outer++) {
+      acc = freshAcc();
+      coFeeds = []; // { item, rate, consumerId } — claimed cross-line co-product draws (graph wiring)
+      warnings = [];
+      const coBudget = new Map(coSupply); // drained as the forest + trunks claim from the shared pool
+      // Forest: each target → its own replicated subtree, ALL sharing one acc (heat / nutrient / money /
+      // carrier-material draws sum across the whole build) and ONE drained coBudget / coFeeds pool — so a
+      // co-product thrown off by ANY line (a target tree, or via coSupply a fuel/fert trunk) offsets any
+      // other line's demand. The shared fuel/fert/money trunks below are sized from the combined acc.
+      trees = buildTargets.map((t) => ({ item: t.item, rate: t.rate, tree: buildTree(t.item, rateOf(t), t.item, new Set(), acc, coBudget, coFeeds) }));
+      tree = trees.length ? trees[0].tree : null; // back-compat alias (single-target == the one root)
+      heatMain = acc.heatPerMin; nutrientMain = acc.nutrientPerMin;
+      // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
+      // fires when beltCap 0), so it adds to the dedicated trunk's output AND draws self-heat/nutrient
+      // there — folded into the fixpoint below, sized into the trunk via splitTrunk(F+Mf), and the
+      // unit/trunk builds (which produce the carrier itself) pass allowMerge=false so they never merge.
+      Mf = (fuelItem && acc.carrierMaterial[fuelItem]) || 0;
+      Mg = (fertCarrier && acc.carrierMaterial[fertCarrier]) || 0;
+
+      // Belt rate caps: belt supplies up to its rate (free utility), the build PRODUCES the rest.
+      // Only the PRODUCED part (Pf, Pg) burns fuel / draws fert (the belt supply doesn't), so just the
+      // produced part feeds back in the fixpoint. cap = Infinity (belted, no rate) ⇒ all belt, no
+      // feedback; cap = 0 (not belted) ⇒ all produced, full feedback.
+      // Central steam fully supplies the fuel trunk (cap Infinity) → produced part Pf = 0, so no fuel
+      // production line / furnaces / self-fuel loops; heat is drawn from the central steam source.
+      F = 0; G = 0;
+      for (let i = 0; i < 24; i++) {
+        const Pf = Math.max(0, F - fuelCap), Pg = Math.max(0, G - fertCap);
+        // (Pf + Mf): the produced carrier the trunk makes is the fuel excess PLUS the merged material,
+        // and BOTH portions draw self-heat/nutrient (same coke chain), so both feed the fixpoint.
+        // (Pf + Mf + Df): the produced fuel carrier covers heat-excess + material + any folded net-output
+        // demand, and ALL of it self-heats/-nutrients. Same for the fert carrier (Pg + Mg + Dg).
+        const totalHeat = heatMain + (uFuel ? (Pf + Mf + Df) * uFuel.h : 0) + (uFert ? (Pg + Mg + Dg) * uFert.h : 0);
+        const totalNutrient = nutrientMain + (uFuel ? (Pf + Mf + Df) * uFuel.n : 0) + (uFert ? (Pg + Mg + Dg) * uFert.n : 0);
+        const nF = fuelHeatPerUnit > 0 ? totalHeat / fuelHeatPerUnit : 0;
+        const nG = fertNutrientPerUnit > 0 ? totalNutrient / fertNutrientPerUnit : 0;
+        if (Math.abs(nF - F) < 1e-9 && Math.abs(nG - G) < 1e-9) { F = nF; G = nG; break; }
+        F = nF; G = nG;
       }
-    }
 
-    const acc = freshAcc();
-    const coFeeds = []; // { item, rate, consumerId } — claimed cross-tile co-product draws (graph wiring)
-    // Forest: each target → its own replicated subtree, ALL sharing one acc (heat / nutrient / money /
-    // carrier-material draws sum across the whole build) and one coBudget/coFeeds pool (a co-product
-    // thrown off by one target's line offsets another target's demand). The shared fuel/fert/money
-    // trunks below are sized from the combined acc — so the targets share utilities + surplus.
-    const trees = buildTargets.map((t) => ({ item: t.item, rate: t.rate, tree: buildTree(t.item, rateOf(t), t.item, new Set(), acc, new Map(coBudget), coFeeds) }));
-    const tree = trees.length ? trees[0].tree : null; // back-compat alias (single-target == the one root)
-    const heatMain = acc.heatPerMin, nutrientMain = acc.nutrientPerMin;
-    // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
-    // fires when beltCap 0), so it adds to the dedicated trunk's output AND draws self-heat/nutrient
-    // there — folded into the fixpoint below, sized into the trunk via splitTrunk(F+Mf), and the
-    // unit/trunk builds (which produce the carrier itself) pass allowMerge=false so they never merge.
-    const Mf = (fuelItem && acc.carrierMaterial[fuelItem]) || 0;
-    const Mg = (fertCarrier && acc.carrierMaterial[fertCarrier]) || 0;
-
-    // Belt rate caps: belt supplies up to its rate (free utility), the build PRODUCES the rest.
-    // Only the PRODUCED part (Pf, Pg) burns fuel / draws fert (the belt supply doesn't), so just the
-    // produced part feeds back in the fixpoint. cap = Infinity (belted, no rate) ⇒ all belt, no
-    // feedback; cap = 0 (not belted) ⇒ all produced, full feedback.
-    // Central steam fully supplies the fuel trunk (cap Infinity) → produced part Pf = 0, so no fuel
-    // production line / furnaces / self-fuel loops; heat is drawn from the central steam source.
-    let F = 0, G = 0;
-    for (let i = 0; i < 24; i++) {
-      const Pf = Math.max(0, F - fuelCap), Pg = Math.max(0, G - fertCap);
-      // (Pf + Mf): the produced carrier the trunk makes is the fuel excess PLUS the merged material,
-      // and BOTH portions draw self-heat/nutrient (same coke chain), so both feed the fixpoint.
-      // (Pf + Mf + Df): the produced fuel carrier covers heat-excess + material + any folded net-output
-      // demand, and ALL of it self-heats/-nutrients. Same for the fert carrier (Pg + Mg + Dg).
-      const totalHeat = heatMain + (uFuel ? (Pf + Mf + Df) * uFuel.h : 0) + (uFert ? (Pg + Mg + Dg) * uFert.h : 0);
-      const totalNutrient = nutrientMain + (uFuel ? (Pf + Mf + Df) * uFuel.n : 0) + (uFert ? (Pg + Mg + Dg) * uFert.n : 0);
-      const nF = fuelHeatPerUnit > 0 ? totalHeat / fuelHeatPerUnit : 0;
-      const nG = fertNutrientPerUnit > 0 ? totalNutrient / fertNutrientPerUnit : 0;
-      if (Math.abs(nF - F) < 1e-9 && Math.abs(nG - G) < 1e-9) { F = nF; G = nG; break; }
-      F = nF; G = nG;
-    }
-
-    // Split each carrier into a belt-supplied portion (capped) and a produced sub-trunk (the excess).
-    const warnings = [];
-    const splitTrunk = (item, total, cap, tag) => {
-      if (!(total > 1e-9)) return null;
-      const beltRateUsed = Math.min(total, cap);
-      const prodRate = Math.max(0, total - cap);
-      // within-trunk co-product reuse — same always-on within-tile policy as the main tree, scoped to
-      // this trunk's own co-supply (e.g. the fuel line's Coke re-grinds its Charcoal co-product rather
-      // than trashing it). Same fixpoint; coFeeds collected so the recycle edge renders.
-      let prodTile = null;
-      if (prodRate > 1e-9) {
-        let tb = new Map(), prev = null;
-        for (let i = 0; i < 8; i++) {
-          const probe = buildTree(item, prodRate, `${item}#${tag}`, new Set(), freshAcc(), new Map(tb), null, false);
-          const m = measureCoSupply(probe, new Map());
-          if (prev && mapsClose(m, prev)) break;
-          prev = m; tb = m;
+      // Split each carrier into a belt-supplied portion (capped) and a produced sub-trunk (the excess).
+      // The prodTile is built ONCE against the shared coBudget — within-trunk reuse (the fuel line's Coke
+      // re-grinding its Charcoal) now flows through coSupply, the same global pool, so a trunk co-product
+      // can feed a target tree (and vice versa) instead of being trashed behind a trunk-local fixpoint.
+      const splitTrunk = (item, total, cap, tag) => {
+        if (!(total > 1e-9)) return null;
+        const beltRateUsed = Math.min(total, cap);
+        const prodRate = Math.max(0, total - cap);
+        const prodTile = prodRate > 1e-9 ? buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc, coBudget, coFeeds, false) : null;
+        if (isFinite(cap) && cap > 0 && prodRate > 1e-9) {
+          warnings.push(`Belt ${item} supplies ${cap.toFixed(1)}/min; this build needs ${total.toFixed(1)}/min ${tag} — composing the extra ${prodRate.toFixed(1)}/min.`);
         }
-        prodTile = buildTree(item, prodRate, `${item}#${tag}`, new Set(), acc, new Map(tb), coFeeds, false);
-      }
-      if (isFinite(cap) && cap > 0 && prodRate > 1e-9) {
-        warnings.push(`Belt ${item} supplies ${cap.toFixed(1)}/min; this build needs ${total.toFixed(1)}/min ${tag} — composing the extra ${prodRate.toFixed(1)}/min.`);
-      }
-      return { item, rate: total, beltRate: beltRateUsed, prodRate, prodTile };
-    };
-    // total trunk = fuel/fert demand + the merged carrier-as-material demand (Mf/Mg, all produced).
-    // Self-fueling line: the target line IS the fuel source (built at GROSS above), so there is no
-    // separate fuel trunk — point the trunk at the target tree itself; compose-graph then wires the
-    // heat edges as a self-loop (line output → its own furnaces). The NET belt output is `rate`.
-    const fuel = selfFuelLine
-      ? { item: fuelItem, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFuelLine: true, netRate: rate, selfFuel: grossRate - rate }
-      : splitTrunk(fuelItem, F + Mf + Df, fuelCap, 'fuel');
-    // Self-ferting line (target IS the fert carrier): mirror of the fuel self-loop — the target line is
-    // built at GROSS above, so there is no separate fert trunk; point it at the target tree itself and
-    // compose-graph wires the nutrient edges as a self-loop (line output → its own nurseries).
-    const fert = selfFertLine
-      ? { item: fertCarrier, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFertLine: true, netRate: rate, selfFert: grossRate - rate }
-      : splitTrunk(fertCarrier, G + Mg + Dg, fertCap, 'fert');
+        return { item, rate: total, beltRate: beltRateUsed, prodRate, prodTile };
+      };
+      // total trunk = fuel/fert demand + the merged carrier-as-material demand (Mf/Mg, all produced).
+      // Self-fueling line: the target line IS the fuel source (built at GROSS above), so there is no
+      // separate fuel trunk — point the trunk at the target tree itself; compose-graph then wires the
+      // heat edges as a self-loop (line output → its own furnaces). The NET belt output is `rate`.
+      fuel = selfFuelLine
+        ? { item: fuelItem, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFuelLine: true, netRate: rate, selfFuel: grossRate - rate }
+        : splitTrunk(fuelItem, F + Mf + Df, fuelCap, 'fuel');
+      // Self-ferting line (target IS the fert carrier): mirror of the fuel self-loop — the target line is
+      // built at GROSS above, so there is no separate fert trunk; point it at the target tree itself and
+      // compose-graph wires the nutrient edges as a self-loop (line output → its own nurseries).
+      fert = selfFertLine
+        ? { item: fertCarrier, rate: grossRate, beltRate: 0, prodRate: grossRate, prodTile: tree, selfFertLine: true, netRate: rate, selfFert: grossRate - rate }
+        : splitTrunk(fertCarrier, G + Mg + Dg, fertCap, 'fert');
+
+      // Re-measure the gross co-supply built this round (forest trees + the non-self trunk prodTiles)
+      // and feed it back. A trunk prodTile that IS a target root (self-fuel/fert line) is already
+      // counted in the forest walk, so skip it. Converged once the supply map stops changing.
+      const builtRoots = new Set(trees.map((t) => t.tree));
+      const measured = new Map();
+      for (const t of trees) measureCoSupply(t.tree, measured);
+      if (fuel && fuel.prodTile && !builtRoots.has(fuel.prodTile)) measureCoSupply(fuel.prodTile, measured);
+      if (fert && fert.prodTile && !builtRoots.has(fert.prodTile)) measureCoSupply(fert.prodTile, measured);
+      if (prevSupply && mapsClose(measured, prevSupply)) break;
+      prevSupply = measured; coSupply = measured;
+    }
 
     const treeSet = new Set(trees.map((t) => t.tree)); // roots already tallied (a self-fuel trunk reuses one)
     const machineTotals = {};
