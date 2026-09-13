@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const { buildProcessTable } = require('../src/normalize');
 const { resolveConfig } = require('../src/config');
 const { Model, optimize, minMachines } = require('../src/model');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 const solve = (cfgOverrides, opts) => {
   const pt = buildProcessTable(db, resolveConfig(cfgOverrides));
@@ -21,38 +21,59 @@ const solve = (cfgOverrides, opts) => {
 
 const MARS = { demand: { Mars: 0.1 } };
 
-test('Scenario A: buyables-only, no farming — INFEASIBLE without cauldron', async () => {
+// 1.0 dataset (DB v55): two routes that did not exist in the June design trace change the
+// Mars scenarios. Seed Plots grow herbs from bought seeds with no fertilizer, so "no farming"
+// no longer removes Soap; and the Advanced Athanor "Copper Powder Advanced Athanor" recipe
+// (unstable → ICP only, fertile → doubled CP+ICP) beats the GG×3 cauldron shortcut on price.
+// The original claims are kept as regressions with Seed Plots locked (counts: 0).
+const NO_SEED_PLOT = { defaultCount: 1000, counts: { 'Seed Plot': 0 } };
+
+test('Scenario A: buyables-only, no farming — feasible only through Seed Plot herbs; INFEASIBLE with plots locked', async () => {
   const r = await solve({ cauldron: { enabled: false }, selfFert: false }, MARS);
-  assert.equal(r.status, 'Infeasible');
+  assert.equal(r.status, 'Optimal');
+  const locked = await solve({ cauldron: { enabled: false }, selfFert: false, machines: NO_SEED_PLOT }, MARS);
+  assert.equal(locked.status, 'Infeasible');
 });
 
-test('Scenario A: cauldron unlocks Mars; GG×3→ICP route active; ~160k/Mars uncapacitated', async () => {
-  // capital off isolates the material cost (DESIGN's ~161.8k hand trace → 160,037 here)
+test('Scenario A: Advanced Athanor Copper Powder beats the cauldron (~74.8k/Mars); GG×3 cauldron unlocks Mars with plots locked (~158k)', async () => {
+  // capital off isolates the material cost
   const rMat = await solve(
     { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: { defaultCount: 1000 }, capital: { enabled: false } },
     MARS,
   );
-  assert.ok(Math.abs(rMat.objective / 0.1 - 160037) < 100, `material per-Mars ${rMat.objective / 0.1}`);
-  // with capital on (default) the cauldron shortcut still wins; cost is modestly higher
+  assert.ok(Math.abs(rMat.objective / 0.1 - 74772) < 100, `material per-Mars ${rMat.objective / 0.1}`);
+  assert.equal(rMat.flows.filter((f) => f.process.kind === 'cauldron').length, 0, 'no cauldron column in the 1.0 optimum');
+  assert.ok(rMat.flows.find((f) => f.process.id === 'recipe:Copper Powder Advanced Athanor@fertile'), 'fertile Advanced Athanor CP+ICP run active');
+  // with capital on (default) the same route wins; cost is modestly higher
   const r = await solve(
     { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: { defaultCount: 1000 } },
     MARS,
   );
   assert.equal(r.status, 'Optimal');
   const perMars = r.objective / 0.1;
-  assert.ok(perMars > 160037 && perMars < 167000, `per-Mars w/ capital ${perMars}`);
-  const gg = r.flows.find((f) => f.process.kind === 'cauldron' && f.process.consumes['Gelatinous Gridlock'] === 3);
-  assert.ok(gg, 'GG×3 cauldron shortcut must survive capital pricing');
+  assert.ok(perMars > 74772 && perMars < 85000, `per-Mars w/ capital ${perMars}`);
+  // the June design trace survives with Seed Plots locked: the cauldron UNLOCKS Mars there
+  const rLocked = await solve(
+    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: NO_SEED_PLOT, capital: { enabled: false } },
+    MARS,
+  );
+  assert.equal(rLocked.status, 'Optimal');
+  assert.ok(Math.abs(rLocked.objective / 0.1 - 158212.5) < 100, `plots-locked per-Mars ${rLocked.objective / 0.1}`);
+  const gg = rLocked.flows.find((f) => f.process.kind === 'cauldron' && f.process.consumes['Gelatinous Gridlock'] === 3);
+  assert.ok(gg, 'GG×3 cauldron shortcut carries ICP when Soap is unavailable');
   assert.equal(Object.keys(gg.process.produces)[0], 'Impure Copper Powder');
 });
 
-test('Scenario B: farming available — MIXED basis (Athanor recipe AND GG cauldron both active)', async () => {
+test('Scenario B: farming available — MIXED basis (fertile CP+ICP run AND unstable ICP-only run both active)', async () => {
+  // Mars needs 200 ICP : 150 CP. The fertile variant yields the pair, the unstable variant
+  // ICP alone, so the joint-product ratio mismatch is fixed by mixing catalyst variants —
+  // the same mechanism the June trace showed with the GG cauldron at the margin.
   const r = await solve({ cauldron: { enabled: true, inputPool: 'buyables' } }, MARS);
   assert.equal(r.status, 'Optimal');
-  const athanor = r.flows.find((f) => f.process.id === 'recipe:Copper Powder');
-  const gg = r.flows.find((f) => f.process.kind === 'cauldron' && f.process.consumes['Gelatinous Gridlock'] === 3);
-  assert.ok(athanor && athanor.rate > 1, 'Athanor CP+ICP joint recipe active');
-  assert.ok(gg && gg.rate > 1, 'GG cauldron marginal ICP supply active');
+  const fertile = r.flows.find((f) => f.process.id === 'recipe:Copper Powder Advanced Athanor@fertile');
+  const unstable = r.flows.find((f) => f.process.id === 'recipe:Copper Powder Advanced Athanor@unstable');
+  assert.ok(fertile && fertile.rate > 1, 'fertile CP+ICP joint run active');
+  assert.ok(unstable && unstable.rate > 1, 'unstable ICP-only run active at the margin');
   // the joint-product credit makes B strictly cheaper than A
   const a = await solve(
     { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false },
@@ -98,8 +119,12 @@ test('capital off: no degenerate floating production (activation-floor polish dr
   assert.ok(clayPowderSurplus < 1e-6, `no discarded Clay Powder dead-end, surplus ${clayPowderSurplus}`);
   // No large discarded dead-ends: every item is either consumed or a small joint
   // byproduct (the Athanor Copper/Impure-Copper co-product surplus is legitimate).
+  // Co-products of catalyst-variant runs are exempt: an Eternal-catalyst Coke run makes
+  // Charcoal from no material input, and discarding it is the LP's legitimate choice.
+  const catalystCoProduct = new Set();
+  for (const f of r.flows) if (f.process.kind === 'catalystVariant') for (const k of Object.keys(f.process.produces)) if (k !== f.process.primary) catalystCoProduct.add(k);
   for (const it of Object.keys(prod)) {
-    if (it === 'Mars') continue;
+    if (it === 'Mars' || catalystCoProduct.has(it)) continue;
     const surplus = (prod[it] || 0) - (cons[it] || 0);
     assert.ok(surplus < 5, `${it} surplus ${surplus.toFixed(2)} looks like a fabricated dead-end loop`);
   }
@@ -135,9 +160,11 @@ test('override: forbid-cauldron for ICP removes the shortcut and forces the Atha
     { cauldron: { enabled: true, inputPool: 'buyables', forbidFor: ['Impure Copper Powder'] }, selfFert: false, machines: { defaultCount: 1000 } },
     MARS,
   );
-  // without farming the Athanor route needs Soap Powder (crops) — Scenario A becomes infeasible again
-  assert.equal(forbidden.status, 'Infeasible');
+  // since 1.0 ICP also comes from the Advanced Athanor Copper Powder recipe, so forbidding
+  // the cauldron route stays feasible; it must just never come from a cauldron column
+  assert.equal(forbidden.status, 'Optimal');
   assert.equal(base.status, 'Optimal');
+  assert.equal(forbidden.flows.find((f) => f.process.kind === 'cauldron' && f.process.produces['Impure Copper Powder']), undefined);
   // with farming, forbidding ICP-via-cauldron forces all ICP through the Athanor recipe
   const withFarming = await solve(
     { cauldron: { enabled: true, inputPool: 'buyables', forbidFor: ['Impure Copper Powder'] }, machines: { defaultCount: 1000 } },
@@ -320,7 +347,7 @@ test('effective tiers: crafted high-tier items are gated (Silver Ingot 8, Ruby 9
   const T = tiers(db);
   assert.equal(T.effective('Silver Ingot'), 8);
   assert.equal(T.effective('Ruby'), 9);
-  assert.equal(T.effective('Crude Gold Dust'), 8);
+  assert.equal(T.effective('Crude Gold Dust'), 9); // explicit tier since DB v45
   assert.ok(T.effective('Iron Ingot') <= 6 && T.effective('Linen') <= 6, 'common items stay low-tier');
   // at tier 6, no above-tier item appears in a Mars plan
   const r = await solve({ maxTier: 6, machines: { defaultCount: 1000 } }, { demand: { Mars: 0.1 } });

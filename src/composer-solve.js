@@ -21,7 +21,7 @@ const RAW_TARGET_CATEGORIES = new Set(['Raw Materials', 'Seeds']);
 function itemCatalog(db, contracts = {}) {
   const T = tiers(db);
   const producedSet = new Set();
-  for (const r of Object.values(db.recipes)) for (const o of Object.keys(r.outputs || {})) producedSet.add(o);
+  for (const r of productionRecipes(db)) for (const o of Object.keys(r.outputs || {})) producedSet.add(o);
   return Object.entries(db.items).map(([name, item]) => {
     const craftable = producedSet.has(name) || (item.cauldronCost !== undefined && !item.liquid);
     return {

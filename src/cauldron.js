@@ -56,7 +56,7 @@ function cauldronStats(target) {
 // (rule from raw/starfi5h/alchemy_cauldron.js isVaildCandidate).
 function eligibleInputs(db) {
   return Object.entries(db.items)
-    .filter(([, item]) => item.cauldronCost !== undefined && !item.liquid)
+    .filter(([, item]) => item.cauldronCost !== undefined && !item.liquid && !item.virtual)
     .map(([name, item]) => ({
       name,
       id: item.id,

@@ -52,6 +52,11 @@ const DEFAULT_CONFIG = {
   // without the optimizer building a sub-factory for them.
   belt: [],
 
+  // Heating device the heated machines sit on: 'Stone Furnace' (9 slots), 'Blast
+  // Furnace' (42), or 'Steam Heating Pad' (9). Only slot packing differs; since 1.0
+  // no device draws base heat. Central steam (below) forces the Steam Heating Pad.
+  heatingDevice: 'Stone Furnace',
+
   // Central steam (composer only). When enabled, heat is delivered from centrally-
   // plumbed steam (Steam Boilers → pipes → Heating Pads) rather than per-line fuel:
   // the canonical fuel carrier becomes an unlimited belt utility, so its production
@@ -83,7 +88,7 @@ const DEFAULT_CONFIG = {
   buy: true,
   sell: true,
 
-  // Catalyst variants on the 5 Advanced Athanor recipes
+  // Catalyst variants on the Advanced Athanor recipes (ChargeCost)
   catalysts: {
     enabled: true,
     stacked: false, // stacked-catalyst columns need in-game co-load confirmation
@@ -156,6 +161,11 @@ const fertMult = (lvl) => 1 + 0.1 * lvl;
 // mode charges per-heat fuel value ÷ STEAM_EFFICIENCY. See data/mechanics.json "steam".
 const STEAM_EFFICIENCY = 0.6;
 
+// The generator heated machines are packed onto. Central steam implies the pad.
+function heatingDeviceFor(cfg) {
+  return cfg.steam && cfg.steam.enabled ? 'Steam Heating Pad' : (cfg.heatingDevice || 'Stone Furnace');
+}
+
 function skillParams(skills) {
   return {
     beltSpeed: beltSpeed(skills.logistics),
@@ -166,4 +176,4 @@ function skillParams(skills) {
   };
 }
 
-module.exports = { DEFAULT_CONFIG, resolveConfig, skillParams, beltSpeed, speedMult, alchemyMult, fuelMult, fertMult, STEAM_EFFICIENCY };
+module.exports = { DEFAULT_CONFIG, resolveConfig, skillParams, heatingDeviceFor, beltSpeed, speedMult, alchemyMult, fuelMult, fertMult, STEAM_EFFICIENCY };

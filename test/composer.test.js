@@ -16,7 +16,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { makeComposer } = require('../src/composer');
 const { resolveConfig } = require('../src/config');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 const composer = (overrides) => makeComposer(db, resolveConfig({
   maxTier: 6,

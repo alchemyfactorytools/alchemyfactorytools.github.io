@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { solveComposerBody } = require('../src/composer-solve');
 const { composeTilesIR } = require('../src/tile-compose-ir');
 const { beltSpeed } = require('../src/config');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 // ---- config builder (mirrors test/tile-ir.test.js) ----
 const ZERO = { factory: 0, logistics: 0, alchemy: 0, fuel: 0, fertilizer: 0 };

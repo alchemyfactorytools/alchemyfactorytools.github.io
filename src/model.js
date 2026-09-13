@@ -25,6 +25,7 @@ function getHighs() {
 const EPS = 1e-7;
 
 const { makeItemCopperFloor } = require('./cost-floor');
+const { speedMultFor } = require('./normalize');
 
 class Model {
   constructor(processTable, db) {
@@ -105,7 +106,7 @@ class Model {
       return plots * (this.buildabilityWeight + nurseryBuild); // per-plot machine + build cost
     }
     if (!p.machine || !(p.timeSec > 0)) return 0;
-    const perMachine = p.timeSec / (60 * this.pt.params.speedMult);
+    const perMachine = p.timeSec / (60 * speedMultFor(p.machine, this.pt.params));
     let v = this.buildabilityWeight * perMachine;
     if (this.cauldronChainWeight && p.chainInputs) v += this.cauldronChainWeight * p.chainInputs * perMachine;
     if (!this.capitalWeight) return v;
@@ -133,7 +134,7 @@ class Model {
   machineCapacity(machine) {
     const m = this.pt.config.machines;
     const count = m.counts[machine] ?? m.defaultCount;
-    return count * 60 * this.pt.params.speedMult;
+    return count * 60 * speedMultFor(machine, this.pt.params);
   }
 
   // Which explicit columns participate, given the objective.
@@ -172,8 +173,6 @@ function buildLpString({ model, columns, demand, objective, integers, activation
   const NUTRIENT_ROW = nItems + 1;
   const CAP_BASE = nItems + 2;
   const nRows = CAP_BASE + model.machineNames.length;
-  const capPerMin = 60 * model.pt.params.speedMult;
-
   // rows as arrays of "coef varName" terms
   const rowTerms = Array.from({ length: nRows }, () => []);
   const objTerms = [];      // cost objective (also reused as the cost-cap row when costCap set)
@@ -199,7 +198,7 @@ function buildLpString({ model, columns, demand, objective, integers, activation
     if (p.nutrient) rowTerms[NUTRIENT_ROW].push(`${p.nutrient > 0 ? '+' : '-'} ${Math.abs(p.nutrient)} ${v}`);
     if (p.machine && p.timeSec > 0 && machineIndex.has(p.machine)) {
       rowTerms[CAP_BASE + machineIndex.get(p.machine)].push(`+ ${p.timeSec} ${v}`);
-      loadTerms.push(`+ ${p.timeSec / capPerMin} ${v}`);
+      loadTerms.push(`+ ${p.timeSec / (60 * speedMultFor(p.machine, model.pt.params))} ${v}`);
     }
     let net = (p.copperCost ?? 0) - (p.copperRevenue ?? 0) + model.capitalPerRun(p);
     if (activationFloor && p.machine && p.timeSec > 0) net += p.timeSec * ACTIVATION_EPS;
@@ -333,7 +332,7 @@ async function solveLp(lpString, options = {}) {
 async function probeInfeasibility(model, demand, objective) {
   const relaxed = new Model(model.pt, model.db);
   const m = model.pt.config.machines;
-  relaxed.machineCapacity = (machine) => (m.counts[machine] ?? m.defaultCount) * 100 * 60 * relaxed.pt.params.speedMult;
+  relaxed.machineCapacity = (machine) => (m.counts[machine] ?? m.defaultCount) * 100 * 60 * speedMultFor(machine, relaxed.pt.params);
   const r = await optimize(relaxed, { demand, objective });
   if (r.status !== 'Optimal') {
     return { cause: 'structural', detail: 'infeasible even with 100x machine capacity — a required item has no available production route under this config' };
@@ -347,7 +346,7 @@ async function probeInfeasibility(model, demand, objective) {
   const needed = Object.entries(usage)
     .map(([machine, secPerMin]) => ({
       machine,
-      needed: Math.ceil(secPerMin / (60 * model.pt.params.speedMult)),
+      needed: Math.ceil(secPerMin / (60 * speedMultFor(machine, model.pt.params))),
       configured: m.counts[machine] ?? m.defaultCount,
     }))
     .filter((u) => u.needed > u.configured);
@@ -607,7 +606,6 @@ async function minMachines(model, costResult, { demand, slotWeighted = false } =
   if (built.infeasibleRow) return { status: 'Infeasible' };
   // augment: integer n_i per active column with machine time
   const lines = built.lp.split('\n');
-  const capPerMin = 60 * model.pt.params.speedMult;
   const intVars = [];
   const extra = [];
   active.forEach((p, ci) => {
@@ -615,7 +613,7 @@ async function minMachines(model, costResult, { demand, slotWeighted = false } =
     const slots = slotWeighted ? (model.db.machines[p.machine]?.slotsRequired ?? 1) : 1;
     const n = `n${ci}`;
     intVars.push({ n, slots });
-    extra.push(` d${ci}: ${p.timeSec} x${ci} - ${capPerMin} ${n} <= 0`);
+    extra.push(` d${ci}: ${p.timeSec} x${ci} - ${60 * speedMultFor(p.machine, model.pt.params)} ${n} <= 0`);
   });
   const objLine = ` obj: ${intVars.map(({ n, slots }) => `+ ${slots} ${n}`).join(' ') || '0 x0'}`;
   const stIdx = lines.indexOf('Subject To');

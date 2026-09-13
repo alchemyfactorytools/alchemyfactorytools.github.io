@@ -13,6 +13,7 @@
 'use strict';
 
 const { skillParams, STEAM_EFFICIENCY } = require('./config');
+const { heatingDevice, generatorsFor } = require('./heating');
 
 const EPS = 1e-6;
 
@@ -23,7 +24,7 @@ function tileLabel(tile) {
     case 'mint': return `Mint ${tile.item}`;
     case 'belt': return `Main belt: ${tile.item}`;
     case 'cauldron': {
-      const ins = Object.entries(tile.recipe.inputs).map(([n, q]) => (q > 1 ? `${q}× ${n}` : n)).join(' + ');
+      const ins = Object.entries(tile.recipe.inputs || {}).map(([n, q]) => (q > 1 ? `${q}× ${n}` : n)).join(' + ');
       return `${tile.item} ⬅ cauldron(${ins})`;
     }
     default: return tile.item; // recipe node is named for the item it makes
@@ -33,6 +34,7 @@ function tileLabel(tile) {
 // Translate one composed result { tree, fuel, fert, totals, summary } into a render graph.
 function composeGraph(composed, db, cfg) {
   const params = skillParams(cfg.skills);
+  const heater = heatingDevice(db, cfg);
   const beltSpeed = params.beltSpeed;
   const liquid = (item) => !!(db.items[item] && db.items[item].liquid);
   // What the USER declared on the belt for each item (rate cap; null = unlimited). Surfaced on belt
@@ -80,12 +82,10 @@ function composeGraph(composed, db, cfg) {
     // recipe / cauldron process node
     const utilization = tile.machineCount && tile.tileLoad != null && tile.nurseryNote == null
       ? tile.tileLoad / tile.machineCount : null; // nurseries are plot-count (null), like flowgraph
-    // heating devices: a heated machine slots into a parent furnace (Stone Furnace etc.). Surface
-    // how many this box needs so the diagram shows the heat generators, not just the heated machines.
+    // heating devices: a heated machine slots into the configured generator (Stone Furnace etc.).
+    // Surface how many this box needs so the diagram shows the generators, not just the machines.
     const fmach = tile.machine ? db.machines[tile.machine] : null;
-    const furn = fmach && fmach.parent ? db.machines[fmach.parent] : null;
-    const furnaceCount = furn && furn.slots && fmach.slotsRequired && tile.machineCount
-      ? Math.ceil(tile.machineCount * fmach.slotsRequired / furn.slots - 1e-9) : 0;
+    const furnaceCount = generatorsFor(fmach, tile.machineCount, heater);
     addNode({
       id: tile.id,
       type: 'process',
@@ -103,7 +103,7 @@ function composeGraph(composed, db, cfg) {
       fuelItem: tile.fuelPerMin > 0 ? composed.summary.fuelItem : null,
       fuelPerMin: tile.fuelPerMin || 0,
       furnaces: furnaceCount || null,
-      furnaceItem: furnaceCount ? fmach.parent : null,
+      furnaceItem: furnaceCount ? heater.name : null,
       fertItem: tile.fertPerMin > 0 ? composed.summary.fertItem : null,
       fertPerMin: tile.fertPerMin || 0,
       // items the recipe loops back into itself — shown as a "↻ recirculated" band so a

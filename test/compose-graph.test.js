@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 const { makeComposer } = require('../src/composer');
 const { composeGraph } = require('../src/compose-graph');
 const { resolveConfig } = require('../src/config');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 const cfg = resolveConfig({ maxTier: 6, canonical: { fuelItem: 'Coke Powder', fertItem: 'Growth Potion' } });
 const comp = makeComposer(db, cfg);

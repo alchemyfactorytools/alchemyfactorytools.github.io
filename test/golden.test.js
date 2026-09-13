@@ -1,5 +1,5 @@
 // Golden test suite (DESIGN.md §4) — pinned cauldron-formula behaviors for
-// dataset v41 / game 0.5.0.4471. Every value here was verified against the
+// dataset v55 / game 1.0.4950. Every value here was verified against the
 // compiler's exact arithmetic; if a game patch changes cauldronCost/Target
 // values these tests are EXPECTED to fail and must be re-pinned deliberately.
 
@@ -8,20 +8,22 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compileCauldron, resolveTriple, cauldronStats, validateCuratedRows } = require('../src/cauldron');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 const compiled = compileCauldron(db);
 const triple = (...names) => resolveTriple(db, names, compiled);
 
 test('dataset header is the expected version', () => {
-  assert.equal(db.gameVersion, '0.5.0.4471');
-  assert.equal(db.version, 41);
+  assert.equal(db.gameVersion, '1.0.4950');
+  assert.equal(db.version, 55);
 });
 
-test('enumeration size: 135 eligible inputs → C(137,3) = 419,220 triples', () => {
-  assert.equal(compiled.inputs.length, 135);
+test('enumeration size: 138 eligible inputs → C(140,3) = 447,580 triples', () => {
+  // inputs = items with cauldronCost, minus liquids and virtual items (v55 adds Cart,
+  // Marble, Grand Portal Sigil; Gentian Mixture / Automatic Cashier are virtual)
+  assert.equal(compiled.inputs.length, 138);
   assert.equal(compiled.targets.length, 47);
-  assert.equal(compiled.count, 419220);
+  assert.equal(compiled.count, 447580);
 });
 
 test('Gelatinous Gridlock ×3 → Impure Copper Powder (T=150, d=30, margin 12 over Turquoise)', () => {
@@ -58,8 +60,9 @@ test('exact tie: Sage Seeds + Flax Seeds + Rock Salt, T=325 → Copper Powder (i
   assert.ok(db.items['Copper Powder'].id < db.items['Black Powder'].id);
 });
 
-test('exact tie: Plank + Coke Powder + Bronze Ingot, T=325 → Copper Powder (same tie, different inputs)', () => {
-  const r = triple('Plank', 'Coke Powder', 'Bronze Ingot');
+test('exact tie: Plank + Coke Powder + Copper Ingot, T=325 → Copper Powder (same tie, different inputs)', () => {
+  // v55 halved Bronze Ingot's cauldronCost (293 → 155); Copper Ingot now sits at 293
+  const r = triple('Plank', 'Coke Powder', 'Copper Ingot');
   assert.equal(r.T, 325);
   assert.equal(r.exactTie, true);
   assert.equal(r.output, 'Copper Powder');
@@ -109,7 +112,10 @@ test('curated-row validation: Ruby row contradicts the formula (computes to Perf
   assert.equal(ruby.status, 'CONTRADICTION');
   assert.equal(ruby.formulaOutput, 'Perfect Diamond');
   for (const r of results.filter((x) => x.recipe !== 'Ruby')) {
-    assert.equal(r.status, 'consistent', `${r.recipe}: ${JSON.stringify(r)}`);
+    // the Gentian Mixture row feeds a VIRTUAL item (half Gentian, half Nectar): not a
+    // real cauldron input, so the validator skips it rather than judging it
+    const expected = r.recipe === 'Unstable Catalyst (Gentian Mixture)' ? 'skipped' : 'consistent';
+    assert.equal(r.status, expected, `${r.recipe}: ${JSON.stringify(r)}`);
   }
 });
 
@@ -117,13 +123,13 @@ test('all cauldronMulti are 1 (the nearest-neighbor argmin depends on this)', ()
   for (const t of compiled.targets) assert.equal(t.multi, 1);
 });
 
-test('exact-tie census is stable (1103 ties, 93679 self-consuming across 419220 triples)', () => {
+test('exact-tie census is stable (1167 ties, 97446 self-consuming across 447580 triples)', () => {
   let ties = 0;
   let selfC = 0;
   for (let i = 0; i < compiled.count; i++) {
     if (compiled.flags[i] & 1) ties++;
     if (compiled.flags[i] & 2) selfC++;
   }
-  assert.equal(ties, 1103);
-  assert.equal(selfC, 93679);
+  assert.equal(ties, 1167);
+  assert.equal(selfC, 97446);
 });

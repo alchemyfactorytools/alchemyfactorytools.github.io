@@ -13,7 +13,9 @@ const { tiers } = require('./tiers');
 const { makeItemCopperFloor } = require('./cost-floor');
 const { cauldronEligibility } = require('./cauldron');
 const { skillParams, STEAM_EFFICIENCY } = require('./config');
-const { machineHeatPerRun } = require('./normalize');
+const { machineHeatPerRun, speedMultFor } = require('./normalize');
+const { heatingDevice, isHeated } = require('./heating');
+const { productionRecipes } = require('./recipes');
 
 // Simplicity weights (copper-equivalent units). Deliberately MINIMAL to start (per user):
 // only DEPTH, WIDTH, input/material cost, and a co-product-waste penalty. NO machine
@@ -102,7 +104,7 @@ function makeComposer(db, cfg) {
 
   // recipes producing each item (tier-gated), with their primary/co outputs
   const producersOf = new Map();
-  for (const [id, r] of Object.entries(db.recipes)) {
+  for (const [id, r] of Object.entries(productionRecipes(db))) {
     if (!tierOk(r.id != null ? (db.items[r.id] ? r.id : id) : id)) { /* gate by outputs below */ }
     const { inputs, outputs, recirc } = netRecipe(r);
     // skip currency mints (Bank Portal: copper → coin, zero inputs) — currency is valued at its
@@ -260,7 +262,7 @@ function makeComposer(db, cfg) {
       if (steamOn) fuelOpPerHeat = steamCost ? fuelOpPerHeat / STEAM_EFFICIENCY : 0;
       // per-run heat for every non-cauldron recipe (static: machine + baseTime + speed), charged below
       if (fuelOpPerHeat > 0) for (const arr of producersOf.values()) for (const r of arr) {
-        if (r._heatPerRun == null) r._heatPerRun = r.machine ? machineHeatPerRun(db.machines[r.machine], db.machines, r.baseTime || 0, cParams.speedMult) : 0;
+        if (r._heatPerRun == null) r._heatPerRun = r.machine ? machineHeatPerRun(db.machines[r.machine], r) : 0;
       }
     }
     solved = (fertList.length || fuelOpPerHeat > 0) ? relax(items, fertOpPerNutrient, fuelOpPerHeat) : pass1;
@@ -479,12 +481,12 @@ function makeComposer(db, cfg) {
         nurseryNote = `${perPlot.toFixed(1)}/plot, limited by ${fertilityRate < beltSpeed ? 'fertilizer' : 'belt speed'}`;
       }
     } else if (machine && baseTime > 0) {
-      tileLoad = (runsPerMin * baseTime) / (60 * speedMult);
+      tileLoad = (runsPerMin * baseTime) / (60 * speedMultFor(machine, params));
       machineCount = Math.ceil(tileLoad - 1e-9);
     }
 
     // Heat draw: recipe machines via machineHeatPerRun; cauldron crafts carry per-craft baseHeat.
-    const heatPerRun = pick.source === 'cauldron' ? (r.baseHeat || 0) : machineHeatPerRun(machines[machine], machines, baseTime, speedMult);
+    const heatPerRun = pick.source === 'cauldron' ? (r.baseHeat || 0) : machineHeatPerRun(machines[machine], r);
     const heatPerMin = heatPerRun * runsPerMin;
     const nutrientPerMin = (r.nutrientCost || 0) * runsPerMin;
     acc.heatPerMin += heatPerMin;
@@ -565,14 +567,15 @@ function makeComposer(db, cfg) {
     return into;
   }
 
-  // Heated machines slot into a parent furnace (the heat generator / "heating device"): a Stone
-  // Furnace has `slots`; a Crucible needs slotsRequired 3, a Kiln 6. Sum the slots each furnace
-  // type must host so compose() can count the PHYSICAL furnaces = ceil(slotsUsed / slots). Furnaces
-  // are shared across heated machine types (one Stone Furnace can hold a Kiln + a Crucible).
+  // Heated machines slot into the configured heating device (src/heating.js): a Stone Furnace
+  // has 9 slots; a Crucible needs slotsRequired 3, a Kiln 6. Sum the slots the device must host
+  // so compose() can count the PHYSICAL generators = ceil(slotsUsed / slots). Generators are
+  // shared across heated machine types (one Stone Furnace can hold a Kiln + a Crucible).
+  const heater = heatingDevice(db, cfg);
   function tallyFurnaceSlots(tile, into) {
     const m = tile.machine && tile.machineCount ? machines[tile.machine] : null;
-    if (m && m.parent && m.slotsRequired && machines[m.parent] && machines[m.parent].slots) {
-      into[m.parent] = (into[m.parent] || 0) + tile.machineCount * m.slotsRequired;
+    if (isHeated(m)) {
+      into[heater.name] = (into[heater.name] || 0) + tile.machineCount * m.slotsRequired;
     }
     for (const c of tile.inputs || []) tallyFurnaceSlots(c, into);
     return into;
@@ -756,7 +759,7 @@ function makeComposer(db, cfg) {
     if (fert && fert.prodTile && !treeSet.has(fert.prodTile)) tallyFurnaceSlots(fert.prodTile, furnaceSlots);
     const furnaces = {};
     for (const [fname, used] of Object.entries(furnaceSlots)) {
-      const fc = Math.ceil(used / machines[fname].slots - 1e-9);
+      const fc = Math.ceil(used / heater.slots - 1e-9);
       if (fc > 0) furnaces[fname] = fc;
     }
 

@@ -18,6 +18,7 @@
 const { cauldronEligibility } = require('./cauldron');
 const { skillParams } = require('./config');
 const { tiers } = require('./tiers');
+const { productionRecipes } = require('./recipes');
 
 // Virtual-item prefixes. These name LP rows that don't exist as real items — used
 // to fence off supply so it can only be used in a specific role:
@@ -63,18 +64,25 @@ function netSameItems(consumes, produces) {
   }
 }
 
-// Heat consumed per run by a heated machine: own draw is speed-invariant per
-// batch (heatCost × baseTime); the shared furnace overhead burns in real time,
-// so it scales down with speedMult (starfi5h engine semantics).
-function machineHeatPerRun(machine, machines, baseTime, speedMultVal) {
-  if (!machine || machine.heatCost === undefined || machine.heatCost <= 0) return 0;
-  let heat = machine.heatCost * baseTime;
-  const parent = machine.parent ? machines[machine.parent] : null;
-  if (parent && parent.heatSelf && parent.slots) {
-    heat += parent.heatSelf * (machine.slotsRequired / parent.slots) * (baseTime / speedMultVal);
+// Heat consumed per run by a heated machine. A machine draws heatCost/s only while
+// it runs, so the per-batch heat is heatCost × baseTime and speed-invariant. Since
+// 1.0 the heating device it sits on draws nothing on its own. Machines stamped
+// heatCost -1 carry the draw on each recipe: per second for the Advanced Athanor
+// and Steam Boiler, per batch for the curated Cauldron rows (data/mechanics.json).
+const PER_BATCH_RECIPE_HEAT = new Set(['Cauldron', 'Advanced Cauldron']);
+function machineHeatPerRun(machine, recipe) {
+  if (!machine || machine.heatCost === undefined) return 0;
+  const baseTime = recipe.baseTime ?? 0;
+  if (machine.heatCost === -1) {
+    const h = recipe.heatCost ?? 0;
+    return PER_BATCH_RECIPE_HEAT.has(recipe.machine) ? h : h * baseTime;
   }
-  return heat;
+  return machine.heatCost > 0 ? machine.heatCost * baseTime : 0;
 }
+
+// Machines whose cycle time ignores the Factory Efficiency skill (starfi5h engine).
+const SPEED_EXEMPT_MACHINES = new Set(['Seed Plot']);
+const speedMultFor = (machine, params) => (SPEED_EXEMPT_MACHINES.has(machine) ? 1 : params.speedMult);
 
 function applyByproductPolicy(proc, cfg, warnings, byprodSell) {
   if (!proc.primary) return;
@@ -140,7 +148,7 @@ function buildProcessTable(db, cfg) {
   // --- machine recipe columns (incl. curated cauldron rows + catalyst variants) ---
   const curatedMode = cfg.quarantine.curatedCauldronRows;
   const formulaActive = cfg.cauldron.enabled;
-  for (const recipe of db.recipes) {
+  for (const recipe of productionRecipes(db)) {
     const machine = machines[recipe.machine];
     const isCurated = (recipe.machine === 'Cauldron' || recipe.machine === 'Advanced Cauldron');
 
@@ -197,8 +205,7 @@ function buildProcessTable(db, cfg) {
         && !(cfg.canonical.exemptItem && produces[cfg.canonical.exemptItem])) return;
       netSameItems(consumes, produces);
       const baseTime = recipe.baseTime ?? 0;
-      let heat = -machineHeatPerRun(machine, machines, baseTime, params.speedMult);
-      if (machine && machine.heatCost === -1) heat = -(recipe.heatCost ?? 0); // curated cauldron rows
+      const heat = -machineHeatPerRun(machine, recipe);
       const proc = {
         id: `recipe:${recipe.id}${idSuffix}`, kind: idSuffix ? 'catalystVariant' : 'recipe',
         machine: recipe.machine, recipeId: recipe.id,
@@ -497,4 +504,4 @@ function buildProcessTable(db, cfg) {
   return { processes, cauldron, params, warnings, config: cfg, virtualItems: [...virtualItems] };
 }
 
-module.exports = { buildProcessTable, primaryOutput, netSameItems, machineHeatPerRun };
+module.exports = { buildProcessTable, primaryOutput, netSameItems, machineHeatPerRun, speedMultFor, SPEED_EXEMPT_MACHINES };

@@ -1,6 +1,6 @@
 # Alchemy Factory Production Optimizer — Final Design Recommendation
 
-**Status:** Final synthesis of the four-proposal design debate (June 2026, game v0.5.0.4471, dataset `data/alchemy_db.v41.json`).
+**Status:** Final synthesis of the four-proposal design debate (June 2026, game v0.5.0.4471, dataset DB v41). The dataset moved to game 1.0.4950 / DB v55 in September 2026 (`data/alchemy_db.json`); the June numbers below are kept as the design trace, and the "1.0 addendum" at the end of §4 lists what changed.
 **Audience:** the engineer implementing this (repo owner).
 **All quantitative claims below were verified against the live dataset:** 146 items, 36 machines, 168 recipes, 11 liquid-flagged items, 47 cauldron-target items, 18 buyables, 46 sellables, 135 cauldron-eligible inputs → C(137,3) = **419,220** triples, all `cauldronMulti = 1`, 6 baseTime-less Nursery rows, 16 multi-output recipes.
 
@@ -180,6 +180,12 @@ Mars (id 620, sellPrice 280,000) has **no cauldronTarget** — it cannot be caul
 - Ruby curated-row contradiction alarm (computes to Perfect Diamond).
 - Piecewise interp: target 180 → 36 heat/6.53 s; target 200,000 → 3131.3 heat/30.91 s.
 - Scenario A infeasibility without cauldron; Scenario B mixed basis (150/50); Scenario C boundedness with capacity rows.
+
+**1.0 addendum (DB v55, September 2026).** Two routes absent from the June trace change the Mars pins; the tests in `test/optimizer.test.js` carry the new numbers and keep the June claims as regressions with Seed Plots locked (`machines.counts["Seed Plot"] = 0`):
+- **Seed Plot** (tier 2, time-driven, no nutrients): 1 bought seed → 120..200 herbs. "No farming" no longer removes Soap Powder, so Scenario A is feasible without the cauldron (~74.8k g/Mars material). With plots locked it is infeasible again and the GG×3 cauldron unlocks Mars at ~158.2k.
+- **Copper Powder Advanced Athanor** (added upstream June 24, ChargeCost 36, 32 heat/s): the fertile variant yields the doubled CP+ICP pair, the unstable variant ICP alone. The 200:150 joint-product mismatch is now fixed by mixing catalyst variants, not by the cauldron at the margin; no cauldron column is in the Scenario A/B optimum.
+- Cauldron space: 138 eligible inputs → C(140,3) = **447,580** triples (Cart, Marble, Grand Portal Sigil added; virtual items excluded). Bronze Ingot cauldronCost halved (293 → 155), so the T=325 tie example now uses Copper Ingot.
+- Heat: 1.0 removed base heat on heating devices; machines draw heat only while running. The `parent` machine link is gone; heated machines pack onto a configured heating device (`src/heating.js`). The Advanced Athanor draws per recipe (32/s or 360/s).
 
 ---
 

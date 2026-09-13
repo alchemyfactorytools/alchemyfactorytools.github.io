@@ -27,7 +27,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const { solveComposerBody } = require(path.join(ROOT, 'src/composer-solve'));
 const { beltSpeed } = require(path.join(ROOT, 'src/config'));
-const db = require(path.join(ROOT, 'data/alchemy_db.v41.json'));
+const db = require(path.join(ROOT, 'data/alchemy_db.json'));
 
 const REF = { factory: 0, logistics: 0, alchemy: 0, fuel: 0, fertilizer: 0 }; // 1:1 L0 reference
 const BELT = beltSpeed(0); // 60/min at the reference

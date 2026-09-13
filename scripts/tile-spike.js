@@ -12,7 +12,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const { solveComposerBody } = require(path.join(ROOT, 'src/composer-solve'));
 const { beltSpeed, speedMult } = require(path.join(ROOT, 'src/config'));
-const db = require(path.join(ROOT, 'data/alchemy_db.v41.json'));
+const db = require(path.join(ROOT, 'data/alchemy_db.json'));
 
 const ZERO = { factory: 0, logistics: 0, alchemy: 0, fuel: 0, fertilizer: 0 };
 const baseCfg = (skills, byproducts = 'trash') => ({

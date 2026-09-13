@@ -1,80 +1,125 @@
 {
   "_meta": {
-    "source": "Extracted from starfi5h/AlchemyFactoryCalculator develop branch engine code (DB v41, gameVersion 0.5.0.4471, 2026-06-03) and the official v0.5.4467 patch notes (Steam announcement gid 1833968530899984, 2026-06-02)",
-    "extractedAt": "2026-06-12"
+    "source": "Extracted from starfi5h/AlchemyFactoryCalculator develop branch engine code (DB v55, gameVersion 1.0.4950, 2026-09-12), the official 1.0 patch notes (Steam announcement gid 1842846814454819, 2026-09-08) and the v0.5.4467 notes (gid 1833968530899984, 2026-06-02)",
+    "extractedAt": "2026-09-12"
   },
   "cauldron": {
     "description": "Deterministic 3-input combiner. As of v0.5.4467 (June 2, 2026) the additional output-generation multiplier was REMOVED by the developer; output selection is now purely nearest-target. Items have cauldronCost (input value), cauldronTarget (output selection target), and cauldronMulti (distance weighting).",
     "model": {
       "inputs": "exactly 3 items, each contributing its cauldronCost",
-      "samenessRatio": { "allThreeIdentical": 0.5, "exactlyTwoIdentical": 0.65, "allDifferent": 1.0 },
+      "samenessRatio": {
+        "allThreeIdentical": 0.5,
+        "exactlyTwoIdentical": 0.65,
+        "allDifferent": 1
+      },
       "totalValue": "T = (cost1 + cost2 + cost3) * samenessRatio",
       "outputSelection": "output = argmin over items-with-cauldronTarget of |T - cauldronTarget| * cauldronMulti; ties broken by lower item id",
       "craftTimeAndHeat": {
         "description": "Piecewise-linear interpolation over the OUTPUT item's cauldronTarget",
-        "targetBreakpoints": [1, 100, 1000, 10000, 1000000],
-        "timeSeconds": [3, 6, 12, 24, 60],
-        "heat": [1, 20, 200, 1500, 10000]
+        "targetBreakpoints": [
+          1,
+          100,
+          1000,
+          10000,
+          1000000
+        ],
+        "timeSeconds": [
+          3,
+          6,
+          12,
+          24,
+          60
+        ],
+        "heat": [
+          1,
+          20,
+          200,
+          1500,
+          10000
+        ]
       }
     },
-    "machineNote": "Cauldron and Advanced Cauldron carry machines.heatCost = -1 in the DB: their heat draw is recipe/output-dependent (see craftTimeAndHeat), not a fixed rate."
+    "machineNote": "Cauldron and Advanced Cauldron carry machines.heatCost = -1 in the DB: their heat draw is output-dependent (see craftTimeAndHeat). The curated Cauldron recipe rows carry that PER-BATCH heat in recipe.heatCost. The upstream \"Unstable Catalyst (Gentian Mixture)\" row uses a virtual input and is skipped by the validator."
   },
   "advancedAthanorCatalysts": {
-    "description": "Added in v0.5.4467 (June 2026). The Advanced Athanor runs standard Athanor recipes at the same heat consumption as a standard Athanor. Recipes carry a ChargeCost; inserting a catalyst consumes ChargeCost / catalystCharges catalyst items per batch. Catalysts modify the recipe as follows.",
+    "description": "Added in v0.5.4467 (June 2026). Recipes carry a ChargeCost; inserting a catalyst consumes ChargeCost / catalystCharges catalyst items per batch. Since DB v50 (August 2026) the Advanced Athanor is heatCost -1 and each recipe carries its own PER-SECOND draw in recipe.heatCost: 32/s for the four commodity recipes (Coke, Steel Ingot, Copper Powder, Salt), 360/s for the gem recipes.",
     "catalysts": {
-      "Unstable Catalyst": { "charges": 180, "effect": "replaces recipe outputs with the recipe's unstableOutputs (altered product probabilities/mix)" },
-      "Fertile Catalyst": { "charges": 240, "effect": "doubles all recipe outputs" },
-      "Resonant Catalyst": { "charges": 1500, "effect": "replaces recipe outputs with resonantOutputs (generates all products simultaneously)" },
-      "Eternal Catalyst": { "charges": 99999, "effect": "recipe consumes no material inputs (only catalyst charges)" }
+      "Unstable Catalyst": {
+        "charges": 180,
+        "effect": "replaces recipe outputs with the recipe's unstableOutputs (altered product probabilities/mix)"
+      },
+      "Fertile Catalyst": {
+        "charges": 240,
+        "effect": "doubles all recipe outputs"
+      },
+      "Resonant Catalyst": {
+        "charges": 1500,
+        "effect": "replaces recipe outputs with resonantOutputs (generates all products simultaneously)"
+      },
+      "Eternal Catalyst": {
+        "charges": 99999,
+        "effect": "recipe consumes no material inputs (only catalyst charges)"
+      }
     },
     "consumptionFormula": "catalystItemsPerBatch = recipe.ChargeCost / catalyst.charges",
-    "recipesWithCatalystOutputs": ["Silver Powder", "Gold Dust", "Malachite_Alt", "Lapis Lazuli", "Obsidian"],
+    "recipesWithCatalystOutputs": [
+      "Silver Powder",
+      "Gold Dust",
+      "Malachite_Alt",
+      "Lapis Lazuli",
+      "Obsidian",
+      "Coke Advanced Athanor",
+      "Steel Ingot Advanced Athanor",
+      "Copper Powder Advanced Athanor",
+      "Salt Advanced Athanor"
+    ],
     "stackingNote": "Catalysts can combine (the calculator applies eternal -> unstable -> resonant -> fertile in that order; fertile doubles whatever output set is active)."
   },
   "heatAndFuel": {
-    "description": "Heat-using machines attach to a heat source (machines.parent, e.g. Stone Furnace) and occupy slotsRequired of the parent's slots. Fuel items carry items.heat (energy). Burned heat is multiplied by fuelMult from the Fuel Efficiency skill.",
-    "machineHeatDraw": "heatPerSec = machine.heatCost * speedMult (+ share of parent.heatSelf split across occupied slots)",
-    "heatPerBatch": "heatCost-per-item = heatPerSec * (recipe.baseTime / speedMult) / batchYield  — speedMult cancels for the machine's own draw, so faster factories do not save heat per item",
+    "description": "Heat-using machines (slotsRequired > 0) sit on a heating device — Stone Furnace (9 slots), Blast Furnace (42), or Steam Heating Pad (9) — chosen by config.heatingDevice (src/heating.js). Fuel items carry items.heat (energy). Burned heat is multiplied by fuelMult from the Fuel Efficiency skill.",
+    "baseHeatRemoved": "1.0 (2026-09-08): \"Removed the base heat cost of all heating devices.\" Devices no longer draw heat on their own (heatSelf = 0 in DB v55); a machine consumes heat only while it runs.",
+    "machineHeatDraw": "heatPerSec = machine.heatCost * speedMult while running. Machines with heatCost -1 read the draw from recipe.heatCost: per second for the Advanced Athanor and Steam Boiler, per batch for the curated Cauldron rows.",
+    "heatPerBatch": "heat per batch = heatCost * recipe.baseTime — speedMult cancels, so faster factories do not save heat per item",
     "selfFuelLoops": "Loops like Charcoal-fired Charcoal production are solvable: net fuel output = gross heat produced - heat consumed by the production chain. The starfi5h calculator exposes gold-per-power (G/P) ratios for choosing the cheapest heat source."
   },
   "steam": {
-    "description": "Tier 6 'Steam Power' heat-DISTRIBUTION layer (added ~v0.4.3/0.4.4; present in v0.5). NOT a craftable ingredient and NOT a new recipe input. It is an alternative way to DELIVER heat: fuel -> [Steam Boiler] -> steam -> (pipes) -> [Heating Pad] -> heat -> heating device sitting on the pad. Net effect is identical to direct furnace heating except more fuel-expensive; its only advantage is physical factory layout (piping, compact/vertical builds, centralized power), which this planner does not model.",
+    "description": "Tier 6 heat-DISTRIBUTION layer: fuel -> [Steam Boiler] -> Steam (virtual liquid item 9002) -> pipes -> [Steam Heating Pad] -> heat -> heated machine on the pad. Since 1.0 the pad draws no base heat, so its only costs are the boiler fuel and any conversion loss.",
     "steamBoiler": {
       "tier": 6,
-      "role": "burns fuel to produce steam",
-      "outputSettingsPerHour": [600, 3000, 18000],
-      "fuelToSteamRatio": "not authoritatively documented; exact fuel draw per steam unit unverified"
+      "role": "burns fuel to produce Steam; machines.heatCost -1 with the draw on the recipe",
+      "upstreamRecipe": "Steam Boiler (High): 3000 heat/s for 2 s -> 300 Steam (6000 heat per 300 Steam, i.e. 20 heat per Steam unit at the boiler)",
+      "outputSettings": "the game offers Low/Mid/High boiler settings; only High is in DB v55"
     },
     "heatingPad": {
-      "footprint": "3x3 (some sources say 3x1); a device placed on top draws its heat from the pad",
-      "steamConsumptionPerHour": 60,
-      "idleOverhead": "high — community reports ~20x a furnace's idle draw, charged even when the device above is idle"
+      "footprint": "3x3, 9 slots, isGenerator; heatSelf 0 since 1.0",
+      "steamPerHeat": "NOT in upstream data (the pad is modeled as a plain generator). Pre-1.0 community figures: ~60 steam/hour consumption, and a controlled test delivering ~60% of direct-burn heat. Needs an in-game measurement on 1.0."
     },
     "steamPipes": "transport and store steam across floors with effectively unlimited throughput",
-    "efficiencyVsDirect": "LOSSY. Controlled community test (identical charcoal input): basic furnace produced 597 units vs steam path 360 units => steam delivers ~60% of direct-burn heat (~40% loss), plus the idle overhead above.",
-    "modelingDecision": "NOT wired into the LP optimizer or tile composer (decided 2026-06-14). Steam is strictly dominated on the only axis we score (fuel cost -> copper -> profit): it is always more expensive than direct furnace heating. Its sole benefit is floor-space/layout, a dimension this planner does not represent, so a steam option could only ever produce worse builds and would be dead code. Revisit ONLY if a footprint/layout-cost dimension is ever added to the model.",
+    "efficiencyVsDirect": "STEAM_EFFICIENCY = 0.6 in src/config.js is the pre-1.0 community measurement (597 vs 360 product from identical charcoal). Unverified on 1.0; re-measure.",
+    "modelingDecision": "Modeled in the tile composer as a central utility (config.steam: enabled, mode free|cost). Central steam sets the heating device to the Steam Heating Pad and removes the fuel production trunk from the build; \"cost\" charges the fuel value / STEAM_EFFICIENCY. Kept because steam is the long-term heating layout; the pad consumption rate above is the open number.",
     "sources": [
-      "https://vortexgaming.io/en/postdetail/737649 (v0.4.4 Steam Power preview)",
-      "https://steamcommunity.com/app/3669570/discussions/0/798967892166053054/ (use-case + efficiency test)",
+      "starfi5h DB v49 (2026-07-29): \"Add Steam and Steam Boiler\"",
+      "https://steamcommunity.com/app/3669570/discussions/0/798967892166053054/ (pre-1.0 efficiency test)",
       "https://www.youtube.com/watch?v=i0xnyIC8Mcg (Steam Engine & Heating Pad explained)"
     ]
   },
   "fertilizer": {
-    "description": "Crops grown in Nursery/Seed Plot/World Tree Nursery consume nutrients (recipe.nutrientCost or item.nutrientCost). Fertilizer items carry items.nutrientValue, multiplied by fertMult from the Fertilizer Efficiency skill. Crop plots have maxFertility on items. Nursery crop recipes have no baseTime; growth is nutrient-driven.",
+    "description": "Crops grown in Nursery / World Tree Nursery / Miniature World Tree consume nutrients (recipe.nutrientCost). Fertilizer items carry items.nutrientValue, multiplied by fertMult from the Fertilizer Efficiency skill; plots have maxFertility. Nursery crop recipes have no baseTime; growth is nutrient-driven. The tier-2 Seed Plot is time-driven instead: 1 seed -> 120..200 herbs per plot cycle (400..2160 s), no nutrients, and NOT affected by the Factory Efficiency speed multiplier (upstream engine; src/normalize.js SPEED_EXEMPT_MACHINES).",
     "selfFertLoops": "Self-sustaining fertilizer loops (crops -> fertilizer -> crops) are solvable the same way as self-fuel; the calculator exposes gold-per-nutrient-value (G/V) ratios."
   },
   "logistics": {
     "beltSpeed": "60 items/min base; see skills.json logistics_efficiency for the leveling formula",
     "beltFractions": "Splitters support ratios 1/12, 1/10, 1/8, 1/6, 1/5, 1/4, 1/3, 2/5, 1/2, 3/5, 2/3, 3/4, 4/5, 5/6, full",
-    "conveyorRefactor": "v0.5.4467 'Refactoring Conveyor System' — concrete throughput changes not documented in patch notes; treat current belt numbers as needing in-game verification",
-    "railSystem": "Rail Logistics System (8x transport capacity, gravity acceleration) is on the official roadmap for Summer 2026 but NOT shipped as of 2026-06-12"
+    "conveyorRefactor": "v0.5.4467 \"Refactoring Conveyor System\" plus 1.0 fixes to split/merge distribution and Priority Mergers; belt numbers still need in-game verification",
+    "railSystem": "Wagon System shipped in 1.0 (2026-09-08): rail-based logistics with higher capacity than conveyors. Not in the upstream dataset and not modeled here; the belt-cap layer in the tile composer is conveyor-only."
   },
   "economy": {
-    "prices": "items carry buyPrice (Purchasing Portal), sellPrice (46 sellable items), wholesalePrice on some items; coins are items (Copper/Silver/Gold Coin + x50 variants) crafted at Bank Portal",
-    "junePatchNote": "Black Powder sellPrice AND heat were both doubled in v0.5.4467 — any pre-June economic data for it is wrong"
+    "prices": "items carry buyPrice (Purchasing Portal), sellPrice, wholesalePrice on some items; coins are items crafted at the Bank Portal. DB v55 also lists Purchasing Portal buy rows and Bank Portal coin-exchange rows as recipes; src/recipes.js filters them out (purchases are priced from buyPrice, coins interchange at face value).",
+    "junePatchNote": "Black Powder sellPrice AND heat were both doubled in v0.5.4467",
+    "v1Note": "1.0: Linseed Oil production and consumption scaled by the same factor (50 -> 20 per Flax; consumers 200 -> 80, 300 -> 120); Obsidian byproduct Volcanic Ash -> Marble (Volcanic Ash now comes from an Enhanced Grinder recipe on Obsidian); Clockwork Bird no longer salable; sell prices raised on Crown, Luna, Sol, Pocket Watch; Brew Barrel beverages (five virtual liquid items with sellPrice); shop sales upgrade sellMult(lvl) = 1 + 0.01*lvl (not applied by this planner). Between June and 1.0 the upstream DB also fixed Obsidian inputs (Crude -> Shattered Crystal) and halved Bronze Ingot cauldronCost (293 -> 155)."
   },
   "throughputModel": {
-    "machineOutputRate": "outputsPerMin = (60 / (recipe.baseTime / speedMult)) * batchYield, where batchYield = recipe output count * alchemyMult (yield-multiplier machines only; Thermal Extractor x3 extra)",
+    "machineOutputRate": "outputsPerMin = (60 / (recipe.baseTime / speedMult)) * batchYield, where batchYield = recipe output count * alchemyMult (yield-multiplier machines only; Thermal Extractor x3 extra at full height). Seed Plot ignores speedMult.",
     "machinesNeeded": "targetRate / machineOutputRate, fractional machines rounded up per line segment"
   }
 }

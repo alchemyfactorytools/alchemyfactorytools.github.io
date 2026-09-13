@@ -1,5 +1,7 @@
 'use strict';
 
+const { productionRecipes } = require('./recipes');
+
 // Cheapest copper to obtain one unit of each item, via buyPrice or a machine
 // recipe's material cost. Computed by iterative relaxation (Bellman-Ford style)
 // to a fixpoint, so the result is order-independent — a naive memoized DFS gets
@@ -11,7 +13,7 @@ function makeItemCopperFloor(db) {
   for (const [name, item] of Object.entries(db.items)) cost.set(name, item.buyPrice ?? Infinity);
   for (let iter = 0; iter < 200; iter++) {
     let changed = false;
-    for (const r of db.recipes) {
+    for (const r of productionRecipes(db)) {
       let c = 0;
       let ok = true;
       for (const [inp, q] of Object.entries(r.inputs)) {

@@ -5,6 +5,9 @@
 
 'use strict';
 
+const { heatingDevice, isHeated } = require('./heating');
+const { speedMultFor } = require('./normalize');
+
 const EPS = 1e-6;
 
 function fmtRate(n) {
@@ -67,7 +70,7 @@ const stripVirtual = (s) => (String(s) === COPPER ? 'copper' : String(s).replace
 
 function buildFlowGraph(result, model, demand, opts = {}) {
   if (result.status !== 'Optimal') throw new Error(`cannot graph a ${result.status} result`);
-  const speedMult = model.pt.params.speedMult;
+  const speedFor = (machine) => speedMultFor(machine, model.pt.params);
   const beltSpeed = model.pt.params.beltSpeed; // items/min a belt carries (logistics skill)
   const resourceConsumerEdges = opts.resourceConsumerEdges === true;
   const flowsAll = result.flows.filter((f) => f.rate > EPS);
@@ -137,15 +140,15 @@ function buildFlowGraph(result, model, demand, opts = {}) {
     const p = f.process;
     if (hidden.has(p.id)) continue;
     let machineCount = p.machine && p.timeSec > 0
-      ? Math.ceil((f.rate * p.timeSec) / (60 * speedMult) - 1e-9)
+      ? Math.ceil((f.rate * p.timeSec) / (60 * speedFor(p.machine)) - 1e-9)
       : null;
-    let util = machineCount ? (f.rate * p.timeSec) / (60 * speedMult) / machineCount : null;
+    let util = machineCount ? (f.rate * p.timeSec) / (60 * speedFor(p.machine)) / machineCount : null;
     // tileLoad = continuous machine/plot demand (NOT the integer ceil) — what
     // blueprint() tiles into clean cells. For a timed machine it's the fractional
     // machine-equivalents; for a nursery it's the fractional plot count (rate/perPlot).
     // Kept separate from `utilization` (which stays null for nurseries — the render
     // layer uses utilization!=null to tell timed machines from plot-count nurseries).
-    let tileLoad = p.machine && p.timeSec > 0 ? (f.rate * p.timeSec) / (60 * speedMult) : null;
+    let tileLoad = p.machine && p.timeSec > 0 ? (f.rate * p.timeSec) / (60 * speedFor(p.machine)) : null;
     let nurseryNote = null;
     if (p.machine && NURSERIES.has(p.machine)) {
       const np = nurseryPlots(p, f.rate);
@@ -293,17 +296,15 @@ function buildFlowGraph(result, model, demand, opts = {}) {
         }
       }
     }
-    const slotsByFurnace = {};
+    const heater = heatingDevice(model.db, model.pt.config);
+    let slotsUsed = 0;
     for (const f of heatConsumers) {
       const m = model.db.machines[f.process.machine];
       const node = nodeById.get(f.process.id);
-      if (!m || !m.parent || !node || !node.machineCount) continue;
-      const slots = m.slotsRequired ?? (model.db.machines[m.parent]?.slots ?? 9);
-      slotsByFurnace[m.parent] = (slotsByFurnace[m.parent] ?? 0) + node.machineCount * slots;
+      if (!isHeated(m) || !node || !node.machineCount) continue;
+      slotsUsed += node.machineCount * m.slotsRequired;
     }
-    for (const [fname, slots] of Object.entries(slotsByFurnace)) {
-      furnaceTotals[fname] = Math.ceil(slots / (model.db.machines[fname]?.slots || 9));
-    }
+    if (slotsUsed > 0) furnaceTotals[heater.name] = Math.ceil(slotsUsed / heater.slots - 1e-9);
   }
 
   // NUTRIENT: no hub box and no fertilize node — fertilizer flows straight from its

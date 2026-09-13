@@ -5,9 +5,27 @@ function t(text, category = 'ui') {
     const i18n = window.ALCHEMY_I18N;
 	const translatedText = i18n?.[category]?.[text];
 	if (!translatedText && category != 'ui') {
-		console.warn(`[i18n][${category}] Missing: ${text}`);
+		console.info(`[i18n][${category}] Missing: ${text}`);
 	}	
     return translatedText ?? text;
+}
+
+// Input item name, return the translated item name. And vice versice
+function queryDualItemName(itemName) {
+    const i18n = window.ALCHEMY_I18N;
+    if (!i18n || !i18n.items) return "";
+    const translatedText = i18n.items[itemName];
+    if (translatedText) return translatedText;
+    for (const [originalName, nameInDb] of Object.entries(i18n.items)) {
+        if (nameInDb === itemName) return originalName;
+    }
+    return "";
+}
+
+function getCurrentItemName(originName) {
+    const i18n = window.ALCHEMY_I18N;
+    if (!i18n || !i18n.items || !i18n.enabled) return originName;
+    return i18n.items[originName] ?? originName;
 }
 
 function translateDatabase(db, forward) {
@@ -108,6 +126,12 @@ function translateDatabase(db, forward) {
             customCosts[getT(itemKey)] = db.settings.customCosts[itemKey];
         }
         db.settings.customCosts = customCosts;
+        if (db.settings.recipeModifiers) {
+            for (let recipeId in db.settings.recipeModifiers) {
+                const mod = db.settings.recipeModifiers[recipeId];
+                if (mod && mod.customInput) mod.customInput = getT(mod.customInput);
+            }
+        }
     }
 
     if (missingKeys.size > 0) {
@@ -136,10 +160,12 @@ window.ALCHEMY_I18N = {
 
         // --- 1. Production Goal ---
         "Production Goal": "生产目标",
-        "MULTI": "多产物",
+        "Single Target": "单产物",
+        "Multi Target": "多产物",
         "+ Add Item": "+ 添加需求物品",
         "💾 Save List": "💾 保存列表",
         "📂 Load List": "📂 加载列表",
+        "⚡ Fuel/Fert 1-Machine Quick Set": "⚡ 快速设定燃料/肥料(单机器)",
         "Target Item": "目标物品",
         "Select or Type...": "选择或输入...",
         "Set by Machine Count": "按机器数量设置",
@@ -149,6 +175,7 @@ window.ALCHEMY_I18N = {
         "Custom Rate": "自定义速率",
         "Rate (Items/Min)": "速率 (个/分钟)",
         "Select Item": "选择物品",
+        "No Item Selected": "未选择物品",
         "Expand All": "全部展开",
         "Collapse All": "全部收起",
         "All Items": "所有物品",
@@ -156,39 +183,57 @@ window.ALCHEMY_I18N = {
 
         // --- 2. Logistics ---
         "Logistics": "物流设置",
-        "Heat Source": "燃料来源",
+        "Heating Device": "加热设备",
+        "Fuel Source": "燃料来源",
         "Fertilizer Source": "肥料来源",
-        "Self-Fuel: OFF": "自供燃料: 关",
-        "Self-Fuel: ON": "自供燃料: 开",
-        "Self-Fert: OFF": "自供肥料: 关",
-        "Self-Fert: ON": "自供肥料: 开",
-        "Make Default": "设为默认",
-        "Current Default": "当前默认",
-        "Cost (G/item):" : "成本设置(每个):",
-        "Show Machine Max Cap": "显示机器产能上限",
-        "Show Machine Heat & Nutr": "显示机器热值&肥力用量",
+        "slots": "格",
+        "Self-Fuel": "自供燃料",
+        "Self-Fert": "自供肥料",
+        "Cost (/item):" : "成本设置(每个):",
+        "UI Size": "版面大小",
         "Show Belt Count": "显示传送带需求",
+        "Show Machine Usage": "显示机器消耗用量",
+        "Show Raw Machine Count": "显示浮点机器数",
+        "Show Machine Max Cap": "显示机器产能上限",        
+        "Show Machine Heat & Nutr": "显示机器热值&肥力用量",
+        
 
         // --- 3. Tree & Nodes ---
+        "Summary": "摘要",
         "Gross Output": "总产出",
         "Total Load": "总负载",
+        "Gross Profit": "毛利润",
         "Unit Cost": "单位成本",
         "Unit Value": "单位价值",
-        "Coin": "铜币",
+        "Coin": "钱币",
         "Heat": "热值",
+        "Steam": "蒸汽",
         "Nutr": "肥力",
-        "Conversion Cost": "总成本",
-        "Retail Price   ": "零售价",
+        "Net Output": "净产出",
+        "Converted Cost": "总成本",
+        "Retail": "零售",
+        "Retail Price": "零售价",
+        "Retail Price  ": "零售价",
+        "Wholesale": "批发",
         "Wholesale Price": "批发价",
+        "Cost Per Exp   ": "每经验成本",
+        "Fuel Value": "燃料换算价值",
+        "Fert Value": "肥料换算价值",
+        "Cost per Heat": "单位热值成本",
+        "Cost per Nutr": "单位肥力成本",
 
         "Production Chain": "生产链",
         "Recycle All": "全部回收",
         "Un-recycle All": "全部不回收",
         "Swap Recipe": "替换配方",
         "Input": "输入",
+        "Output": "输出",
         "Yields": "产出",
         "Avail": "可用",
         "Used": "已用",
+        "Expand": "展开",
+        "Fold": "收起",
+        "Raw": "原料",
         "Raw Input": "原料输入",
         "External Input": "外部输入",
 
@@ -198,6 +243,8 @@ window.ALCHEMY_I18N = {
         "Throughput": "单设备产量",
         "Internal Nutrient Module": "内部肥料模块",
         "Internal Heat Module": "内部燃料模块",
+        "Internal fuel/fert module demand exceeds its own supply.": "内部燃料/肥料模块的需求超过了其自身供应量",
+        "By-product Recycling: Value Unconverged.": "副产物回收：数值未达成收敛",
 
         "Common Nodes": "共同节点",
 
@@ -212,8 +259,16 @@ window.ALCHEMY_I18N = {
 
         // --- 4. Construction List ---
         "Construction List": "建造清单",
+        "Machine Size": "机器尺寸",
+        "Machine Area": "机器占地面积",
+        "Sum Area": "总面积",
+        "Sum Volume": "总体积",
+        "On Heat Device": "发热设备上",
         "Total Materials Required": "总计材料需求",
         "Total Slots": "总计格子数",
+        "Total Machines": "总计机器数",
+        "Flat Footprint Tile": "平铺占地地板数",
+        "Compact Footprint Tile": "紧凑占地地板数",
 
         // --- 5. Upgrades ---
         "Upgrades (Levels)": "升级",
@@ -222,10 +277,14 @@ window.ALCHEMY_I18N = {
         "Alchemy Skill": "炼金技术",
         "Fuel Efficiency": "燃料效率",
         "Fert Efficiency": "肥料效率",
+        "Sale Price": "销售价格",
+        "Contract Price": "合约价格",
 
         // --- 6. Save/Reset ---
+        "Send to Planner": "传至规划器",
         "Save/Reset": "保存/重置",
         "Save Upgrades": "保存设置",
+        "Reset Settings": "重置偏好设定",
         "Reset Recipes": "重置配方数据",
         "Reset Translations": "重置翻译",
         "All Data Reset": "全部重置",
@@ -243,20 +302,40 @@ window.ALCHEMY_I18N = {
         "Select All": "全选",
         "Deselect All": "取消全选",
         "Sort by Value": "以炼金价值排序",
-        "Real-time": "实时",
-        "Filtered Results": "炼金配方匹配结果",
-        "Number of matching recipes" : "符合条件的配方总数",
+        "Result Area": "结果区域",
+        "Set Target Output": "设定目标产物",
+        "No recipes meet the criteria.": "没有符合条件的配方。",
+        "Selected item is not a valid cauldron target.": "所选物品不是有效的炼金目标产物。",
+        "Total count of recipes" : "已检索配方总数",
+        "Show Estimated Cost": "显示预估成本",
+        "Order by Est. Cost": "按预估成本排序",
+        "Estimated Cost": "预估成本",
+        "⚙ Cost Settings": "⚙ 成本设定",
         "Calculate All": "计算全部",
+        "Base Item Cost List": "单份基本物品成本表",
+        "Cost" : "成本",
+        "Minimum": "最低",
         "Set Input": "指定原料",
         "2 Diff": "2件不同",
         "3 Diff": "3件不同",
         "2 Same": "2件相同",
         "3 Same": "3件相同",
         "Unattainable Targets": "无法达成的目标",
+        "Single Step Search": "单步搜索",
+        "Multiple Steps Search": "多步搜索",
+        "Max Intermediate Items": "中间产物上限",
+        "Item": "物品",
+        "Step": "阶层",
+        "Ingredients": "原料",
+        "Show Upstream Ingredients": "显示上游原料",
         "Saved Recipes": "已保存配方",
+        "Toggle Favorite": "添加/移除收藏",
         "Import": "导入",
         "Export": "导出",
         "Sync DB": "同步数据库",
+        "Calculation result": "运算结果",
+        "Discount for 3 identical inputs (0.5×)": "3 种相同原料的折扣系数 (0.5×)",
+        "Discount for 2 identical inputs (0.65×)": "2 种相同原料的折扣系数 (0.65×)",
         "No saved recipes yet.": "暂无保存的配方。",
         "+ Add Cauldron Recipe": "+ 新增炼金锅配方",
         "Valid Range": "有效区间",
@@ -274,15 +353,172 @@ window.ALCHEMY_I18N = {
 
         "Select Recipe": "选择配方",
         "Select Recipe for ": "切换配方 ",
+        "Global": "全局",
+        "This Node Only": "仅此节点",
         "Catalysts": "催化剂",
+        "Charge Cost": "消耗充能",
         "🧪 Unstable": "🧪 不稳定",
         "🌿 Fertile": "🌿 丰饶",
         "✨ Resonant": "✨ 共振",
         "♾️ Eternal": "♾️ 永恒",
-        "Apply": "应用"
+        "Thermal Extractor Height": "热能萃取机高度",
+        "Height": "高度",
+        "Bonus": "加成",
+        "output": "产出",
+
+        "Select Input Item": "选择输入物品",
+        "Please select an input item first.": "请先选择一个输入物品。",
+        "Selected item is missing baseCost data.": "该物品缺少 baseCost 数据，暂无法使用。",
+        "Cannot select the output item itself as input.": "不能选择产物本身作为输入。",
+
+        "⚙ Manage Custom Costs": "⚙ 管理自订成本",
+        "Manage Custom Costs": "管理自订成本",
+        "No custom costs set.": "尚未设定任何自订成本。",
+        "Add Item": "新增物品",
+
+        // --- Help ---
+        "Guides": "指南",
+        "Items": "物品",
+        "Machines": "机器",
+        "Contracts": "合约",
+        "Full Documentation": "完整说明",
+        "Working Hours / Day": "每日工作小时数",
+        "Contract Amount Boost (%)": "合约数量加成 (%)",
+        "Contract Profit Boost (%)": "合约收益加成 (%)",
+        "Units/Contract": "每合约单位数",
+        "Reward": "奖励",
+        "Daily Max": "每日上限",
+        "Units/min": "单位/分钟",
+        "Max Revenue/Day": "每日最大收益",
+        "Dispatch Requirement": "认证条件",
+        "Loading...": "载入中...",
+        "Category": "类别",
+        "Tier": "等级",
+                
+        "Properties": "属性",
+        "Has Value": "有值",
+        "Quick select (exact)": "快速选择",
+        "Buy Price": "买入价格",
+        "Sell Price": "卖出价格",
+        "Wholesale Price": "批发价",
+        "Heat Value": "热值",
+        "Nutrient Cost": "营养值消耗",
+        "Nutrient Value": "营养值",
+        "Max Fertility": "最大肥力",
+        "Cauldron Cost": "炼金价值",
+        "Cauldron Target": "炼金目标",
+        "Decompose Exp": "分解经验",
+        "Decompose Time": "分解时间",
+        "Charges": "充能数",
+        "Max Stack": "最大堆叠",
+        "Exp": "经验",
+
+        "Production Recipes": "生产配方",
+        "Used In": "使用于",
+        "Build Cost": "建造材料",
+        "Heat Cost": "热值消耗",
+        "Slots Required": "占地(格子)",
+        "Heat Cost (Self)": "自热消耗",
+        "Max Slots": "占地(格子)",
+        "Type": "类型",        
+        "Fertilizer Device": "施肥设备",
+        
+        "No production recipes": "无生产配方",
+        "Not used in any recipe": "未被任何配方使用",
+        "No build materials": "无建造材料",
+        "No recipes": "无配方",
+        "Set as Preferred": "设为首选",
+        "Remove Preferred": "取消首选",
+        "Search items...": "搜索物品...",
+        "Search machines...": "搜索机器...",
+        "← Select an item": "← 选择一个物品",
+        "← Select a machine": "← 选择一台机器",
+        "Item data not found": "未找到物品数据",
+        "Machine data not found": "未找到机器数据",
+
+        "per machine (/min)": "每单位机器 (/min)",
+        "Apply": "应用",
+
+        // --- Planner ---
+        "Planner": "规划器",
+        "▭ Select Mode": "▭ 框选模式",
+        "📦 Encapsulate": "📦 封裝模块",        
+        "+ Add Node": "+ 新增节点",        
+        "+ 📝 Note": "+ 📝 笔记",        
+        "+ 🌀 Portal": "+ 🌀 传送门",
+        "↺ Undo": "↺ 撤销",
+        "↻ Redo": "↻ 重做",
+        
+
+        // --- Planner: Node ---        
+        "Node Settings": "节点设置",
+        "Link machine count changes": "链接机器数变化",
+        "This item has no recipe and cannot be added as a Planner node.": "该物品没有生产配方，无法新增为节点。",
+        "Auto-generate upstream": "自動生成上游节点",
+        "Remove Node": "移除节点",
+        "Load Module": "載入模块",
+        "Port Balance": "端口平衡",
+        "Graph Tools": "图表工具",
+        "Select All Upstream": "选取所有上游节点",
+        "Auto-Layout Upstream": "自动布局上游节点",
+        "Populate All Upstream": "生成所有上游节点",
+        "Clear All Upstream": "清空所有上游节点",
+        "Error": "错误",
+        "Module": "模块",
+        "NOTE": "笔记",
+        "Invaild Module": "无效模块",
+        "Invaild Recipe": "无效配方",
+        "Missing Recipe": "配方缺失",
+        "Missing Reference": "引用缺失",
+        "Circular Reference": "循环引用",
+        "No recipe selected": "尚未选择配方",
+        "Missing Custom Input": "尚未指定自订输入物品",
+        "CONSUME": "消耗",
+        "PRODUCE": "生产",
+
+        // --- Planner: Edge ---
+        "Source": "来源",
+        "Target": "目标",
+        "Current Flow": "当前流量",
+        "Set Flow": "设置流量",
+        "Priority": "优先级",
+        "Link mode ON: also scales upstream/downstream nodes": "链接模式开启：同时缩放上游/下游节点",
+        "Link mode OFF: only affects source and target nodes": "链接模式关闭：仅影响源节点和目标节点",
+        "Color": "颜色",
+        "Reset": "重置",
+        "Delete Connection": "删除连接",
+        
+
+        // --- Planner: Plan Library ---
+        "Manage Plans": "管理方案",
+        "📁 Manage Plans": "📁 管理方案",        
+        "Default Plan": "預設方案",
+        "Imported Plan": "已匯入方案",
+        "(Copy)": "(複製)",
+        "Active": "使用中",
+        "Delete this plan?": "確定要刪除此方案嗎?",
+        "Failed to import plan: ": "匯入方案失敗: ",
+        "Uses N modules": "使用了 N 个模组",
+        "Used by N plans": "被 N 个方案引用",
+        "Circular module reference": "模组循环引用",
+        "Cycle": "循环",
+
+        "just now": "剛剛",
+        "min ago": "分鐘前",
+        "hr ago": "小時前",
+        "days ago": "天前",
+
+        "▶ Load": "▶ 載入",
+        "✎ Rename": "✎ 重新命名",
+        "⧉ Duplicate": "⧉ 複製",
+        "📦 Import as Module": "📦 导入为模块",
+        "New Plan": "新方案",
+        "🗑 Delete": "🗑 刪除",
+        "⭳ Export": "⭳ 匯出",
+        "⭱ Import": "⭱ 匯入"
     },
     "items": {
-        // Game version: 0.4.3.4071
+        // Game version: 1.0.4917
         // Group by meaning
 
         // --- RAW RESOURCES ---
@@ -313,6 +549,7 @@ window.ALCHEMY_I18N = {
         "Chamomile": "洋甘菊",
         "Gentian": "龙胆花",
         "Gentian Nectar": "龙胆花蜜",
+        "Gentian Mixture": "龙胆花混合",
         "World Tree Leaf": "世界树之叶",
         "World Tree Core": "世界树核心",
         "Gloom Fungus": "幽暗菇",
@@ -379,9 +616,11 @@ window.ALCHEMY_I18N = {
         "Small Wooden Gear": "木制小齿轮",
         "Iron Nails": "铁钉",
         "Wooden Pulley": "木滑轮",
+        "Cart": "货车",
         "Steel Gear": "钢齿轮",
         "Copper Bearing": "铜轴承",
-        "Bronze Rivet": "青铜铆钉",
+        "Bronze Rivet": "青铜铆钉",        
+        "Marble": "大理石",
 
         // --- GOODS & CURRENCY ---
         "Mortar": "研钵",
@@ -410,6 +649,14 @@ window.ALCHEMY_I18N = {
         "Aqua Vitae": "生命之水",
         "Fairy Tear": "精灵之泪",
         "Moon Tear": "月之泪",
+        "Steam": "蒸气",
+
+        // --- BEVERAGE ---
+        "Whispering Fields": "田野低语",
+        "Strange Tide": "奇异潮汐",
+        "Lavender Dream": "薰衣草之梦",
+        "World Tree Vintage": "世界树秘酿",
+        "Alchemistˈs Sigh": "炼金术士的叹息",
 
         // --- POTIONS ---
         "Healing Potion": "治疗药水",
@@ -459,6 +706,7 @@ window.ALCHEMY_I18N = {
 
         // --- SPECIAL ---
         "Portal Sigil": "传送门印章",
+        "Grand Portal Sigil": "大传送门印章",
         "Gelatinous Gridlock": "格姆胶",
         "Automatic Cashier": "自动收银机"
     },
@@ -472,11 +720,13 @@ window.ALCHEMY_I18N = {
         "Thermal Extractor": "热能萃取机",
         "Stone Furnace": "石炉",
         "Blast Furnace": "高温炉",
+        "Steam Heating Pad": "蒸气加热板",
         "Crucible": "坩埚",
         "Stackable Crucible": "可堆叠坩埚",
         "Paradox Crucible": "悖论坩埚",
         "Cauldron": "炼金锅",
         "Advanced Cauldron": "高级炼金锅",
+        "Steam Boiler": "蒸气锅炉",
         "Kiln": "土窑",
         "Iron Smelter": "炼铁炉",
         "Refiner": "精炼机",
@@ -494,14 +744,17 @@ window.ALCHEMY_I18N = {
         "Advanced Shaper": "高级雕刻机",
         "Arcane Shaper": "奥术雕刻机",
         "Nursery": "育苗圃",
+        "Miniature World Tree": "微缩世界树",
         "World Tree Nursery": "世界树育苗圃",
         "Knowledge Altar": "知识祭坛",
+        "Brew Barrel": "酿造桶",
         "Purchasing Portal": "进货传送门",
+        "Dispatch Portal": "发货传送门",
         "Bank Portal": "银行传送门"
     },
     "categories": {
-        "Raw Materials": "原材料", "Seeds": "种子", "Herbs": "草药", "Fuel": "燃料", "Fertilizer": "肥料", "Solid": "固体", "Crystal": "晶石", "Component": "零件", "Liquid": "液体",
-        "Mash": "研磨物", "Metal Mash": "金属粉", "Potion": "药水", "Catalyst": "催化剂", "Magic": "魔法", "Jewelry": "珠宝", "Relic": "圣物", "Currency": "货币", "Misc" : "杂项", "Other": "其他",
+        "Raw Materials": "原材料", "Seeds": "种子", "Herbs": "草药", "Bio-Based": "植物基", "Fuel": "燃料", "Fertilizer": "肥料", "Solid": "固体", "Crystal": "晶石", "Component": "建材", "Liquid": "液体",
+        "Mash": "研磨物", "Metal": "金属", "Potion": "药水", "Catalyst": "催化剂", "Magic": "魔法", "Jewelry": "珠宝", "Relic": "圣物", "Currency": "货币", "Other": "其他",
         "[All]": "[ 全部 ]", "[Include]": "[ 选取 ]", "[Exclude]": "[ 排除 ]", "[Product]": "[ 产物 ]"
     }
 };

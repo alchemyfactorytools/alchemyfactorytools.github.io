@@ -89,10 +89,10 @@ function fillOutputSelect(sel, selected) {
   }
 }
 // Belt-supply autocomplete: the same items as the output picker (produced, targetable, tier-gated)
-// PLUS raw feedstock (Raw Materials, Seeds) and currency (the money belt) — i.e. everything you'd
+// PLUS raw feedstock (Raw Materials; seeds are in that category since DB v48) and currency (the money belt) — i.e. everything you'd
 // realistically put on an incoming supply belt. RAW_FEEDSTOCK_CATEGORIES mirrors composer-solve.js's
 // RAW_TARGET_CATEGORIES (the categories the output picker drops because you buy/mine, not build them).
-const RAW_FEEDSTOCK_CATEGORIES = new Set(['Raw Materials', 'Seeds']);
+const RAW_FEEDSTOCK_CATEGORIES = new Set(['Raw Materials']);
 function rebuildBeltList() {
   const dl = $('items');
   if (!dl) return;
@@ -143,7 +143,7 @@ async function init() {
     o.value = it.name;
     buyList.appendChild(o);
   }
-  $('version').textContent = 'dataset 0.5.0.4471 · DB v41';
+  $('version').textContent = window.AlchSolver && AlchSolver.db ? `dataset ${AlchSolver.db.gameVersion} · DB v${AlchSolver.db.version}` : 'dataset —';
   const buildEl = $('buildSha'); if (buildEl) buildEl.textContent = BUILD_STAMP;
   const gvEl = $('fGameVer'); if (gvEl && window.AlchSolver && AlchSolver.db) gvEl.textContent = 'v' + AlchSolver.db.gameVersion;
   // Populate the product picker BEFORE restoring prefs (so a saved selection can stick to a real

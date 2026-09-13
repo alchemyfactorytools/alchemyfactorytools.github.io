@@ -8,7 +8,7 @@ const { buildProcessTable } = require('../src/normalize');
 const { resolveConfig } = require('../src/config');
 const { Model, optimize } = require('../src/model');
 const { buildFlowGraph, toDot } = require('../src/flowgraph');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 const setup = async (cfgOverrides, demand) => {
   const pt = buildProcessTable(db, resolveConfig(cfgOverrides));
@@ -17,7 +17,9 @@ const setup = async (cfgOverrides, demand) => {
   return { model, result };
 };
 
-const MARS_CFG = { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: { defaultCount: 1000 } };
+// Seed Plots are locked so the June design route (GG×3 cauldron → ICP) stays the optimum; with
+// plots the 1.0 optimum swaps to the Advanced Athanor Copper Powder recipe and uses no cauldron.
+const MARS_CFG = { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: { defaultCount: 1000, counts: { 'Seed Plot': 0 } } };
 const MARS = { Mars: 0.1 };
 
 test('flow graph: well-formed nodes/edges with machine counts and a demand sink', async () => {
@@ -167,17 +169,19 @@ test('clustering: fuel/fertilizer production is its own utility line, not mixed 
   assert.equal(cl.clusterOf.get(gp.id), fert.id, 'Growth Potion (made for fertilizer) is in the Fertilizer line, not a product line');
 });
 
-test('clustering: a shared intermediate (Soap) becomes its own sub-assembly line; products not stranded', async () => {
+test('clustering: a shared intermediate (Sage Powder) becomes its own sub-assembly line; products not stranded', async () => {
   const { assignClusters } = require('../src/layout');
   const cfg = { maxTier: 6, cauldron: { enabled: true, inputPool: 'unrestricted' }, byproducts: { mode: 'reuse' }, belt: [{ item: 'Coke Powder' }], skills: { factory: 4, logistics: 12, fuel: 2, fertilizer: 5 }, machines: { defaultCount: 1000 } };
   const pt = buildProcessTable(db, resolveConfig(cfg));
   const model = new Model(pt, db);
   const g = buildFlowGraph(await optimize(model, { demand: { Mars: 0.1 } }), model, { Mars: 0.1 });
   const cl = assignClusters(g);
-  // Soap feeds several lines → it lives in a shared:* line, not a product line
-  const soap = g.nodes.find((n) => n.label === 'Soap' && n.machine);
-  const soapLine = cl.clusterOf.get(soap.id);
-  assert.ok(String(soapLine).startsWith('shared:'), `Soap is in its own shared sub-assembly line (got ${soapLine})`);
+  // Sage Powder feeds several lines (Iron Sand, Coke, and Clay cauldrons) → it lives in a
+  // shared:* line, not a product line. (Soap, the June example, now only feeds the
+  // fertilizer utility line in the 1.0 optimum.)
+  const sage = g.nodes.find((n) => n.label === 'Sage Powder' && n.machine);
+  const sageLine = cl.clusterOf.get(sage.id);
+  assert.ok(String(sageLine).startsWith('shared:'), `Sage Powder is in its own shared sub-assembly line (got ${sageLine})`);
   // product line roots keep ≥1 feeder — splitting shared intermediates must not strand them
   const roots = ['recipe:Bronze Rivet', 'recipe:Copper Bearing', 'recipe:Iron Nails'];
   for (const r of roots) {

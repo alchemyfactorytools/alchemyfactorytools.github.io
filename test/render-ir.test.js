@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { solveComposerBody } = require('../src/composer-solve');
 const { graphToIR, validateIR, machineTotalsFromIR } = require('../src/tile-ir');
 const { layoutIR } = require('../web/render-ir');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 
 // ---- config builder: vary skills, tier, byproducts, cauldron pool, mainline belts ----
 const ZERO = { factory: 0, logistics: 0, alchemy: 0, fuel: 0, fertilizer: 0 };

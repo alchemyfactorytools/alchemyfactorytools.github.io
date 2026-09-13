@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const { solveComposerBody } = require(path.join(ROOT, 'src/composer-solve'));
-const db = require(path.join(ROOT, 'data/alchemy_db.v41.json'));
+const db = require(path.join(ROOT, 'data/alchemy_db.json'));
 const ENGINE = require(path.join(ROOT, 'web/layout3.js'));
 
 // ---------- args ----------

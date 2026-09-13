@@ -11,7 +11,7 @@ const { assignClusters } = require('../src/layout');
 const { graphToIR } = require('../src/tile-ir');
 const { composeTilesIR } = require('../src/tile-compose-ir');
 const { beltSpeed } = require('../src/config');
-const db = require('../data/alchemy_db.v41.json');
+const db = require('../data/alchemy_db.json');
 const contracts = require('../data/contracts.json');
 
 module.exports = {

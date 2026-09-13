@@ -2,14 +2,52 @@
 <html lang="zh-Hans">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Alchemy Factory Calculator — 炼金工厂计算器，自动计算生产链、机器数量、传送带需求与资源消耗。">
     <title>Alchemy Factory Calculator 炼金工厂计算器</title>
-    <script src="alchemy_db.js"></script> 
-    <script src="alchemy_calc_engine.js"></script>
-    <script src="alchemy_constants.js"></script> 
-    <script src="alchemy_i18n.js"></script>
-    <link rel="stylesheet" href="style.css">
+
+    <!-- 描述：概括工具用途、核心功能与适用对象 -->
+    <meta name="description" content="游戏《炼金工厂》(Alchemy Factory) 的生产规划计算器。支持多目标生产树、炼金锅配方搜索、节点图编辑器，内置百科与数据库编辑，中英双语。">
+    <meta name="keywords" content="炼金工厂,Alchemy Factory,计算器,量化,配方规划,炼金锅,节点图,production planner,cauldron calculator">
+
+    <!-- 规范链接：指向线上正式版本 -->
+    <link rel="canonical" href="https://starfi5h.github.io/AlchemyFactoryCalculator/?lang=en">
+    <link rel="alternate" hreflang="en" href="https://starfi5h.github.io/AlchemyFactoryCalculator/?lang=en">
+    <link rel="alternate" hreflang="zh-Hans" href="https://starfi5h.github.io/AlchemyFactoryCalculator/">
+    <link rel="alternate" hreflang="x-default" href="https://starfi5h.github.io/AlchemyFactoryCalculator/?lang=en">
+
+    <!-- 语言与地区 -->    
+    <meta name="language" content="zh-Hans,en">    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    
+    <meta name="google-site-verification" content="Gbhje5wyjBUz1rX9VYaQu27t4Si94B66rX1klgSbwqg" />
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://starfi5h.github.io/AlchemyFactoryCalculator/lang=en">
+    <meta property="og:title" content="Alchemy Factory Calculator">
+    <meta property="og:description" content="">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Alchemy Factory Calculator",
+        "alternateName": "炼金工厂计算器",
+        "description": "A production planning tool for the game Alchemy Factory. Supports cauldron recipes, multi-targets production trees, node graph editor, built-in wiki.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Modern browser with JavaScript enabled",
+        "url": "https://starfi5h.github.io/AlchemyFactoryCalculator/lang=en",
+        "sameAs": [
+            "https://github.com/starfi5h/AlchemyFactoryCalculator"
+        ],
+        "inLanguage": ["zh-Hans", "en"]
+    }
+    </script>
+
+    <script src="js/alchemy_db.js"></script> 
+    <script src="js/alchemy_calc_engine.js"></script>
+    <script src="js/alchemy_i18n.js"></script>    
+    <script src="js/alchemy_state.js"></script>
+    <link rel="stylesheet" href="style.css">    
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
 
 </head>
 <body>
@@ -30,13 +68,14 @@
             <span style="margin-left: 10px;">
                 <span id="ui-lang-toggle" style="cursor:pointer; margin-right: 10px;" onclick="toggleLanguage()" title="EN/中文">🌐EN/中文</span>
                 <a href="https://github.com/starfi5h/AlchemyFactoryCalculator" target="_blank" class="repo-link">GitHub Repo</a>
-                <span id="last-updated-time-text">2026.06.09</span>
+                <span id="last-updated-time-text">2026.09.12</span>
             </span>
         </div>
-        <div class="tabs">
+        <div class="tabs" id="page-tab-container">
             <div class="tab-btn active" onclick="switchTab('calc')">Calculator</div>
             <div class="tab-btn" onclick="switchTab('cauldron')">Cauldron</div>
-            <!-- <div class="tab-btn" onclick="switchTab('recipes')">Recipes</div> -->
+            <div class="tab-btn" onclick="switchTab('planner')">Planner</div>
+            <div class="tab-btn" onclick="switchTab('help')">Wiki</div>
             <div class="tab-btn" onclick="switchTab('db')">Database Editor</div>
         </div>
     </header>
@@ -62,6 +101,51 @@
                 <div id="cauldron-recipe-modal-body">
                     <!-- 由 JS 動態渲染 -->
                 </div>
+            </div>
+        </div>
+
+        <!-- Planner Manager Modal -->
+        <div id="planner-manage-modal" class="modal-overlay" onclick="closeModal('planner-manage-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()" style="min-width:420px; max-width:560px;">
+                <div class="modal-header">
+                    <h2 style="margin:0; font-size:1em;">Manage Plans</h2>
+                    <button class="close-modal" onclick="closeModal('planner-manage-modal')">&times;</button>
+                </div>
+                <div id="planner-plan-list" class="planner-plan-list"></div>
+                <div class="planner-plan-actions-row" id="planner-plan-actions-row">
+                    <button class="split-btn" onclick="managePlannerLoadSelected()">▶ Load</button>
+                    <button class="split-btn" onclick="managePlannerRenameSelected()">✎ Rename</button>
+                    <button class="split-btn" onclick="managePlannerDuplicateSelected()">⧉ Duplicate</button>                                   
+                    <button class="split-btn" onclick="managePlannerImportAsModule()">📦 Import as Module</button>
+                </div>
+                <div class="planner-plan-bottom-row">
+                    <button class="save-btn" style="width:24%; margin:0;" onclick="managePlannerCreateNew()">New Plan</button>
+                    <button class="split-btn" onclick="managePlannerImport()">⭱ Import</button>
+                    <button class="split-btn" onclick="managePlannerExportSelected()">⭳ Export</button>
+                    <button class="split-btn" style="color:var(--danger); border-color:var(--danger);" onclick="managePlannerDeleteSelected()">🗑 Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Planner Node Settings Modal -->
+        <div id="planner-node-modal" class="modal-overlay" onclick="closeModal('planner-node-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()" style="min-width:320px; max-width:520px;">
+                <div class="modal-header">
+                    <h2 id="planner-node-modal-title" style="font-size:1em; margin:0;">Node Settings</h2>
+                    <button class="close-modal" onclick="closeModal('planner-node-modal')">&times;</button>
+                </div>
+                <div id="planner-node-modal-body"></div>
+            </div>
+        </div>
+
+        <!-- Planner Edge Info Modal -->
+        <div id="planner-edge-modal" class="modal-overlay" onclick="closeModal('planner-edge-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()" style="min-width:280px; max-width:420px;">
+                <div class="modal-header">
+                    <h2 id="planner-edge-modal-title" style="font-size:1em; margin:0;">Connection</h2>
+                    <button class="close-modal" onclick="closeModal('planner-edge-modal')">&times;</button>
+                </div>
+                <div id="planner-edge-modal-body"></div>
             </div>
         </div>
 
@@ -121,6 +205,55 @@
             </div>
         </div>
 
+        <!-- Custom Cost Modal -->
+        <div id="custom-cost-modal" class="modal-overlay" onclick="closeModal('custom-cost-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()" style="min-width:360px; max-width:520px;">
+                <div class="modal-header">
+                    <h2 style="margin:0; font-size:1em;" id="custom-cost-modal-title">⚙ Manage Custom Costs</h2>
+                    <button class="close-modal" onclick="closeModal('custom-cost-modal')">&times;</button>
+                </div>
+                <div id="custom-cost-list"></div>
+                <button class="save-btn" style="margin-top:10px; background:var(--panel); border-style:dashed;"
+                        onclick="addCustomCostRow()">+ <span id="custom-cost-add-label">Add Item</span></button>
+            </div>
+        </div>
+
+        <!-- Item Base Cost Modal -->
+        <div id="item-base-cost-modal" class="modal-overlay" onclick="closeModal('item-base-cost-modal')">
+            <div class="modal-content" onclick="event.stopPropagation()" style="min-width:360px; max-width:520px;">
+                <div class="modal-header">
+                    <h2 style="margin:0; font-size:1em;" id="item-base-cost-modal-title">⚙ Base Item Cost</h2>
+                    <button class="close-modal" onclick="closeModal('item-base-cost-modal')">&times;</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px; margin-bottom: 6px;">
+                    <span class="item-name-label" style="flex:1;" id="base-cost-heat-label">🔥 Heat Cost</span>
+                    <input type="number" class="small-num-input" style="width:100px; height:25px;" id="base-cost-heat-per-copper"
+                        step="any" min="0" onchange="onBaseCostRateChange('heatPerCopper', this.value)">
+                    <span style="font-size:0.75em; color:#888; white-space:nowrap;">P/¢</span>
+                    <input type="number" class="small-num-input" style="width:100px; height:25px;" id="base-cost-copper-per-heat"
+                        step="any" min="0" onchange="onBaseCostRateChange('copperPerHeat', this.value)">
+                    <span style="font-size:0.75em; color:#888; white-space:nowrap;">¢/P</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; padding: 6px; margin-bottom: 6px;">
+                    <span class="item-name-label" style="flex:1;" id="base-cost-fert-label">🌱 Nutrient Cost</span>
+                    <input type="number" class="small-num-input" style="width:100px; height:25px;" id="base-cost-fert-per-copper"
+                        step="any" min="0" onchange="onBaseCostRateChange('nutrPerCopper', this.value)">
+                    <span style="font-size:0.75em; color:#888; white-space:nowrap;">V/¢</span>
+                    <input type="number" class="small-num-input" style="width:100px; height:25px;" id="base-cost-copper-per-fert"
+                        step="any" min="0" onchange="onBaseCostRateChange('copperPerNutr', this.value)">
+                    <span style="font-size:0.75em; color:#888; white-space:nowrap;">¢/V</span>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+                    <select id="base-cost-cat-select" style="width:60%;" onchange="_renderItemBaseCostList()"></select>
+                    <button class="split-btn" style="width:40%; margin:0;" onclick="closeModal('item-base-cost-modal'); openCustomCostModal();">
+                        ⚙ <span id="custom-cost-btn-label-2">Manage Custom Costs</span>
+                    </button>
+                </div>
+                <div id="item-base-cost-list" style="margin-top:10px; height:450px; overflow-y:auto;">
+                </div>
+            </div>
+        </div>
+
         <!-- Item Picker Modal -->
         <div id="picker-modal" class="modal-overlay" onclick="closeModal('picker-modal')">
             <div class="modal-content picker-modal-content" onclick="event.stopPropagation()">
@@ -132,6 +265,14 @@
                 <!-- 1. 最上方分類過濾列 -->
                 <div id="picker-category-bar" class="picker-filter-bar">
                     <!-- 分類按鈕會由 JS 動態生成 -->
+                </div>
+                <!-- Tier 篩選滑桿 -->
+                <div id="picker-tier-row" class="picker-tier-row">
+                    <!-- 由 JS 動態生成 -->
+                </div>
+                <!-- 屬性篩選 -->
+                <div id="picker-props-bar" class="picker-filter-bar" style="align-items:center;">
+                    <!-- 由 JS 動態生成 -->
                 </div>
 
                 <!-- 2. 輸入框 -->
@@ -152,22 +293,16 @@
             <div class="app-grid">
                 <div>
                     <div class="panel">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <h3 style="margin:0; border:none;">Production Goal</h3>
-                            <!-- 模式切換 Toggle -->
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <label id="ui-mode-label" style="font-size:0.8em; color:#aaa; font-weight:bold;">MULTI</label>
-                                <label class="switch">
-                                    <input type="checkbox" id="modeToggle" onchange="toggleCalcMode()">
-                                    <span class="slider-switch"></span>
-                                </label>
-                            </div>
+                        <div class="cauldron-tabs-row" style="margin-bottom:10px;">
+                            <button id="calc-mode-btn-single" class="tab-btn mini-tab active" onclick="switchCalcModeTab(false)">Single Target</button>
+                            <button id="calc-mode-btn-multi" class="tab-btn mini-tab" onclick="switchCalcModeTab(true)">Multi Target</button>
+                            <input type="checkbox" id="modeToggle" style="display:none;">
                         </div>
 
                         <!-- 單產物 UI (保持不變，但在切換時會被隱藏) -->
                         <div id="single-target-ui">
                             <div class="input-group">
-                                <label>Target Item</label>
+                                <label for="targetItemInput">Target Item</label>
                                 <div class="combobox-container" id="targetCombobox">
                                     <div class="input-wrapper" onclick="toggleCombobox()">
                                         <div id="ghost-text" class="ghost-input"></div>
@@ -187,7 +322,7 @@
                             </div>                            
                             <!-- 機器數量輸入 -->
                             <div class="input-group" style="opacity:0.5" id="group-machine" disabled>
-                                <label id="machineLabel">Machine Count</label> <label id="active-machine-name">(None)</label>
+                                <label id="machineLabel" for="targetMachine">Machine Count</label> <label id="active-machine-name" for="targetMachine">(None)</label>
                                 <div class="spinner-wrapper">
                                     <button class="spinner-btn left first" onclick="adjustMachine(-1)">-1</button>
                                     <button class="spinner-btn left" onclick="adjustMachine(-0.1)">-0.1</button>
@@ -197,23 +332,26 @@
                                 </div>
                             </div>
                             <!-- 速率輸入 -->
-                            <div class="input-group" id="group-rate">
-                                <label>Rate (Items/Min)</label>
-                                <div class="spinner-wrapper">
-                                    <button class="spinner-btn left first" onclick="adjustRate(-1)">-1</button>
-                                    <button class="spinner-btn left" onclick="adjustRate(-0.1)">-0.1</button>
-                                    <input type="number" id="targetRate" value="60" oninput="calculate()">
-                                    <button class="spinner-btn right" onclick="adjustRate(0.1)">+0.1</button>
-                                    <button class="spinner-btn right last" onclick="adjustRate(1)">+1</button>
+                            <div id="group-rate">                                
+                                <div class="input-group">
+                                    <label for="targetRate">Rate (Items/Min)</label>
+                                    <div class="spinner-wrapper">
+                                        <button class="spinner-btn left first" onclick="adjustRate(-1)">-1</button>
+                                        <button class="spinner-btn left" onclick="adjustRate(-0.1)">-0.1</button>
+                                        <input type="number" id="targetRate" value="60" oninput="calculate()">
+                                        <button class="spinner-btn right" onclick="adjustRate(0.1)">+0.1</button>
+                                        <button class="spinner-btn right last" onclick="adjustRate(1)">+1</button>
+                                    </div>
+                                </div>
+                                <div class="input-group">
+                                    <label for="beltSlider">Belt Load Fraction</label> <label id="rateLabel" for="beltSlider">100%</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="beltSlider" min="0" max="100" step="1" oninput="updateFromSlider()">
+                                        <div id="sliderTicks" class="slider-ticks"></div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="input-group" style="margin-bottom:20px;">
-                                <label>Belt Load Fraction</label> <label id="rateLabel">100%</label>
-                                <div class="slider-container">
-                                    <input type="range" id="beltSlider" min="0" max="100" step="1" oninput="updateFromSlider()">
-                                    <div id="sliderTicks" class="slider-ticks"></div>
-                                </div>
-                            </div>
+
                         </div>
 
                         <!-- 多產物 UI (預設隱藏) -->
@@ -224,8 +362,12 @@
                             <button class="save-btn" style="margin-top:10px; background:var(--panel); border-style:dashed;" onclick="addMultiTargetRow()">+ Add Item</button>
                             <div class="split-btn-container" style="margin-top:10px;">
                                 <button class="split-btn" onclick="saveMultiTargets(event)" title="Save to Browser">💾 Save List</button>
-                                <button class="split-btn" onclick="loadMultiTargets(event)" title="Load from Browser">📂 Load List</button>
+                                <button class="split-btn" onclick="loadMultiTargets(event)" title="Load from Browser">📂 Load List</button>                                
                             </div>
+                            <button class="save-btn" style="margin-top:10px; background:var(--panel); border-style:dashed;"
+                                    onclick="quickSetFuelFertTargets()" title="Set 2 targets: Fuel & Fert, each at single-machine rate">
+                                ⚡ Fuel/Fert 1-Machine Quick Set
+                            </button>
                         </div>
                     </div>
 
@@ -233,43 +375,47 @@
                         <h3>Logistics</h3>
                         <div class="input-group">
                             <div>
-                                <label>Heat Source</label>
-                                <span id="fuelEfficiencyCostByHeat" class="cost-tag">0.000 G/P</span> | 
-                                <span id="fuelEfficiencyHeatByCost" class="heat-tag" style="margin-left:auto">00.00 P/G</span>
+                                <label for="heatingDeviceSelect">Heating Device</label>
                             </div>
-                            <select id="fuelSelect" onchange="updateDefaultButtonState(); calculate();"></select>
-                            <input type="checkbox" id="selfFuel" style="display:none;">
-                            <div class="split-btn-container">
-                                <button id="btnSelfFuel" class="split-btn btn-inactive-red" onclick="toggleFuel()">Self-Fuel: OFF</button>
-                                <button id="btnDefFuel" class="split-btn" onclick="setDefaultFuel(event)">Make Default</button>
+                            <select id="heatingDeviceSelect" onchange="onLogisticsChange()"></select>
+                        </div>
+                        <div class="input-group">
+                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                <label for="fuelSelect">Fuel Source</label>
+                                <span id="fuelSourceDetail" style="color:var(--gold); font-size:0.85em;"></span>
                             </div>
-                            <div class="checkbox-row">
-                                <input type="checkbox" checked id="fuelCostEnable" onchange="onLogisticsChange()">
-                                <label for="fuelCostEnable" style="display:inline; margin:0; cursor:pointer;">Cost (G/item):</label>
-                                <input type="number" id="fuelCostInput" class="small-num-input" value="0" oninput="onLogisticsChange()">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <select id="fuelSelect" onchange="onLogisticsChange()" style="flex:1;"></select>
+                                <button id="btnSelfFuel" class="split-btn btn-inactive-red" onclick="toggleFuel()" title="Inclue Internal Heat Module" style="flex:none; width:auto; padding:9px 4px; font-size:0.7em;">Self-Fuel</button>
                             </div>
                         </div>
                         <div class="input-group">
-                            <div>
-                                <label>Fertilizer Source</label>
-                                <span id="fertEfficiencyCostByNutr" class="cost-tag">0.000 G/V</span> | 
-                                <span id="fertEfficiencyNutrByCost" class="bio-tag" style="margin-left:auto">00.00 V/G</span>
+                            <span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                <label for="fertSelect">Fertilizer Source</label>
+                                <span id="fertSourceDetail" style="color:var(--gold); font-size:0.85em;"></span>
+                            </span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <select id="fertSelect" onchange="onLogisticsChange()" style="flex:1;"></select>
+                                <button id="btnSelfFert" class="split-btn btn-inactive-red" onclick="toggleFert()" title="Inclue Internal Nutrient Module" style="flex:none; width:auto; padding:9px 4px; font-size:0.7em;">Self-Fert</button>
                             </div>
-                            <select id="fertSelect" onchange="updateDefaultButtonState(); calculate();"></select>
-                            <input type="checkbox" id="selfFert" style="display:none;">
-                            <div class="split-btn-container">
-                                <button id="btnSelfFert" class="split-btn btn-inactive-red" onclick="toggleFert()">Self-Fert: OFF</button>
-                                <button id="btnDefFert" class="split-btn" onclick="setDefaultFert(event)">Make Default</button>
-                            </div>
-                            <div class="checkbox-row">
-                                <input type="checkbox" checked id="fertCostEnable" onchange="onLogisticsChange()">
-                                <label for="fertCostEnable" style="display:inline; margin:0; cursor:pointer;">Cost (G/item):</label>
-                                <input type="number" id="fertCostInput" class="small-num-input" value="0" oninput="onLogisticsChange()">
-                            </div>
+                        </div>
+
+                        <button class="split-btn" style="width:100%; margin-bottom:10px;" onclick="openCustomCostModal()">
+                            ⚙ <span id="custom-cost-btn-label">Manage Custom Costs</span>
+                        </button>
+
+                        <div class="input-group">
+                            <label id="nodeSizeLabel" for="nodeScaleSlider">Node Size: 100%</label>
+                            <input type="range" id="nodeScaleSlider" min="0.5" max="1.5" step="0.05" value="1"
+                                oninput="setNodeScale(this.value); onLogisticsChange();">
                         </div>
                         <div class="checkbox-row">
                             <input type="checkbox" id="showBeltCount" onchange="onLogisticsChange()">
                             <label for="showBeltCount" style="display:inline; margin:0; cursor:pointer;">Show Belt Count</label>
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="showFuelFert" onchange="onLogisticsChange()">
+                            <label for="showFuelFert" style="display:inline; margin:0; cursor:pointer;">Show Machine Usage</label>
                         </div>
                         <div class="checkbox-row">
                             <input type="checkbox" id="showMaxCap" onchange="onLogisticsChange()">
@@ -279,6 +425,10 @@
                             <input type="checkbox" id="showHeatFert" onchange="onLogisticsChange()">
                             <label for="showHeatFert" style="display:inline; margin:0; cursor:pointer;">Show Machine Heat & Nutr</label>
                         </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="showRawMachineCount" onchange="onLogisticsChange()">
+                            <label for="showRawMachineCount" style="display:inline; margin:0; cursor:pointer;">Show Raw Machine Count</label>
+                        </div>
                     </div>
                 </div>
 
@@ -286,71 +436,103 @@
                     <div id="summary-container"></div>
                     <div id="summary-icons"></div>
                     <div id="summary-line" style="margin-bottom: 5px;"></div>
+                    <div id="equilibrium-warning-line" style="margin: 4px 0 8px; font-size: 0.95em; display:block; color: var(--warn);"></div>
                     <div id="tree"></div>
                 </div>
 
                 <div>
                     <div class="panel">
-                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #444; margin-bottom:10px; padding-bottom:8px;">
-                            <h3 style="margin:0; border:none; padding:0;">Construction List</h3>
+                        <div class="panel-header-row">
+                            <h3>Construction List</h3>
+                            <button class="panel-collapse-btn" onclick="togglePanelCollapse(this)">▼</button>
                         </div>
-                        <ul id="construction-list" class="build-list"></ul>
-                        <div id="total-mats-container"></div>
+                        <div class="panel-body">
+                            <ul id="construction-list" class="build-list"></ul>
+                            <div id="total-mats-container"></div>
+                        </div>
                     </div>
                 </div>
 
                 <div>
                     <div class="panel">
-                        <h3>Upgrades (Levels)</h3>
-                        <div class="input-group">
-                            <label id="lvlBelt-title">Logistics Efficiency</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn left first" onclick="adjustInput('lvlBelt', -1); updateFromSlider();">-</button>
-                                <input type="number" id="lvlBelt" value="0" min="0" oninput="updateFromSlider()">
-                                <button class="spinner-btn right last" onclick="adjustInput('lvlBelt', 1); updateFromSlider();">+</button>
-                            </div>
+                        <div class="panel-header-row">
+                            <h3>Upgrades (Levels)</h3>
+                            <button class="panel-collapse-btn" onclick="togglePanelCollapse(this)">▼</button>
                         </div>
-                        <div class="input-group">
-                            <label id="lvlSpeed-title">Factory Efficiency</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn left first" onclick="adjustInput('lvlSpeed', -1); calculate();">-</button>
-                                <input type="number" id="lvlSpeed" value="0" min="0" oninput="calculate()">
-                                <button class="spinner-btn right last" onclick="adjustInput('lvlSpeed', 1); calculate();">+</button>
+                        <div class="panel-body">
+                            <div class="input-group">
+                                <label id="lvlBelt-title" for="lvlBelt">Logistics Efficiency</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlBelt', -1); updateFromSlider();">-</button>
+                                    <input type="number" id="lvlBelt" value="0" min="0" oninput="updateFromSlider()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlBelt', 1); updateFromSlider();">+</button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="input-group">
-                            <label id="lvlAlchemy-title">Alchemy Skill</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn left first" onclick="adjustInput('lvlAlchemy', -1); calculate();">-</button>
-                                <input type="number" id="lvlAlchemy" value="0" min="0" oninput="calculate()">
-                                <button class="spinner-btn right last" onclick="adjustInput('lvlAlchemy', 1); calculate();">+</button>
+                            <div class="input-group">
+                                <label id="lvlSpeed-title" for="lvlSpeed">Factory Efficiency</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlSpeed', -1); calculate();">-</button>
+                                    <input type="number" id="lvlSpeed" value="0" min="0" oninput="calculate()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlSpeed', 1); calculate();">+</button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="input-group">
-                            <label id="lvlFuel-title">Fuel Efficiency</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn left first" onclick="adjustInput('lvlFuel', -1); calculate();">-</button>
-                                <input type="number" id="lvlFuel" value="0" min="0" oninput="calculate()">
-                                <button class="spinner-btn right last" onclick="adjustInput('lvlFuel', 1); calculate();">+</button>
+                            <div class="input-group">
+                                <label id="lvlAlchemy-title" for="lvlAlchemy">Alchemy Skill</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlAlchemy', -1); calculate();">-</button>
+                                    <input type="number" id="lvlAlchemy" value="0" min="0" oninput="calculate()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlAlchemy', 1); calculate();">+</button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="input-group">
-                            <label id="lvlFert-title">Fert Efficiency</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn left first" onclick="adjustInput('lvlFert', -1); calculate();">-</button>
-                                <input type="number" id="lvlFert" value="0" min="0" oninput="calculate()">
-                                <button class="spinner-btn right last" onclick="adjustInput('lvlFert', 1); calculate();">+</button>
+                            <div class="input-group">
+                                <label id="lvlFuel-title" for="lvlFuel">Fuel Efficiency</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlFuel', -1); calculate();">-</button>
+                                    <input type="number" id="lvlFuel" value="0" min="0" oninput="calculate()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlFuel', 1); calculate();">+</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label id="lvlFert-title" for="lvlFert">Fert Efficiency</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlFert', -1); calculate();">-</button>
+                                    <input type="number" id="lvlFert" value="0" min="0" oninput="calculate()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlFert', 1); calculate();">+</button>
+                                </div>
+                            </div>
+                            <div style="border-top: 1px solid #555; margin: 20px 0 10px 0;"></div>
+                            <div class="input-group">
+                                <label id="lvlSell-title" for="lvlSell">Selling Price</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlSell', -1); calculate();">-</button>
+                                    <input type="number" id="lvlSell" value="0" min="0" oninput="calculate()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlSell', 1); calculate();">+</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label id="lvlContract-title" for="lvlContract">Wholesale Price</label>
+                                <div class="spinner-wrapper">
+                                    <button class="spinner-btn left first" onclick="adjustInput('lvlContract', -1); calculate();">-</button>
+                                    <input type="number" id="lvlContract" value="0" min="0" oninput="calculate()" onchange="saveSettings()">
+                                    <button class="spinner-btn right last" onclick="adjustInput('lvlContract', 1); calculate();">+</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
                     <div class="panel">
-                        <h3>Save/Reset</h3>                        
-                        <span id="db-gameversion-text"></span>
-                        <button class="save-btn" onclick="saveSettings(event)">Save Upgrades</button>
-                        <button class="reset-btn" onclick="resetRecips()">Reset Recipes</button>
-                        <button class="reset-btn" onclick="resetTranslations()">Reset Translations</button>
-                        <button class="reset-btn" onclick="resetAllData()">All Data Reset</button>
+                        <div class="panel-header-row">
+                            <h3>Save/Reset</h3>
+                            <button class="panel-collapse-btn" onclick="togglePanelCollapse(this)">▼</button>
+                        </div>
+                        <div class="panel-body">
+                            <span id="db-gameversion-text"></span>                            
+                            <button class="save-btn" onclick="sendCalcResultToPlanner()">Send to Planner</button>
+                            <button class="reset-btn" onclick="resetSettings()">Reset Settings</button>
+                            <button class="reset-btn" onclick="resetRecips()">Reset Recipes</button>
+                            <button class="reset-btn" onclick="resetTranslations()">Reset Translations</button>
+                            <button class="reset-btn" onclick="resetAllData()">All Data Reset</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -359,7 +541,7 @@
         <div id="view-cauldron" class="view">
             <div class="cauldron-grid">
                 <div class="panel scroll-panel">
-                    <h3>Settings & Candidates</h3>
+                    <h3 class="help-tag" title="Select and filter items to use as cauldron ingredients. Toggle checkboxes to include/exclude them from calculations.">Settings & Candidates</h3>
                     <div class="cauldron-tabs-row">
                         <button id="cauldron-type-0" class="tab-btn mini-tab active" onclick="switchCauldronType(0)">Cauldron</button>
                         <button id="cauldron-type-1" class="tab-btn mini-tab" onclick="switchCauldronType(1)">Advanced Cauldron</button>
@@ -370,7 +552,7 @@
                         <button id="cauldron-tab-2" class="tab-btn mini-tab" onclick="switchCauldronProfile(2)">Profile 3</button>
                     </div>
                     <div class="input-group" style="margin-bottom:2px;">
-                        <label>Filter Category</label>
+                        <label for="cauldron-cat-select">Filter Category</label>
                         <select id="cauldron-cat-select" onchange="renderCandidatePool()"></select>
                     </div>
                     <div class="split-btn-container">
@@ -381,7 +563,8 @@
                         <input type="checkbox" id="cauldron-sort-by-cost" checked onchange="renderCandidatePool()">
                         <label for="cauldron-sort-by-cost" style="display:inline; margin:0; cursor:pointer; font-size: 1.0em;">Sort by Value</label>
                         <div style="margin-left:auto; display:flex; gap:5px;">
-                            <button class="swap-btn" style="width:28px; height:28px; font-size:1.1em;" onclick="applyHerbPreset()" title="Apply Herb Preset">🌿</button>
+                            <button class="swap-btn" style="width:28px; height:28px; font-size:1.1em;" onclick="applyPreset('Herbs')" title="Apply Herb Preset">🌿</button>
+                            <button class="swap-btn" style="width:28px; height:28px; font-size:1.1em;" onclick="applyPreset('Gold')" title="Apply Gold Preset">💰</button>
                             <button id="cauldron-sort-order-btn" class="swap-btn" style="margin-left:auto; width:28px; height:28px; font-size:1.2em;" onclick="toggleCauldronSortOrder()" title="Toggle Sort Order">🔼</button>
                         </div>
                     </div>
@@ -390,19 +573,32 @@
                 </div>
 
                 <div class="cauldron-main">
-                    <div class="panel">
+                    <div class="cauldron-tabs-row" id="cauldron-step-mode-tabs">
+                        <button id="cauldron-step-mode-0" class="tab-btn mini-tab active" onclick="switchCauldronStepMode(0)">Single Step Search</button>
+                        <button id="cauldron-step-mode-1" class="tab-btn mini-tab" onclick="switchCauldronStepMode(1)">Multiple Steps Search</button>
+                        <button class="soild-btn" onclick="openItemBaseCostModal()">⚙ Cost Settings</button>
+                    </div>
+
+                    <div class="panel" id="cauldron-single-step-panel">
                         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:10px;">
                             <div style="display:flex; align-items:baseline; gap:10px;">
-                                <h3 style="border:none; margin:0;">Filtered Results</h3>
+                                <h3 style="border:none; margin:0; cursor:help;" title="Shows all available recipes based on your candidates and filters.">Result Area</h3>
+                                <div class="mini-picker" id="cauldron-target-output-btn" onclick="pickCauldronTargetOutput()" title="Only show recipes producing this item">Set Target Output</div>
+                                <button class="swap-btn" id="cauldron-target-output-clear" style="display:none;" onclick="pickCauldronTargetOutput(true)" title="clear">×</button>
                                 <span id="cauldron-progress" style="color:var(--accent); font-size:0.9em; font-weight:bold;"></span>
                             </div>
-                            <div style="display:flex; align-items:center; gap:12px;">
+
+                            <div style="display:flex; align-items:center; gap:12px; margin-left:auto; margin-right:5px;">
                                 <div class="checkbox-row" style="margin:0;">
-                                    <input type="checkbox" checked id="cauldron-real-time-calculation">
-                                    <label for="cauldron-real-time-calculation" style="display:inline; margin:0; cursor:pointer; font-size: 1.0em;">Real-time</label>
+                                    <input type="checkbox" id="cauldron-show-est-cost" checked onchange="onToggleCauldronCostDisplay()">
+                                    <label for="cauldron-show-est-cost" style="display:inline; margin:0; cursor:pointer; font-size: 1.0em;">Show Estimated Cost</label>
                                 </div>
-                                <button id="btn-run-cauldron" class="save-btn" style="width:auto; padding:5px 15px; margin:0;" onclick="runCauldronSimulation()">Calculate All</button>
                             </div>
+                            <div class="checkbox-row" style="margin-right:5px;">
+                                <input type="checkbox" id="cauldron-order-by-est-cost" checked onchange="onToggleOrderByEstCost()">
+                                <label for="cauldron-order-by-est-cost" style="display:inline; margin:0; cursor:pointer; font-size: 1.0em;">Order by Est. Cost</label>
+                            </div>
+                            
                         </div>
 
                         <div class="cauldron-filter-bar">
@@ -430,24 +626,56 @@
                                 </div>
                             </div>
                             <div class="filter-group" id="ratio-filter-group">
-                                <div class="checkbox-row"><input type="checkbox" id="filter-2-diff" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">2 Diff</label></div>
-                                <div class="checkbox-row"><input type="checkbox" id="filter-3-diff" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">3 Diff</label></div>
-                                <div class="checkbox-row"><input type="checkbox" id="filter-2-same" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">2 Same</label></div>
-                                <div class="checkbox-row"><input type="checkbox" id="filter-3-same" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em;">3 Same</label></div>
+                                <div class="checkbox-row" title="Include recipes with exactly 2 different inputs"><input type="checkbox" id="filter-2-diff" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em; cursor: pointer;" for="filter-2-diff">2 Diff</label></div>
+                                <div class="checkbox-row" title="Include recipes with 3 different inputs"><input type="checkbox" id="filter-3-diff" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em; cursor: pointer;" for="filter-3-diff">3 Diff</label></div>
+                                <div class="checkbox-row" title="Include recipes with exactly 2 identical inputs"><input type="checkbox" id="filter-2-same" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em; cursor: pointer;" for="filter-2-same">2 Same</label></div>
+                                <div class="checkbox-row" title="Include recipes with all 3 inputs identical"><input type="checkbox" id="filter-3-same" checked onchange="runCauldronSimulation()"><label style="display:flex; font-size: 1.0em; cursor: pointer;" for="filter-3-same">3 Same</label></div>
                             </div>
                         </div>
                         
                         <div id="cauldron-results"></div>
 
-                        <div id="unattainable-section" style="margin-top:20px; display:none;">
-                            <h3 style="color:var(--danger); border-bottom:1px solid var(--danger); font-size:0.9em; margin-bottom:10px;">Unattainable Targets</h3>
-                            <div id="unattainable-list" class="picker-grid compact-grid"></div>
+                    </div>
+
+                    <div class="panel" id="cauldron-multistep-panel" style="display:none;">
+                        <div style="display:flex; align-items:baseline; gap:10px; border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:10px;">
+                            <h3 style="border:none; margin:0;">Result Area</h3>
+                            <span id="cauldron-multistep-progress" style="color:var(--accent); font-size:0.9em; font-weight:bold;"></span>
+
+                            <div style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+                                <label for="cauldron-intermediate-limit" style="margin:0; white-space:nowrap;">
+                                    Max Intermediate Items
+                                </label>
+                                <input
+                                    type="number"
+                                    id="cauldron-intermediate-limit"
+                                    class="small-num-input"
+                                    value="1"
+                                    min="1"
+                                    max="3"
+                                    step="1"
+                                    style="width:60px; height:25px;"
+                                    onchange="onMultiStepIntermediateLimitChange(this.value)"
+                                >
+                            </div>
                         </div>
+                        
+                        <div class="cauldron-multistep-scroll">
+                            <table class="recipe-table" id="cauldron-multistep-table">
+                                <thead><tr id="cauldron-multistep-thead"></tr></thead>
+                                <tbody id="cauldron-multistep-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="panel" id="unattainable-section" style="margin-top:0px; display:none;">
+                        <h3 style="color:var(--danger); border-bottom:1px solid var(--danger); font-size:0.9em; margin-bottom:10px;">Unattainable Targets</h3>
+                        <div id="unattainable-list" class="picker-grid compact-grid"></div>
                     </div>
                 </div>
 
                 <div class="panel scroll-panel">
-                    <h3>Saved Recipes</h3>
+                    <h3 class="help-tag" title="All the stored recipes are listed here.">Saved Recipes</h3>
                         <div class="split-btn-container" style="margin-bottom: 10px;">
                             <button class="split-btn" onclick="importCauldronFavorites()" style="font-size:0.9em;">Import</button>
                             <button class="split-btn" onclick="exportCauldronFavorites()" style="font-size:0.9em;">Export</button>
@@ -459,89 +687,39 @@
             </div>
         </div>
 
-        <div id="view-recipes" class="view">
-            <div class="recipe-container">
-                <!-- 頂部過濾器與升級項 -->
-                <div class="panel sticky-filter-bar">
-                    <div class="recipe-top-bar">
-                        <!-- 搜尋框 -->
-                        <div class="recipe-search-box">
-                            <input type="text" id="recipe-search-input" placeholder="Search Item..." oninput="renderRecipeTable()">
-                        </div>
-
-                        <!-- 三個升級項並列 -->
-                        <div class="recipe-upgrades-row">
-                            <div class="recipe-upgrade-item">
-                                <label id="recipe-lvlAlchemy-label">Alchemy Skill</label>
-                                <div class="spinner-wrapper">
-                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlAlchemy', -1)">-</button>
-                                    <input type="number" id="recipe-lvlAlchemy" value="0" min="0" oninput="renderRecipeTable()">
-                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlAlchemy', 1)">+</button>
-                                </div>
-                            </div>
-                            <div class="recipe-upgrade-item">
-                                <label id="recipe-lvlFuel-label">Fuel Efficiency</label>
-                                <div class="spinner-wrapper">
-                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFuel', -1)">-</button>
-                                    <input type="number" id="recipe-lvlFuel" value="0" min="0" oninput="renderRecipeTable()">
-                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFuel', 1)">+</button>
-                                </div>
-                            </div>
-                            <div class="recipe-upgrade-item">
-                                <label id="recipe-lvlFert-label">Fert Efficiency</label>
-                                <div class="spinner-wrapper">
-                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFert', -1)">-</button>
-                                    <input type="number" id="recipe-lvlFert" value="0" min="0" oninput="renderRecipeTable()">
-                                    <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-lvlFert', 1)">+</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 新增：HPC -->
-                        <div class="recipe-upgrade-item">
-                            <label>Heat per Cost</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-hpc', -1)">-</button>
-                                <input type="number" id="recipe-hpc" value="20" oninput="renderRecipeTable()">
-                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-hpc', 1)">+</button>
-                            </div>
-                        </div>
-                        
-                        <!-- 新增：NPC -->
-                        <div class="recipe-upgrade-item">
-                            <label>Nutr per Cost</label>
-                            <div class="spinner-wrapper">
-                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-npc', -1)">-</button>
-                                <input type="number" id="recipe-npc" value="20" oninput="renderRecipeTable()">
-                                <button class="spinner-btn" onclick="adjustRecipeLvl('recipe-npc', 1)">+</button>
-                            </div>
-                        </div>
-
-                        <!-- 切換與列選擇 -->
-                        <div class="recipe-controls">
-                            <div class="toggle-group">
-                                <button id="mode-batch" class="tab-btn mini-tab active" onclick="setRecipeMode('batch')">Batch</button>
-                                <button id="mode-min" class="tab-btn mini-tab" onclick="setRecipeMode('min')">Minute</button>
-                            </div>
-                            <div class="column-toggle-dropdown">
-                                <button class="split-btn" onclick="document.getElementById('col-selector').classList.toggle('show')">Cols ⚙️</button>
-                                <div id="col-selector" class="dropdown-content"></div>
-                            </div>
-                        </div>
-                    </div>
+        <div id="view-planner" class="view">
+            <div class="planner-toolbar">
+                <select id="planner-plan-select" class="planner-plan-select" onchange="switchPlannerPlan(this.value)"></select>
+                <button class="split-btn" onclick="openPlannerManageModal()">📁 Manage Plans</button>
+                <span class="planner-toolbar-divider"></span>
+                <button id="planner-select-btn" class="split-btn" onclick="togglePlannerSelectMode()" title="Box Select (Delete key to remove selected)">▭ Select Mode</button>
+                <button id="planner-encapsulate-btn" class="split-btn" onclick="encapsulatePlannerSelectedNodes()" title="Encapsulate selected nodes into a new module">📦 Encapsulate</button>
+                <span class="planner-toolbar-divider"></span>
+                <button class="split-btn" onclick="onPlannerAddNodeClick()">+ Add Node</button>
+                <button class="split-btn" onclick="onPlannerAddNoteClick()">+ 📝 Note</button>
+                <button class="split-btn" onclick="onPlannerAddPortalClick()">+ 🌀 Portal</button>
+                <span class="planner-toolbar-divider"></span>
+                <button id="planner-undo-btn" class="split-btn" onclick="plannerUndo()" title="Undo (Ctrl+Z)">↺ Undo</button>
+                <button id="planner-redo-btn" class="split-btn" onclick="plannerRedo()" title="Redo (Ctrl+Y)">↻ Redo</button>
+                <span class="planner-toolbar-divider"></span>
+            </div>
+            <div id="planner-canvas" class="planner-canvas" oncontextmenu="onPlannerCanvasContextMenu(event)">
+                <div id="planner-viewport" class="planner-viewport">
+                    <svg id="planner-svg-layer" class="planner-svg-layer"></svg>
+                    <div id="planner-nodes-layer" class="planner-nodes-layer"></div>
                 </div>
 
-                <!-- 表格區域 -->
-                <div class="recipe-table-wrapper">
-                    <table class="recipe-table" id="recipe-table">
-                        <thead>
-                            <tr id="recipe-table-header"></tr>
-                        </thead>
-                        <tbody id="recipe-table-body"></tbody>
-                    </table>
+                <div class="planner-view-controls">
+                    <button id="planner-grid-btn" class="planner-view-btn" onclick="plannerCycleGridSnap()" title="Grid Snap">⊞</button>
+                    <button class="planner-view-btn" onclick="plannerZoomIn()" title="Zoom In (+)">+</button>
+                    <button class="planner-view-btn" onclick="plannerZoomOut()" title="Zoom Out (-)">−</button>
+                    <button class="planner-view-btn" onclick="plannerFitToView()" title="Fit to View (F)">⤢</button>
+                    <button class="planner-view-btn" onclick="plannerOptimizeAllPortOrders()" title="Optimize Port Order">🔀</button>
                 </div>
             </div>
         </div>
+
+        <div id="view-help" class="view"></div>
 
         <div id="view-db" class="view">
             <div class="editor-container">
@@ -563,9 +741,14 @@
         </div>
     </main>
     
-    <script src="alchemy_ui.js"></script>
-    <script src="alchemy_calc.js"></script>
-    <script src="alchemy_cauldron.js"></script>
-    <script src="alchemy_recipe.js"></script>
+    <script src="js/alchemy_main.js"></script>
+    <script src="js/alchemy_ui.js"></script>
+    <script src="js/alchemy_calc.js"></script>
+    <script src="js/alchemy_cauldron.js"></script>
+    <script src="js/alchemy_readme.js"></script>
+    <script src="js/alchemy_help.js"></script>
+    <script src="js/alchemy_planner.js"></script>
+    <script src="js/alchemy_planner_calc.js"></script>
+    <script src="js/alchemy_planner_overlays.js"></script>
 </body>
 </html>

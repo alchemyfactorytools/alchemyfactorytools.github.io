@@ -20,7 +20,7 @@ const path = require('node:path');
 const { solve, itemCatalog } = require('./src/solve');
 const { toDot, toMermaid } = require('./src/flowgraph');
 const { assignClusters } = require('./src/layout');
-const db = require('./data/alchemy_db.v41.json');
+const db = require('./data/alchemy_db.json');
 const contracts = require('./data/contracts.json'); // Dispatch Portal contract data (per-item daily caps)
 
 // Bump alongside web/app.js BUILD_STAMP. Surfaced at /api/version so a bug report can

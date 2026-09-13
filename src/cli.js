@@ -104,7 +104,7 @@ function findItem(db, name) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const [command, ...rest] = args._;
-  const db = require('../data/alchemy_db.v41.json');
+  const db = require('../data/alchemy_db.json');
 
   if (!command || command === 'help') {
     console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 31).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
