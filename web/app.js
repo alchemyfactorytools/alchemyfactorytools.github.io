@@ -45,8 +45,9 @@ function prefsFromUrl() {
   const { prefs, version, present } = AlchShare.decode(location.search, CATALOG);
   if (!present) return null;
   const mine = window.AlchSolver && AlchSolver.db ? AlchSolver.db.version : null;
+  // Own line, not the status: the auto-solve overwrites the status right after this runs.
   if (version != null && mine != null && version !== mine) {
-    setStatus(`Link was made on dataset DB v${version}; this build runs DB v${mine} — the result may differ.`, '');
+    setNotice(`This link was made on dataset DB v${version}; this build runs DB v${mine}, so the result may differ from what was shared.`);
   }
   return prefs;
 }
@@ -573,6 +574,20 @@ async function solve() {
 }
 
 function setStatus(msg, cls) { const s = $('status'); s.className = 'status ' + (cls || ''); s.textContent = msg; }
+// Persistent one-line notice above the status (dismissable); empty string hides it.
+function setNotice(msg) {
+  const n = $('notice');
+  if (!n) return;
+  n.textContent = msg;
+  n.hidden = !msg;
+  if (msg) {
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.title = 'Dismiss';
+    x.onclick = () => setNotice('');
+    n.appendChild(x);
+  }
+}
 
 function renderSummary(out, body) {
   const s = out.graph.summary;
