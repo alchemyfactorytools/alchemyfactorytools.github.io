@@ -7,6 +7,7 @@
 const { resolveConfig } = require('./config');
 const { canonicalCarriers } = require('./utilities');
 const { makeComposer } = require('./composer');
+const { productionRecipes } = require('./recipes');
 const { composeGraph } = require('./compose-graph');
 const { tiers } = require('./tiers');
 
