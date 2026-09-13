@@ -14,18 +14,51 @@ const STORE_KEY = 'alchfact.prefs.v1';
 const SKILLS = ['factory', 'logistics', 'alchemy', 'fuel', 'fertilizer'];
 // adder inputs that hold transient text, not a setting worth restoring
 const TRANSIENT_FIELDS = new Set(['allowInput', 'beltItem', 'beltRate']);
-function savePrefs() {
+function currentPrefs() {
   const fields = {};
   for (const el of document.querySelectorAll('#controls input[id], #controls select[id]')) {
     if (TRANSIENT_FIELDS.has(el.id)) continue;
     fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
   }
-  const prefs = { fields, belt: beltSupply, extraTargets, allowed: [...allowed], orientation, showClusters, utilEdgeMode, layoutMode, collapsed: [...collapsed] };
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore quota/private mode */ }
+  return { fields, belt: beltSupply, extraTargets, allowed: [...allowed], orientation, showClusters, utilEdgeMode, layoutMode, collapsed: [...collapsed] };
+}
+function savePrefs() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(currentPrefs())); } catch (e) { /* ignore quota/private mode */ }
+  scheduleUrlSync();
+}
+// Shareable URL (web/share.js): the address bar mirrors the sidebar, non-default values only, so
+// any moment can be bookmarked or copied. Debounced: Safari throttles replaceState.
+let urlSyncTimer = null;
+function shareUrl() {
+  const version = window.AlchSolver && AlchSolver.db ? AlchSolver.db.version : null;
+  const qs = AlchShare.encode(currentPrefs(), { version, base: location.search });
+  return location.pathname + (qs ? '?' + qs : '') + location.hash;
+}
+function scheduleUrlSync() {
+  if (!window.AlchShare) return;
+  clearTimeout(urlSyncTimer);
+  urlSyncTimer = setTimeout(() => { try { history.replaceState(null, '', shareUrl()); } catch (e) { /* throttled or sandboxed */ } }, 300);
+}
+// Settings from the URL win over the saved ones. Returns null when the query carries none.
+function prefsFromUrl() {
+  if (!window.AlchShare) return null;
+  const { prefs, version, present } = AlchShare.decode(location.search, CATALOG);
+  if (!present) return null;
+  const mine = window.AlchSolver && AlchSolver.db ? AlchSolver.db.version : null;
+  if (version != null && mine != null && version !== mine) {
+    setStatus(`Link was made on dataset DB v${version}; this build runs DB v${mine} — the result may differ.`, '');
+  }
+  return prefs;
 }
 function loadPrefs() {
-  let prefs;
-  try { prefs = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) { prefs = {}; }
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) { saved = {}; }
+  const fromUrl = prefsFromUrl();
+  applyPrefs(fromUrl || saved);
+  // anything worth solving? (a URL with settings, or a saved session with an output picked)
+  return !!(fromUrl || (saved.fields && saved.fields.item));
+}
+function applyPrefs(prefs) {
   // restore every saved form field by id (output item, rate, unit, tier, cauldron,
   // byproducts, capital, buildability, skills, … — everything in the sidebar)
   if (prefs.fields) for (const [id, val] of Object.entries(prefs.fields)) {
@@ -150,12 +183,13 @@ async function init() {
   // option), then again AFTER (to re-filter to the restored Unlock tier). Dispatch items are filled
   // on demand by rebuildOutputs when the rate unit is "dispatch", so there's no dispatch datalist.
   rebuildOutputs();
-  loadPrefs();
+  const restored = loadPrefs();
   rebuildOutputs();
   updateDispatchUI(); // reflect a restored rateUnit (show/hide the dispatch row + live readout)
   updateSolverUI();   // hide the LP-only tuning block when the composer is selected (it ignores them)
   updateSteamUI();    // reveal the steam free/at-cost selector if "Use steam" was restored on
   updateMultiUI();    // show the multi-target hint + hide "add target" in dispatch mode
+  scheduleUrlSync();  // address bar reflects whatever was restored
   // persist any sidebar field edit (typing the output/rate, toggling a checkbox, …)
   $('controls').addEventListener('change', () => { savePrefs(); updateDispatchUI(); updateSolverUI(); updateSteamUI(); updateMultiUI(); });
   $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
@@ -173,6 +207,8 @@ async function init() {
   });
   // changing the unlock tier re-filters the output picker (items above the tier drop out)
   $('maxTier').addEventListener('change', rebuildOutputs);
+  // a shared link or a saved session with an output picked solves straight away
+  if (restored && $('item').value.trim()) solve();
 }
 
 // ---------- allowed-inputs chips ----------
@@ -1239,6 +1275,18 @@ $('exportDot').onclick = async () => {
 
 // Copy the EXACT request body the browser sends to /api/solve, plus a build stamp, so a
 // bug report can be reproduced verbatim. The stamp surfaces stale-asset mismatches.
+// Copy a compact link that reproduces the sidebar (non-default values only; see web/share.js).
+$('copyLink').onclick = async () => {
+  const url = location.origin + shareUrl();
+  try { history.replaceState(null, '', shareUrl()); } catch (e) { /* ignore */ }
+  try {
+    await navigator.clipboard.writeText(url);
+    setStatus('Link copied.', 'ok');
+  } catch (e) {
+    window.prompt('Copy this link:', url);
+  }
+};
+
 $('copySettings').onclick = async () => {
   let server = null;
   try { server = await (await fetch('/api/version', { cache: 'no-store' })).json(); } catch (e) { server = { error: String(e) }; }

@@ -24,7 +24,10 @@ NUTRIENT appear as resource hubs; surplus byproducts get explicit discard nodes;
 and cauldron routes riding fragile/tie margins or face-value coin mints are badged.
 Pan with drag, zoom with the wheel, **Fit** to reframe, toggle **⇄ Horizontal / ⇅
 Vertical** layout (vertical fits deep builds on screen better), or **Copy Graphviz
-DOT** to export. The graph is solved server-side by the same LP, so the browser
+DOT** to export. The address bar mirrors the sidebar as a short query string
+(non-default values only, e.g. `?v=55&o=basic_fertilizer&t=4&r=30`; codec in
+`web/share.js`), **Copy link** puts it on the clipboard, and opening a link or
+returning to a saved session solves immediately. The graph is solved server-side by the same LP, so the browser
 needs no WASM.
 
 The layout (`src/layout.js`, shared by the UI and the SVG exporter) uses **dagre**

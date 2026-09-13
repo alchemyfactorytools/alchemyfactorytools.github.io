@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // Assemble the static GitHub Pages build into dist/: the in-browser solver bundle + the web
-// assets (index.html, app.js, layout3.js, style.css) + a .nojekyll marker so Pages serves the
+// assets (index.html, app.js, share.js, layout3.js, style.css) + a .nojekyll marker so Pages serves the
 // files verbatim. No server and no /api — the tile composer runs entirely in the browser, so
 // `dist/` is fully self-contained and can be served by any static host.
 //
@@ -36,7 +36,7 @@ esbuild.buildSync({
 
 // 2) Copy the static front-end assets verbatim. render-ir.js is the default tile-IR renderer —
 // without it app.js silently falls back to the layout3 path, so it MUST ship.
-for (const f of ['index.html', 'style.css', 'layout3.js', 'render-ir.js', 'app.js']) {
+for (const f of ['index.html', 'style.css', 'layout3.js', 'render-ir.js', 'share.js', 'app.js']) {
   fs.copyFileSync(path.join(web, f), path.join(dist, f));
 }
 
