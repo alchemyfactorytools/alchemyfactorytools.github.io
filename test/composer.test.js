@@ -44,6 +44,22 @@ test('canonical picks: clean material routes, cauldron only where it wins', () =
   assert.equal(comp.canonicalPick('Coke Powder').source, 'recipe');
 });
 
+test('build priority: the operating-cost weight decides whether a cheaper cauldron triple earns its extra stage', () => {
+  // Black Powder at tier 6, easy pool. Two bought Sage Seeds + Gelatinous Gridlock costs 820 c
+  // per craft with no crafted input; Sage Seeds + Coal + Gelatinous Gridlock costs 500 c but adds
+  // a Stone Crusher stage (Coal from bought Coal Ore). Simplest refuses the stage, balanced and
+  // cheapest take it. Operating cost must be monotone non-increasing across the presets.
+  const cfg = { cauldron: { enabled: true, inputPool: 'easy' } };
+  const pick = (priority) => composer({ ...cfg, composer: { priority } });
+  const simplest = pick('simplest'), balanced = pick('balanced'), cheapest = pick('cheapest');
+  assert.equal(desc(simplest.canonicalPick('Black Powder')), 'Cauldron{Gelatinous Gridlock:1,Sage Seeds:2}');
+  assert.equal(desc(balanced.canonicalPick('Black Powder')), 'Cauldron{Coal:1,Gelatinous Gridlock:1,Sage Seeds:1}');
+  assert.ok(balanced.opCost('Black Powder') < simplest.opCost('Black Powder'), 'balanced runs cheaper than simplest');
+  assert.ok(cheapest.opCost('Black Powder') <= balanced.opCost('Black Powder'), 'cheapest runs no dearer than balanced');
+  // unset priority = library default (simplest), so existing callers are unchanged
+  assert.equal(desc(composer(cfg).canonicalPick('Black Powder')), desc(simplest.canonicalPick('Black Powder')));
+});
+
 test('Phase 2: Clay resolves to a Cauldron triple (not in db.recipes), not the deep Assembler chain', () => {
   const comp = composer();
   const clay = comp.canonicalPick('Clay');

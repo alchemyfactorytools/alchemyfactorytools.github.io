@@ -44,6 +44,11 @@ const CO_W = 30;      // co-product waste: dumping a valued co-product (Rock Sal
 // the op axis (see solve()), so the metric's min-op equals true min-COST and won't over-farm "free"
 // belted fert. Off by default → ordinary build-first picks are byte-identical.
 const PROFIT_OP_W = 1000;
+// Build priority presets (cfg.composer.priority): the operating-cost weight, expressed to the
+// user as "add a machine stage only if it saves ≥ DEPTH_W / opW copper per item".
+//   simplest 2 → ≥ 750 c/item, balanced 15 → ≥ 100 c/item, cheapest 1000 → ≥ 1.5 c/item.
+// Dispatch (profit mode) always runs at cheapest. Unset = simplest (library default).
+const PRIORITY_OP_W = { simplest: OP_W_DEFAULT, balanced: 15, cheapest: PROFIT_OP_W };
 
 // Build the canonical-recipe picker for a given db + config.
 function makeComposer(db, cfg) {
@@ -159,7 +164,7 @@ function makeComposer(db, cfg) {
   const steamCost = steamOn && cfg.steam.mode === 'cost';
   const depthW = cc.depthW != null ? cc.depthW : DEPTH_W;
   const widthW = cc.widthW != null ? cc.widthW : WIDTH_W;
-  const OP_W = cc.opW != null ? cc.opW : (profitMode ? PROFIT_OP_W : OP_W_DEFAULT);
+  const OP_W = profitMode ? PROFIT_OP_W : (cc.opW != null ? cc.opW : (PRIORITY_OP_W[cc.priority] ?? OP_W_DEFAULT));
   const coW = cc.coW != null ? cc.coW : CO_W;
   const cParams = skillParams(cfg.skills); // heat/speed multipliers, for the profit-mode fuel charge
   const fuelItemC = (cfg.canonical && cfg.canonical.fuelItem) || null;

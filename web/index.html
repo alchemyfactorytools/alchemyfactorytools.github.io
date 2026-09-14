@@ -74,6 +74,13 @@
             <option value="composer" selected>Tile composer — deterministic simplest tiles</option>
           </select>
         </label>
+        <label>Build priority <span class="info" data-tip="How much copper per item one extra machine stage is worth. Dispatch mode always uses Cheapest to run.">i</span>
+          <select id="buildPriority">
+            <option value="simplest">Simplest — add a stage only if it saves ≥ 750 c/item</option>
+            <option value="balanced" selected>Balanced — add a stage if it saves ≥ 100 c/item</option>
+            <option value="cheapest">Cheapest to run — add a stage if it saves ≥ 2 c/item</option>
+          </select>
+        </label>
         <p class="hint">The <b>optimizer</b> finds the globally cheapest flow. The <b>tile composer</b>
           picks one canonical recipe per item and builds a replicated, self-contained tile tree —
           "what you'd actually build", not cost-minimal. Optimizer-only tuning knobs are hidden

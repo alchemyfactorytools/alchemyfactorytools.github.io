@@ -382,6 +382,7 @@ const splitList = (s) => s.split(',').map((x) => x.trim()).filter(Boolean);
 function buildConfig() {
   const cfg = { cauldron: {}, byproducts: {}, machines: {}, skills: {} };
   cfg.solver = $('solver').value; // 'lp' (default) | 'composer' (deterministic tile composer)
+  cfg.composer = { priority: $('buildPriority').value }; // simplest | balanced | cheapest (operating-cost weight)
   cfg.cauldron.enabled = $('cauldronEnabled').checked;
   cfg.cauldron.inputPool = $('pool').value;
   const forbid = splitList($('forbidCauldron').value);
@@ -488,6 +489,7 @@ function updateDispatchUI() {
   // hidden — saturating the quota has no count to pick (rate is fixed by item + Negotiation + day).
   $('rate').style.display = isDispatch ? 'none' : '';
   $('dispatchRow').style.display = isDispatch ? '' : 'none';
+  const bp = $('buildPriority'); if (bp) bp.disabled = isDispatch; // dispatch forces "cheapest to run"
   // (c) "full belts" shows what one belt carries at the current Logistics level
   const bh = $('beltHint');
   if (bh) {

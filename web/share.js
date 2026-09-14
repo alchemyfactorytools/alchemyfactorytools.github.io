@@ -23,6 +23,7 @@
     dispatchDayLen: ['dl', '16'],
     maxTier: ['t', ''],
     solver: ['s', 'composer'],
+    buildPriority: ['bp', 'balanced'],
     sk_factory: ['sf', '0'],
     sk_logistics: ['sl', '0'],
     sk_alchemy: ['sa', '0'],

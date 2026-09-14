@@ -16,7 +16,9 @@ npm run serve                             # → http://localhost:8347
 ```
 
 Pick an output item and rate (per minute, per second, machine count, **full belts** of net
-output at your Logistics level, or a dispatch quota), optionally restrict the **allowed external inputs**
+output at your Logistics level, or a dispatch quota), choose a **build priority** (how much
+copper per item one extra machine stage is worth: Simplest 750, Balanced 100, Cheapest 2;
+dispatch mode always runs Cheapest), optionally restrict the **allowed external inputs**
 (the feedstock + coins you're willing to feed the factory — leave empty to allow
 anything), set cauldron/byproduct/skill knobs, and hit **Solve**. You get an
 interactive left-to-right factory graph: each machine node shows its integer count,
