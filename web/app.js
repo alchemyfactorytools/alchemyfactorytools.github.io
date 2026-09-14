@@ -393,6 +393,7 @@ function buildConfig() {
   const trash = splitList($('byproductTrash').value);
   if (trash.length) cfg.byproducts.perItem = Object.fromEntries(trash.map((i) => [i, 'trash']));
   cfg.selfFuel = $('selfFuel').checked;
+  cfg.quarantine = { bankPortal: $('allowMint').checked }; // false: coins are never minted as recipe inputs
   cfg.selfFert = $('selfFert').checked;
   cfg.steam = { enabled: $('useSteam').checked, mode: $('steamMode').value }; // composer: central steam for heat
   // A null/blank belt rate means "one full belt at the current Logistics level", so resolve it to

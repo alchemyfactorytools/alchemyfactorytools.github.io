@@ -153,7 +153,8 @@ scripts/
 
 - **Bank Portal coins are priced at face value** (sellPrice/coin) — an assumption until verified
   in-game; flagged `[ASSUMPTION]` in every plan that mints. Disable with
-  `{"quarantine":{"bankPortal":false}}`.
+  `{"quarantine":{"bankPortal":false}}` (the "Allow minting coins" checkbox in the web UI); the
+  composer then uses coin-input recipes only when that coin is on the main belt.
 - The curated **Ruby cauldron row is excluded** (contradicts the deterministic formula); the other
   three curated rows are replaced by the formula block whenever the cauldron is enabled.
 - Nursery **seeds are treated as plot capital** (not per-harvest inputs) and crop growth consumes

@@ -184,10 +184,14 @@ function makeComposer(db, cfg) {
   // leaf (build, op) for an item that enters uncrafted. build is the flat "it's one node"; op is
   // the copper it drains. Currency is minted at its copper-equivalent (sellPrice: Copper 1, Silver
   // 1000, Gold 100k) — like the LP — not crafted free via the zero-input mint (excluded above).
+  // cfg.quarantine.bankPortal === false disables minting (same switch as the LP): coins are then
+  // only available as recipe inputs when belted, so coin-input recipes (Kiln Copper Ingot from
+  // 400 Copper Coin) drop out instead of drawing the money line.
+  const mintsOn = !(cfg.quarantine && cfg.quarantine.bankPortal === false);
   const leaf = (item) => {
     const it = db.items[item];
     if (!it) return null;
-    if (it.category === 'Currency' && it.sellPrice != null) return { build: BUY_LEAF, op: it.sellPrice, source: 'mint' };
+    if (it.category === 'Currency' && it.sellPrice != null) return mintsOn ? { build: BUY_LEAF, op: it.sellPrice, source: 'mint' } : null;
     if (buyable(item)) return { build: BUY_LEAF, op: it.buyPrice || 0, source: 'buy' };
     return null;
   };

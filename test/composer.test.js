@@ -60,6 +60,21 @@ test('build priority: the operating-cost weight decides whether a cheaper cauldr
   assert.equal(desc(composer(cfg).canonicalPick('Black Powder')), desc(simplest.canonicalPick('Black Powder')));
 });
 
+test('coins: quarantine.bankPortal=false removes minted-coin inputs; a belted coin still delivers', () => {
+  const cfg = { cauldron: { enabled: true, inputPool: 'easy' }, composer: { priority: 'balanced' } };
+  const withMint = composer(cfg);
+  const noMint = composer({ ...cfg, quarantine: { bankPortal: false } });
+  assert.equal(withMint.canonicalPick('Copper Coin').source, 'mint');
+  assert.equal(noMint.canonicalPick('Copper Coin'), null, 'no mint leaf → coin is unmakeable');
+  // Copper Ingot must not route through the 400-coin Kiln recipe once mints are off
+  const pick = noMint.canonicalPick('Copper Ingot');
+  assert.ok(pick, 'Copper Ingot still makeable without coins');
+  assert.equal(Object.keys(pick.recipe.inputs).includes('Copper Coin'), false, desc(pick));
+  // belting the coin brings the coin-input recipes back as a free leaf
+  const belted = composer({ ...cfg, quarantine: { bankPortal: false }, belt: [{ item: 'Copper Coin' }] });
+  assert.equal(belted.canonicalPick('Copper Coin').source, 'belt');
+});
+
 test('Phase 2: Clay resolves to a Cauldron triple (not in db.recipes), not the deep Assembler chain', () => {
   const comp = composer();
   const clay = comp.canonicalPick('Clay');
