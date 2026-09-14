@@ -196,7 +196,7 @@ async function init() {
   $('controls').addEventListener('input', () => { savePrefs(); updateDispatchUI(); });
   // Keep each "full belt" rate label in sync as Logistics changes (focus is in the Logistics field
   // then, so this never clobbers an in-progress belt-rate edit elsewhere).
-  $('sk_logistics').addEventListener('input', renderBelt);
+  $('sk_logistics').addEventListener('input', () => { renderBelt(); updateDispatchUI(); });
   // Switching INTO dispatch mode with a non-dispatchable item selected clears it (so you're not
   // left targeting an item with no contract). Only on the mode switch — not per keystroke, which
   // would erase partial typing. Validation + the filtered datalist handle the rest.
@@ -327,7 +327,7 @@ function renderTargets() {
     rate.addEventListener('input', () => { t.rate = Number(rate.value); savePrefs(); });
     const unit = document.createElement('select');
     unit.className = 't-unit';
-    for (const [v, label] of [['min', '/ min'], ['sec', '/ sec'], ['machines', '× machines']]) {
+    for (const [v, label] of [['min', '/ min'], ['sec', '/ sec'], ['machines', '× machines'], ['belts', '× full belts']]) {
       const o = document.createElement('option'); o.value = v; o.textContent = label;
       if (v === t.rateMode) o.selected = true;
       unit.appendChild(o);
@@ -354,7 +354,7 @@ function updateMultiUI() {
 $('addTarget').onclick = () => {
   // inherit the primary row's unit so "set primary to × machines, add row" keeps machines
   const u = $('rateUnit').value;
-  const rateMode = (u === 'min' || u === 'sec' || u === 'machines') ? u : 'machines';
+  const rateMode = (u === 'min' || u === 'sec' || u === 'machines' || u === 'belts') ? u : 'machines';
   extraTargets.push({ item: '', rate: 1, rateMode });
   renderTargets();
   updateMultiUI();
@@ -431,6 +431,10 @@ function requestBody() {
   let rate = Number($('rate').value);
   const unit = $('rateUnit').value;
   if (unit === 'sec') rate *= 60;
+  // "full belts" = NET output belts at the current Logistics level. The composer sizes the line
+  // for gross production (a Growth Potion line also feeds its own nurseries; a fuel line burns
+  // some of itself), so the requested rate is what actually leaves on the belt.
+  if (unit === 'belts') rate *= fullBeltRate();
   let rateMode = unit === 'machines' ? 'machines' : 'rate';
   const config = buildConfig();
   if (unit === 'dispatch') {
@@ -450,6 +454,7 @@ function requestBody() {
       let r = Number(t.rate);
       if (!(r > 0)) continue;
       if (t.rateMode === 'sec') r *= 60;
+      if (t.rateMode === 'belts') r *= fullBeltRate();
       targets.push({ item: t.item, rate: r, rateMode: t.rateMode === 'machines' ? 'machines' : 'rate' });
     }
   }
@@ -483,6 +488,17 @@ function updateDispatchUI() {
   // hidden — saturating the quota has no count to pick (rate is fixed by item + Negotiation + day).
   $('rate').style.display = isDispatch ? 'none' : '';
   $('dispatchRow').style.display = isDispatch ? '' : 'none';
+  // (c) "full belts" shows what one belt carries at the current Logistics level
+  const bh = $('beltHint');
+  if (bh) {
+    const isBelts = $('rateUnit').value === 'belts';
+    bh.style.display = isBelts ? '' : 'none';
+    if (isBelts) {
+      const n = Number($('rate').value) || 0;
+      const fb = fullBeltRate();
+      bh.textContent = `1 full belt = ${fb}/min at Logistics ${Number($('sk_logistics').value) || 0} → ${n * fb}/min net out, after anything the line feeds back into itself.`;
+    }
+  }
   const hint = $('dispatchHint');
   if (!hint) return;
   if (!isDispatch) { hint.textContent = ''; return; }

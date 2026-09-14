@@ -49,6 +49,7 @@
               <option value="min" selected>/ min</option>
               <option value="sec">/ sec</option>
               <option value="machines">× machines</option>
+              <option value="belts">× full belts</option>
               <option value="dispatch">dispatch</option>
             </select>
             <button type="button" id="delPrimary" class="t-del" title="Remove this target" style="display:none">×</button>
@@ -56,6 +57,7 @@
         </div>
         <div id="extraTargets" class="target-rows"></div>
         <button type="button" id="addTarget" class="secondary add-target">+ add target</button>
+        <p class="hint" id="beltHint" style="display:none"></p>
         <p class="hint" id="multiHint" style="display:none">Extra targets build side by side, sharing fuel, fertilizer, and surplus co-products. <b>Tile composer only.</b></p>
         <label id="dispatchRow" style="display:none">Dispatch day length <span class="info" data-tip="Minutes, base 16 — raised by potion-belt level">i</span>
           <input type="number" id="dispatchDayLen" value="16" min="1" step="any">

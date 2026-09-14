@@ -21,12 +21,12 @@ test('round trip: fields, belt, extra targets, allowed inputs', () => {
   const prefs = {
     fields: { item: 'Healing Potion', rate: '2', rateUnit: 'machines', maxTier: '3', sk_factory: '4', useSteam: true, steamMode: 'cost', cauldronEnabled: false, forbidCauldron: 'Impure Copper Powder, Clay' },
     belt: [{ item: 'Coke Powder', rate: 240 }, { item: 'Logs', rate: null }],
-    extraTargets: [{ item: 'Soap', rate: 30, rateMode: 'min' }, { item: 'Bandage', rate: 2, rateMode: 'machines' }],
+    extraTargets: [{ item: 'Soap', rate: 30, rateMode: 'min' }, { item: 'Bandage', rate: 2, rateMode: 'machines' }, { item: 'Growth Potion', rate: 1, rateMode: 'belts' }],
     allowed: ['Logs', 'Gelatinous Gridlock', 'Copper Coin'],
   };
   const qs = encode(prefs, { version: 55 });
   assert.match(qs, /b=coke_powder:240,logs/);
-  assert.match(qs, /x=soap:30m,bandage:2c/);
+  assert.match(qs, /x=soap:30m,bandage:2c,growth_potion:1b/);
   assert.match(qs, /a=logs,gelatinous_gridlock,copper_coin/);
   const { prefs: back, version, present } = decode('?' + qs, catalog);
   assert.equal(present, true);

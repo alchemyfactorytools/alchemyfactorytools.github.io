@@ -52,8 +52,8 @@
   const ITEM_LIST_FIELDS = new Set(['forbidCauldron', 'forceCauldron', 'byproductTrash']);
   const LIST_KEYS = { belt: 'b', extraTargets: 'x', allowed: 'a' };
   const VERSION_KEY = 'v';
-  const RATE_MODE_SUFFIX = { min: 'm', sec: 's', machines: 'c' };
-  const SUFFIX_RATE_MODE = { m: 'min', s: 'sec', c: 'machines' };
+  const RATE_MODE_SUFFIX = { min: 'm', sec: 's', machines: 'c', belts: 'b' };
+  const SUFFIX_RATE_MODE = { m: 'min', s: 'sec', c: 'machines', b: 'belts' };
   const OWN_KEYS = new Set([VERSION_KEY, ...Object.values(FIELDS).map((f) => f[0]), ...Object.values(LIST_KEYS)]);
 
   const slug = (name) => String(name).toLowerCase().replace(/[ˈ']/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -121,7 +121,7 @@
       present = true;
       prefs.extraTargets = [];
       for (const part of q.get(LIST_KEYS.extraTargets).split(',').filter(Boolean)) {
-        const m = /^([^:]+):([0-9.]+)([msc])?$/.exec(part);
+        const m = /^([^:]+):([0-9.]+)([mscb])?$/.exec(part);
         if (!m) continue;
         const item = resolve(m[1]);
         if (item) prefs.extraTargets.push({ item, rate: num(m[2]) ?? 1, rateMode: SUFFIX_RATE_MODE[m[3]] || 'machines' });
