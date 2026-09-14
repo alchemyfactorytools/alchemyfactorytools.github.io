@@ -75,6 +75,37 @@ test('coins: quarantine.bankPortal=false removes minted-coin inputs; a belted co
   assert.equal(belted.canonicalPick('Copper Coin').source, 'belt');
 });
 
+test('canonical picks never form a cycle (every item walks down to a leaf)', () => {
+  // Regression: buyables-only + no mints + cheapest priority picked Copper Powder ← Grinder{Copper
+  // Ingot} ← Crucible{Copper Powder}, a loop that laundered the Athanor's co-product waste penalty.
+  const configs = [
+    { cauldron: { enabled: true, inputPool: 'buyables' }, quarantine: { bankPortal: false }, composer: { priority: 'cheapest' } },
+    { cauldron: { enabled: true, inputPool: 'easy' }, composer: { priority: 'balanced' } },
+    { cauldron: { enabled: true, inputPool: 'unrestricted' }, composer: { priority: 'cheapest' }, maxTier: 8 },
+    { cauldron: { enabled: false }, composer: { priority: 'simplest' } },
+  ];
+  for (const cfg of configs) {
+    const comp = composer(cfg);
+    for (const item of Object.keys(db.items)) {
+      const seen = new Set();
+      const stack = [item];
+      while (stack.length) {
+        const it = stack.pop();
+        const pick = comp.canonicalPick(it);
+        if (!pick || !pick.recipe) continue;
+        for (const inp of Object.keys(pick.recipe.inputs || {})) {
+          assert.ok(inp !== item, `${item}: pick chain loops back through ${it} (${desc(pick)}) in ${JSON.stringify(cfg)}`);
+          if (!seen.has(inp)) { seen.add(inp); stack.push(inp); }
+        }
+      }
+    }
+  }
+  // grinding a coin-minted ingot into powder is a legitimate (acyclic) route; the loop is only
+  // when the ingot itself comes from Copper Powder
+  const noMint = composer({ cauldron: { enabled: true, inputPool: 'buyables' }, quarantine: { bankPortal: false }, composer: { priority: 'cheapest' } });
+  assert.notEqual(desc(noMint.canonicalPick('Copper Powder')), 'Grinder{Copper Ingot:1}');
+});
+
 test('Phase 2: Clay resolves to a Cauldron triple (not in db.recipes), not the deep Assembler chain', () => {
   const comp = composer();
   const clay = comp.canonicalPick('Clay');

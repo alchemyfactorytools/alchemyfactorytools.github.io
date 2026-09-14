@@ -337,8 +337,12 @@ function makeComposer(db, cfg) {
             const f = floor(out);
             if (isFinite(f)) coWaste += (q / prim) * f;
           }
-          const b = depthW + widthW * Math.max(0, inputs.length - 1) + bSum;
-          const s = b + opW * oSum + coW * coWaste;
+          // The waste penalty is carried on the build axis so CONSUMERS inherit it. If it lived only
+          // in this recipe's score, a consumer could launder it: Copper Powder ← Grinder{Copper Ingot}
+          // ← Crucible{Copper Powder ← Athanor} inherits the Athanor's op and build but not its
+          // dumped-ICP penalty, scores below the Athanor itself, and the pick becomes a 2-cycle.
+          const b = depthW + widthW * Math.max(0, inputs.length - 1) + bSum + coW * coWaste;
+          const s = b + opW * oSum;
           if (s < bestS) { bestS = s; bestB = b; bestO = oSum; bestPick = { source: 'recipe', recipe: r }; }
         }
 
