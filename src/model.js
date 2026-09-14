@@ -94,13 +94,13 @@ class Model {
   // timeSec·rate / (60·speedMult); this is its per-run share.
   capitalPerRun(p) {
     // Fertilizer columns imply NURSERY PLOTS the LP otherwise can't see: a fertility-
-    // limited nursery needs plots ≈ nutrient / (60·maxFertility). Without this, nurseries
+    // limited nursery needs plots ≈ nutrient / (60·maxFertility·speedMult). Without this, nurseries
     // (timeSec=0) cost zero capital, so the optimizer floods cheap LOW-fertility fert
     // (Basic Fertilizer, maxFert 12) into a thousands-of-nurseries sprawl instead of using
     // high-fertility Growth Potion (2160). Charge each fertilizer for the plots + the
     // buildability/per-machine penalty those plots carry, so fertilizer QUALITY matters.
     if (p.kind === 'fertilize' && p.nutrient > 0 && p.maxFertility > 0) {
-      const plots = p.nutrient / (60 * p.maxFertility);
+      const plots = p.nutrient / (60 * p.maxFertility * this.pt.params.speedMult);
       // Nursery is a farm machine — mark its build cost up so farmed herbs aren't ~free.
       const nurseryBuild = (this.buildCopper.Nursery || 0) * this.capitalWeight * (1 + this.farmWeight);
       return plots * (this.buildabilityWeight + nurseryBuild); // per-plot machine + build cost

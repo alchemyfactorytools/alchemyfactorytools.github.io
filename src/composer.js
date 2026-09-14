@@ -210,8 +210,8 @@ function makeComposer(db, cfg) {
     // Nutrient pricing (per-crop, throughput-aware). A grown crop is NEVER free — it costs the
     // nutrient consumed to grow it, priced at the cost-per-nutrient of the fertilizer you'd actually
     // use for THAT crop. You fertilise each crop with the CHEAPEST fertilizer that still grows it at
-    // full belt speed: the nursery's grow rate is min(60·maxFertility/nutrientCost, beltSpeed), so a
-    // fert sustains full speed iff maxFertility ≥ nutrientCost·beltSpeed/60. Below that the plot is
+    // full belt speed: the nursery's grow rate is min(60·maxFertility·speedMult/nutrientCost, beltSpeed),
+    // so a fert sustains full speed iff maxFertility ≥ nutrientCost·beltSpeed/(60·speedMult). Below that the plot is
     // fert-throttled to a crawl (Chamomile on Basic Fert = 1/min vs 60/min on Growth Potion), so a
     // cheaper-but-weaker fert isn't a real option; a stronger one (Panacea on a low-tier crop) is
     // needless. This mirrors the game's tier design — the sustaining fert unlocks at ~the crop's tier
@@ -232,7 +232,7 @@ function makeComposer(db, cfg) {
     // copper per nutrient for a crop needing `nc`: cheapest fert that sustains it at full belt speed.
     const rateFn = (cpn) => (nc) => {
       if (!(nc > 0) || !fertList.length) return 0;
-      const need = (nc * cParams.beltSpeed) / 60; // maxFertility required for full belt speed
+      const need = (nc * cParams.beltSpeed) / (60 * cParams.speedMult); // maxFertility required for full belt speed
       let best = Infinity;
       for (const f of fertList) if (f.mf >= need) { const c = cpn.get(f.item); if (c < best) best = c; }
       if (isFinite(best)) return best;
@@ -473,7 +473,8 @@ function makeComposer(db, cfg) {
     let machineCount = null, tileLoad = null, nurseryNote = null;
     if (NURSERY.has(machine)) {
       const nutrientCost = r.nutrientCost || 0;
-      const fertilityRate = nutrientCost > 0 && fertMaxFertility ? (60 * fertMaxFertility) / nutrientCost : Infinity;
+      // Factory Efficiency speeds crop growth too (verified in-game: Redcurrant 60 → 75/plot at level 1)
+      const fertilityRate = nutrientCost > 0 && fertMaxFertility ? (60 * fertMaxFertility * speedMult) / nutrientCost : Infinity;
       const perPlot = Math.min(fertilityRate, beltSpeed);
       if (isFinite(perPlot) && perPlot > 0) {
         tileLoad = rate / perPlot;

@@ -75,8 +75,9 @@ function buildFlowGraph(result, model, demand, opts = {}) {
   const resourceConsumerEdges = opts.resourceConsumerEdges === true;
   const flowsAll = result.flows.filter((f) => f.rate > EPS);
 
-  // Nursery crops grow at a rate set by the fertilizer's maxFertility, capped by
-  // belt speed: per-plot rate = min(60·maxFertility/nutrientCost, beltSpeed). Pick
+  // Nursery crops grow at a rate set by the fertilizer's maxFertility and the Factory
+  // Efficiency speed, capped by belt speed: per-plot rate =
+  // min(60·maxFertility·speedMult/nutrientCost, beltSpeed). Pick
   // the dominant active fertilizer (most nutrient supplied). Without this a Nursery
   // node falsely implies one plot makes the whole crop demand.
   let fertMaxFertility = 0;
@@ -96,7 +97,7 @@ function buildFlowGraph(result, model, demand, opts = {}) {
   const nurseryPlots = (proc, rate) => {
     const nutrientCost = proc.nutrient < 0 ? -proc.nutrient : 0;
     if (!nutrientCost) return { count: null, perPlot: null };
-    const fertilityRate = fertMaxFertility ? (60 * fertMaxFertility) / nutrientCost : Infinity;
+    const fertilityRate = fertMaxFertility ? (60 * fertMaxFertility * model.pt.params.speedMult) / nutrientCost : Infinity;
     const perPlot = Math.min(fertilityRate, beltSpeed);
     return {
       count: isFinite(perPlot) && perPlot > 0 ? Math.ceil(rate / perPlot - 1e-9) : null,

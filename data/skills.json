@@ -17,12 +17,13 @@
         "6": 150,
         "12": 240,
         "20": 264
-      }
+      },
+      "note": "Same curve as Factory Efficiency scaled by 60: at equal Logistics and Factory levels one belt carries exactly 60 * speedMult, so machines per full belt never change. Level the two together to keep blueprints stable."
     },
     {
       "id": "factory_efficiency",
       "name": "Factory Efficiency (Machine Speed)",
-      "affects": "all machine crafting speed (divides recipe baseTime) except the Seed Plot; also multiplies machine heat consumption per second (net heat per batch unchanged)",
+      "affects": "all machine crafting speed (divides recipe baseTime) and Nursery crop growth (verified in-game), except the Seed Plot; also multiplies machine heat consumption per second (net heat per batch unchanged)",
       "formula": "speedMult(lvl) = 1.0 + 0.25 * min(lvl, 12) + 0.05 * max(lvl - 12, 0)",
       "baseValue": 1,
       "unit": "multiplier",
