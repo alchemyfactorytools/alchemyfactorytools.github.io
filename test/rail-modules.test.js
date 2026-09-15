@@ -17,14 +17,17 @@ test('module extraction: belts stay inside modules, low-rate / shop / fuel / fer
   assert.ok(hp.members.includes('Sage Powder') && hp.members.includes('Sage'), hp.members.join(','));
   // shop deliveries are stock flows, fuel goes to boilers, fertilizer to the farm module
   assert.ok(res.flows.some((f) => f.to === 'shop' && f.item === 'Healing Potion' && f.kind === 'stock'));
-  assert.ok(res.flows.some((f) => f.to === 'boilers'));
-  assert.ok(res.flows.some((f) => f.item === 'Growth Potion' && f.kind === 'stock'));
+  const all = [...res.flows, ...res.trickles];
+  assert.ok(all.some((f) => f.to === 'boilers'), 'fuel flow to boilers exists (rail or trickle)');
+  assert.ok(all.some((f) => f.item === 'Growth Potion' && f.kind === 'stock'));
   // liquids are piped, never wagon flows
-  assert.ok(res.pipes.some((p) => p.item === 'Linseed Oil'));
+  assert.ok(res.pipes.length > 0 && res.pipes.every((p) => db.items[p.item].liquid), 'pipes are exactly the liquid flows');
   assert.ok(!res.flows.some((f) => db.items[f.item] && db.items[f.item].liquid));
-  // a bought input slower than a pack per 20 min ships partial loads
-  const slow = res.flows.filter((f) => f.from === 'portals' && f.ratePerMin * 20 < 100);
-  assert.ok(slow.length && slow.every((f) => f.kind === 'stock'), JSON.stringify(slow));
+  // bought inputs below 1/min are trickles (hand-stocked), never wagon flows; slower-than-a-pack-
+  // per-10-min freight ships partial loads
+  assert.ok(res.trickles.length > 0 && res.trickles.every((f) => f.ratePerMin < 1));
+  assert.ok(res.flows.every((f) => f.ratePerMin >= 1));
+  for (const f of res.flows) if (f.ratePerMin * 10 < 100) assert.equal(f.kind, 'stock', JSON.stringify(f));
   // every flow endpoint is a plan module
   const ids = new Set(res.plan.modules.map((m) => m.id));
   for (const f of res.plan.flows) assert.ok(ids.has(f.from) && ids.has(f.to), `${f.from} → ${f.to}`);

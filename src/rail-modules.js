@@ -16,7 +16,8 @@ const itemOf = (label) => String(label || '').split(' ⬅ ')[0];
 
 function extractModules(body, db, opts = {}) {
   const railMax = opts.railMaxPerMin ?? 40;       // flows at or below this rate are wagon-worthy
-  const maxFullLoadWaitMin = opts.maxFullLoadWaitMin ?? 20; // slower than a pack per this many minutes → ship partial loads
+  const maxFullLoadWaitMin = opts.maxFullLoadWaitMin ?? 10; // slower than a pack per this many minutes → ship partial loads
+  const minRailRate = opts.minRailRatePerMin ?? 1;           // slower than this is a trickle: hand-stock a chest, no wagon flow
   const packSize = (opts.params && opts.params.packSize) || 100;
   const floorOf = opts.floorOf || {};             // item → floor override
   const out = solveComposerBody(body, db);
@@ -109,11 +110,13 @@ function extractModules(body, db, opts = {}) {
   }
   // a freight flow too slow to fill a pack within maxFullLoadWaitMin ships partial loads instead
   for (const f of flowMap.values()) if (f.kind === 'freight' && f.ratePerMin * maxFullLoadWaitMin < packSize) { f.kind = 'stock'; f.reasons.add('too slow for full loads'); }
-  const flows = [...flowMap.values()].map((f) => ({ ...f, ratePerMin: +f.ratePerMin.toFixed(2), reasons: [...f.reasons] }));
+  const all = [...flowMap.values()].map((f) => ({ ...f, ratePerMin: +f.ratePerMin.toFixed(2), reasons: [...f.reasons] }));
+  const trickles = all.filter((f) => f.ratePerMin < minRailRate);
+  const flows = all.filter((f) => f.ratePerMin >= minRailRate);
   const used = new Set(flows.flatMap((f) => [f.from, f.to]));
   const planModules = [...modules.map((m) => ({ id: m.id, floor: m.floor })), ...extra].filter((m, i, arr) => arr.findIndex((x) => x.id === m.id) === i && (used.has(m.id) || modules.some((x) => x.id === m.id)));
   const plan = { params: opts.params || {}, geometry: opts.geometry, modules: planModules, flows: flows.map(({ reasons, ...f }) => f) };
-  return { status: 'Optimal', modules, flows, pipes, beltFlows: belt, plan, summary: g.summary };
+  return { status: 'Optimal', modules, flows, trickles, pipes, beltFlows: belt, plan, summary: g.summary };
 }
 
 function formatModules(res) {
@@ -122,6 +125,7 @@ function formatModules(res) {
   for (const m of res.modules) out.push(`  ${m.id.padEnd(24)} floor ${m.floor}  ${Object.entries(m.machines).sort((a, b) => b[1] - a[1]).map(([k, v]) => v + '× ' + k).join(', ')}${m.members.length > 1 ? `  [${m.members.join(', ')}]` : ''}`);
   out.push('wagon flows (module boundaries):');
   for (const f of res.flows) out.push(`  ${f.from.padEnd(22)} → ${f.to.padEnd(14)} ${f.item.padEnd(22)} ${String(f.ratePerMin).padStart(7)}/min  ${f.kind.padEnd(7)} (${f.reasons.join('; ')})`);
+  if (res.trickles.length) out.push('trickles (hand-stock a chest, below 1/min): ' + res.trickles.map((f) => `${f.item} → ${f.to} ${f.ratePerMin}/min`).join('; '));
   if (res.pipes.length) out.push('pipes: ' + [...new Set(res.pipes.map((p) => p.item))].join(', '));
   return out.join('\n');
 }

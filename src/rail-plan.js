@@ -153,9 +153,11 @@ const TEMPLATES = { 'single-loop': singleLoop, 'trunk-zones': trunkZones, shuttl
 function sizeFleets(plan, template, fleet, opts = {}) {
   const { minutes = 90, maxStarvedPct = 8, maxWagons = 12, params = {} } = opts;
   const wagons = {};
+  const partialFlips = new Set(); // freight flows switched to partial loads because full packs arrived too late
   let scenario, rep, rounds = 0;
   for (;;) {
-    scenario = TEMPLATES[template](plan, fleet, wagons);
+    const p2 = partialFlips.size ? { ...plan, flows: flowsOf(plan).map((f) => (partialFlips.has(f.id) ? { ...f, kind: 'stock' } : f)) } : plan;
+    scenario = TEMPLATES[template](p2, fleet, wagons);
     rep = simulate({ ...scenario, params: { ...(plan.params || {}), ...params } }, { minutes });
     const starved = Object.entries(rep.stations).filter(([, s]) => s.type === 'unloader' && s.starvedPct > maxStarvedPct).sort((x, y) => y[1].starvedPct - x[1].starvedPct);
     if (!starved.length || rounds++ > 60) break;
@@ -163,6 +165,10 @@ function sizeFleets(plan, template, fleet, opts = {}) {
     // unloader (shared fleets carry loop tags; perFlow fleets carry the flow id on every loop)
     const [uid] = starved[0];
     const flowId = uid.replace(/^unload\./, '').replace(/@.*$/, '');
+    // a full-loads freight flow that starves is usually a latency problem (a pack arrives after
+    // the chest ran dry), not a fleet problem: switch it to partial loads before adding wagons
+    const loader = scenario.stations.find((s) => s.type === 'loader' && (s.id === `load.${flowId}` || s.id.startsWith(`load.${flowId}@`)));
+    if (loader && loader.fullLoadsOnly && !partialFlips.has(flowId)) { partialFlips.add(flowId); continue; }
     const onPath = scenario.stations.filter((s) => s.id === `load.${flowId}` || s.id.startsWith(`load.${flowId}@`) || s.id.startsWith(`xfer.${flowId}.`) || s.id === uid);
     const tags = new Set();
     for (const s of onPath) { for (const flt of [s.filter, s.inFilter, s.outFilter]) if (flt && flt.tag) tags.add(flt.tag.value); }
@@ -172,7 +178,7 @@ function sizeFleets(plan, template, fleet, opts = {}) {
     if (!target || (wagons[target.id] || 1) >= maxWagons) break;
     wagons[target.id] = (wagons[target.id] || 1) + 1;
   }
-  return { scenario, report: rep, wagons };
+  return { scenario, report: rep, wagons, partialFlips: [...partialFlips] };
 }
 
 function score(scenario, rep) {
@@ -198,8 +204,8 @@ function explore(plan, opts = {}) {
   const combos = opts.combos || [['single-loop', 'shared'], ['single-loop', 'perFlow'], ['trunk-zones', 'shared'], ['trunk-zones', 'perFlow'], ['shuttles', 'perFlow']];
   const out = [];
   for (const [template, fleet] of combos) {
-    const { scenario, report, wagons } = sizeFleets(plan, template, fleet, opts);
-    out.push({ ...score(scenario, report), wagonsByLaunch: wagons, scenario, report });
+    const sized = sizeFleets(plan, template, fleet, opts);
+    out.push({ ...score(sized.scenario, sized.report), wagonsByLaunch: sized.wagons, partialFlips: sized.partialFlips, scenario: sized.scenario, report: sized.report });
   }
   return out;
 }
