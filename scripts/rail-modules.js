@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require(path.join(__dirname, '..', 'data', 'alchemy_db.json'));
 const { extractModules, formatModules } = require(path.join(__dirname, '..', 'src', 'rail-modules'));
-const { explore } = require(path.join(__dirname, '..', 'src', 'rail-plan'));
+const { explore, buildSheet } = require(path.join(__dirname, '..', 'src', 'rail-plan'));
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : d; };
 const tier = Number(opt('tier', 6));
@@ -26,7 +26,9 @@ console.log(formatModules(res));
 if (opt('out')) { fs.writeFileSync(opt('out'), JSON.stringify(res.plan, null, 2) + '\n'); console.log('wrote', opt('out')); }
 if (args.includes('--explore')) {
   const rows = explore(res.plan, { minutes: Number(opt('minutes', 120)), params: { warmupMin: Number(opt('warmup', 20)) } });
-  const cols = ['template', 'fleet', 'loops', 'launchesPerLoop', 'wagons', 'track', 'stations', 'transfers', 'fedPct', 'worstStarvedPct', 'avgLoadedPct', 'maxLapSec'];
-  console.log('\n' + cols.map((c) => c.padEnd(c === 'template' ? 13 : c === 'fleet' ? 8 : 15)).join(''));
-  for (const r of rows) console.log(cols.map((c) => String(r[c]).padEnd(c === 'template' ? 13 : c === 'fleet' ? 8 : 15)).join(''));
+  const cols = ['template', 'fleet', 'loops', 'wagons', 'track', 'sharedTrack', 'stations', 'transfers', 'fedPct', 'worstStarvedPct', 'avgLoadedPct', 'maxLapSec'];
+  console.log('\n' + cols.map((c) => c.padEnd(c === 'template' ? 13 : c === 'fleet' ? 8 : 13)).join(''));
+  for (const r of rows) console.log(cols.map((c) => String(r[c] ?? '-').padEnd(c === 'template' ? 13 : c === 'fleet' ? 8 : 13)).join(''));
+  const hub = rows.find((r) => r.template === 'hub-loops');
+  if (hub && !args.includes('--no-sheet')) { console.log('\nbuild sheet (hub-loops):'); console.log(buildSheet(hub.scenario, hub.wagonsByLaunch)); }
 }

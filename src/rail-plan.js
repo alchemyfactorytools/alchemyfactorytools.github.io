@@ -152,7 +152,81 @@ function shuttles(plan, fleet, wagons) {
   return { edges, stations, template: 'shuttles', fleet: 'perFlow' };
 }
 
-const TEMPLATES = { 'single-loop': singleLoop, 'trunk-zones': trunkZones, shuttles };
+// ---- template: hub loops ----
+// Each flow joins the loop of its busier endpoint (more flows touching it; ties go to the
+// consumer). A hub's loop visits every counterparty module in floor order (ramps between floors)
+// and returns to the hub. Fleets are per flow, so loaders never compete. Track is counted per
+// loop; `sharedTrack` estimates what overlapping loops would share if laid on common rails.
+function hubLoops(plan, fleet, wagons) {
+  const geo = { ...DEFAULT_GEOMETRY, ...(plan.geometry || {}) };
+  const flows = flowsOf(plan);
+  const degree = new Map();
+  for (const f of flows) { degree.set(f.from, (degree.get(f.from) || 0) + 1); degree.set(f.to, (degree.get(f.to) || 0) + 1); }
+  const hubOf = (f) => ((degree.get(f.from) || 0) > (degree.get(f.to) || 0) ? f.from : f.to);
+  const byHub = new Map();
+  for (const f of flows) { const h = hubOf(f); if (!byHub.has(h)) byHub.set(h, []); byHub.get(h).push(f); }
+  const edges = [], stations = [], loops = [];
+  const legs = new Set();
+  for (const [hub, hf] of byHub) {
+    const hubFloor = modFloor(plan, hub);
+    // counterparties in floor order, then id; each contributes its loader (if it produces) and its unloader (if it consumes)
+    const others = [...new Set(hf.map((f) => (f.from === hub ? f.to : f.from)))].sort((a, b) => modFloor(plan, a) - modFloor(plan, b) || a.localeCompare(b));
+    const pieces = [];
+    const stops = [{ module: hub, keys: [] }, ...others.map((m) => ({ module: m, keys: [] }))];
+    // hub side: launch + loader for flows the hub PRODUCES, unloader for flows it consumes
+    for (const f of hf) {
+      if (f.from === hub) stops[0].keys.push(`launch.${f.id}`, `load.${f.id}`);
+    }
+    for (const s of stops.slice(1)) for (const f of hf) {
+      if (f.from === s.module) s.keys.push(`launch.${f.id}`, `load.${f.id}`);
+      if (f.to === s.module) s.keys.push(`unload.${f.id}`);
+    }
+    // unloaders at the hub go LAST so a wagon loaded anywhere on the loop reaches them before docking
+    for (const f of hf) if (f.to === hub) stops.push({ module: hub, keys: [`unload.${f.id}`] });
+    let prevFloor = hubFloor;
+    for (const s of stops) {
+      const fl = modFloor(plan, s.module);
+      for (const k of s.keys) pieces.push({ key: k, module: s.module });
+      if (pieces.length && fl !== prevFloor) pieces[pieces.length - s.keys.length - 1 >= 0 ? pieces.length - s.keys.length - 1 : 0].rampAfter = Math.abs(fl - prevFloor);
+      prevFloor = fl;
+    }
+    if (!pieces.length) continue;
+    const nodes = ring(`H.${hub}`, pieces, geo, edges);
+    // ramps: the closing edge climbs/descends back to the hub floor
+    const ringEdges = edges.slice(-pieces.length);
+    pieces.forEach((p, i) => { if (p.rampAfter) { ringEdges[i].ramp = true; ringEdges[i].length = geo.rampLength * p.rampAfter; } });
+    const lastFloor = modFloor(plan, pieces[pieces.length - 1].module);
+    if (lastFloor !== hubFloor) { ringEdges[ringEdges.length - 1].ramp = true; ringEdges[ringEdges.length - 1].length = geo.rampLength * Math.abs(lastFloor - hubFloor); }
+    const at = (key) => nodes[pieces.findIndex((p) => p.key === key)];
+    for (const f of hf) {
+      stations.push({ id: `launch.${f.id}`, type: 'launch', node: at(`launch.${f.id}`), wagons: wagons[`launch.${f.id}`] || 1, tag: f.id });
+      stations.push({ id: `load.${f.id}`, type: 'loader', node: at(`load.${f.id}`), item: f.item, ratePerMin: f.ratePerMin, fullLoadsOnly: f.kind !== 'stock', filter: { tag: { value: f.id } } });
+      stations.push({ id: `unload.${f.id}`, type: 'unloader', node: at(`unload.${f.id}`), consumePerMin: f.ratePerMin, chestCap: f.chestCap || 600, filter: { tag: { value: f.id } } });
+    }
+    for (let i = 0; i < stops.length; i++) { const a = stops[i].module, b = stops[(i + 1) % stops.length].module; if (a !== b) legs.add([a, b].sort().join('|')); }
+    loops.push({ hub, floor: hubFloor, flows: hf.map((f) => f.id), stops: stops.map((s) => s.module), track: ringEdges.reduce((a, e) => a + e.length, 0) });
+  }
+  return { edges, stations, template: 'hub-loops', fleet: 'perFlow', zones: loops.length, loops, sharedTrack: legs.size * (geo.stationSpacing * 3) };
+}
+
+// Human-readable build sheet for a sized hub-loops scenario.
+function buildSheet(scenario, wagons) {
+  if (!scenario.loops) return '(build sheet only for hub-loops)';
+  const out = [];
+  for (const L of scenario.loops) {
+    const stops = L.stops.filter((m, i, a) => i === 0 || m !== a[i - 1]);
+    out.push(`loop @ ${L.hub} (floor ${L.floor}), track ${L.track}, stops: ${stops.join(' → ')} → back`);
+    for (const fid of L.flows) {
+      const ld = scenario.stations.find((s) => s.id === `load.${fid}`);
+      const ul = scenario.stations.find((s) => s.id === `unload.${fid}`);
+      const w = wagons[`launch.${fid}`] || 1;
+      out.push(`    ${fid.padEnd(44)} ${String(ld.ratePerMin).padStart(7)}/min  ${ld.fullLoadsOnly ? 'full ' : 'partial'} loads  wagons ${w}`);
+    }
+  }
+  return out.join('\n');
+}
+
+const TEMPLATES = { 'single-loop': singleLoop, 'trunk-zones': trunkZones, shuttles, 'hub-loops': hubLoops };
 
 // Grow fleets until no unloader starves more than `maxStarvedPct`, or a launch hits `maxWagons`.
 function sizeFleets(plan, template, fleet, opts = {}) {
@@ -193,6 +267,7 @@ function score(scenario, rep) {
   const wag = Object.values(rep.wagons);
   return {
     template: scenario.template, fleet: scenario.fleet, loops: scenario.zones || 1, launchesPerLoop: scenario.launchesPerLoop || 1,
+    sharedTrack: scenario.sharedTrack ?? null,
     wagons: wag.length,
     track: scenario.edges.reduce((a, e) => a + e.length, 0),
     stations: scenario.stations.length,
@@ -207,7 +282,7 @@ function score(scenario, rep) {
 }
 
 function explore(plan, opts = {}) {
-  const combos = opts.combos || [['single-loop', 'perFlow'], ['trunk-zones', 'shared', { loopsPerFloor: 1 }], ['trunk-zones', 'shared', { loopsPerFloor: 2 }], ['trunk-zones', 'shared', { loopsPerFloor: 3 }], ['trunk-zones', 'shared', { loopsPerFloor: 2, launchesPerLoop: 2 }], ['trunk-zones', 'perFlow', { loopsPerFloor: 2 }], ['shuttles', 'perFlow']];
+  const combos = opts.combos || [['single-loop', 'perFlow'], ['hub-loops', 'perFlow'], ['trunk-zones', 'shared', { loopsPerFloor: 2 }], ['trunk-zones', 'perFlow', { loopsPerFloor: 2 }], ['shuttles', 'perFlow']];
   const out = [];
   for (const [template, fleet, variant] of combos) {
     const sized = sizeFleets({ ...plan, ...(variant || {}) }, template, fleet, opts);
@@ -216,4 +291,4 @@ function explore(plan, opts = {}) {
   return out;
 }
 
-module.exports = { explore, sizeFleets, score, TEMPLATES, flowsOf };
+module.exports = { explore, sizeFleets, score, buildSheet, TEMPLATES, flowsOf };

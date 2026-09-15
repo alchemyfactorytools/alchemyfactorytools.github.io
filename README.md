@@ -189,8 +189,15 @@ node scripts/rail-modules.js --targets "Healing Potion:60,Soap:60,Vitality Potio
 node scripts/rail-modules.js --targets "Healing Potion:60" --tier 6 --out plan.json   # then edit floors/rates, rail-explore
 ```
 
-Templates: `single-loop` (one loop through every floor), `trunk-zones` (ground trunk + a loop
-per floor joined by Transfer Stations), `shuttles` (a dedicated loop per flow). Fleets:
+`--sellables --tier N [--rate 2 --jewelry-rate 1 --relic-rate 0.2] --fuel "Black Powder"` builds the
+product list from every sellable item at the tier and pins the fuel carrier. The `hub-loops`
+row prints a **build sheet**: one loop per hub module (shop, portals, boilers, any shared
+producer) listing its stops in floor order and, per flow, the rate, full or partial loads, and
+the wagon count.
+
+Templates: `single-loop` (one loop through every floor), `hub-loops` (a loop per busy module,
+per-flow fleets), `trunk-zones` (trunk + zone loops joined by Transfer Stations, `loopsPerFloor`
+and `launchesPerLoop` variants), `shuttles` (a dedicated loop per flow). Fleets:
 `shared` (one Launch Station per loop, packs addressed by cargo) or `perFlow` (a Launch
 Station per flow, addressed by tag). Findings so far: loaders never top up, so a shared fleet
 with partial-load loaders starves whoever sits downstream on the loop (single-loop/shared fails

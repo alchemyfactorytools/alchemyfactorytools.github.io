@@ -68,7 +68,8 @@ function extractModules(body, db, opts = {}) {
     else if (f.from === 'portals' && f.ratePerMin <= railMax) reason = 'bought, low rate';
     else if (f.from.startsWith('belt:')) reason = 'main-belt supply';
     else if (f.ratePerMin <= railMax && fanOut) reason = 'shared producer, low rate';
-    else if (f.ratePerMin <= railMax * 0.5) reason = 'low rate';
+    // a low-rate flow between two otherwise private modules stays a belt: rail is for distance
+    // and fan-out, not for small numbers
     if (reason) cut.push({ ...f, reason }); else belt.push(f);
   }
 
@@ -86,9 +87,12 @@ function extractModules(body, db, opts = {}) {
   for (const [root, mem] of members) {
     const fedInside = new Set(belt.filter((f) => mem.includes(f.from) && mem.includes(f.to)).map((f) => f.from));
     const head = mem.find((m) => !fedInside.has(m)) || root;
-    const id = head.replace(/\s+/g, '_');
     const machines = {};
     for (const m of mem) for (const [k, v] of Object.entries(items.get(m).machines)) machines[k] = (machines[k] || 0) + v;
+    // name the module by its biggest tile (what you'd see on the floor), with the head product as a suffix
+    const count = (m) => Object.values(items.get(m).machines).reduce((a, b) => a + b, 0);
+    const biggest = [...mem].sort((a, b) => count(b) - count(a))[0];
+    const id = (biggest === head || mem.length === 1 ? head : `${biggest}+${head}`).replace(/\s+/g, '_');
     const grower = mem.some((m) => /Nursery|Seed Plot|Extractor|World Tree/.test(Object.keys(items.get(m).machines).join(' ')));
     const floor = floorOf[head] ?? (grower ? 2 : 0);
     modules.push({ id, head, floor, members: mem, machines });
