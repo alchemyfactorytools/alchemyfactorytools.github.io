@@ -177,6 +177,18 @@ node scripts/rail-explore.js scenarios/rail/plan-tier6.json --detail trunk-zones
 node scripts/rail-explore.js scenarios/rail/plan-tier6.json --emit trunk-zones:shared my.json  # then hand-edit + rail-sim
 ```
 
+**From products to modules.** `src/rail-modules.js` derives the plan from a composer build: every
+item flow and its rate come from the solve, liquids become pipes, and a flow becomes a wagon
+flow (a module boundary) when it feeds the shop or the boilers, is fertilizer, is bought at a
+low rate, fans out from a shared producer, or is simply slow; everything else stays a belt, and
+modules are the belt-connected groups of tiles. Freight too slow to fill a pack in 20 minutes
+ships partial loads.
+
+```bash
+node scripts/rail-modules.js --targets "Healing Potion:60,Soap:60,Vitality Potion:30" --tier 6 --explore
+node scripts/rail-modules.js --targets "Healing Potion:60" --tier 6 --out plan.json   # then edit floors/rates, rail-explore
+```
+
 Templates: `single-loop` (one loop through every floor), `trunk-zones` (ground trunk + a loop
 per floor joined by Transfer Stations), `shuttles` (a dedicated loop per flow). Fleets:
 `shared` (one Launch Station per loop, packs addressed by cargo) or `perFlow` (a Launch

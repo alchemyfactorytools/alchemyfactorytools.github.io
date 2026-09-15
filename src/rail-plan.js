@@ -159,12 +159,15 @@ function sizeFleets(plan, template, fleet, opts = {}) {
     rep = simulate({ ...scenario, params: { ...(plan.params || {}), ...params } }, { minutes });
     const starved = Object.entries(rep.stations).filter(([, s]) => s.type === 'unloader' && s.starvedPct > maxStarvedPct).sort((x, y) => y[1].starvedPct - x[1].starvedPct);
     if (!starved.length || rounds++ > 60) break;
-    // find the launch station that feeds the worst unloader: same loop tag / flow id
+    // grow a fleet on the starved flow's path: the loops of its loader, its transfer hops and its
+    // unloader (shared fleets carry loop tags; perFlow fleets carry the flow id on every loop)
     const [uid] = starved[0];
-    const u = scenario.stations.find((s) => s.id === uid);
-    const wantTag = u.filter.tag.value;
-    const launches = scenario.stations.filter((s) => s.type === 'launch' && s.tag === wantTag);
-    // for a flow that crosses loops, grow the fleet with the lowest wagon count first
+    const flowId = uid.replace(/^unload\./, '').replace(/@.*$/, '');
+    const onPath = scenario.stations.filter((s) => s.id === `load.${flowId}` || s.id.startsWith(`load.${flowId}@`) || s.id.startsWith(`xfer.${flowId}.`) || s.id === uid);
+    const tags = new Set();
+    for (const s of onPath) { for (const flt of [s.filter, s.inFilter, s.outFilter]) if (flt && flt.tag) tags.add(flt.tag.value); }
+    const launches = scenario.stations.filter((s) => s.type === 'launch' && tags.has(s.tag));
+    // grow the smallest fleet on the path first
     const target = launches.sort((x, y) => (wagons[x.id] || 1) - (wagons[y.id] || 1))[0];
     if (!target || (wagons[target.id] || 1) >= maxWagons) break;
     wagons[target.id] = (wagons[target.id] || 1) + 1;
