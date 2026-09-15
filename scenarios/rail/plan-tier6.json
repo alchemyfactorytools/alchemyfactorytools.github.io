@@ -1,0 +1,28 @@
+{
+  "_comment": "Tier-6 rebuild plan for the rail explorer. Modules have a floor (0 = ground trunk floor). Flows are items/min between modules; kind 'stock' ships partial loads (shelves, fertilizer), 'freight' waits for full packs. Rates: Black Powder ~30/min per boiler; Growth Potion ~1-2/min per belt-capped plot; shop goods at expected sales; Gridlock for the ICP cauldrons.",
+  "params": { "wagonSpeed": 4 },
+  "geometry": { "stationSpacing": 10, "rampLength": 30, "loopSlack": 20 },
+  "modules": [
+    { "id": "portals",  "floor": 0 },
+    { "id": "boilers",  "floor": 0 },
+    { "id": "fertline", "floor": 0 },
+    { "id": "copper",   "floor": 0 },
+    { "id": "potions",  "floor": 1 },
+    { "id": "soap",     "floor": 1 },
+    { "id": "tower2",   "floor": 2 },
+    { "id": "tower3",   "floor": 3 },
+    { "id": "shop",     "floor": 1 }
+  ],
+  "flows": [
+    { "item": "Black Powder",        "from": "fertline", "to": "boilers",  "ratePerMin": 30, "kind": "freight" },
+    { "item": "Gelatinous Gridlock", "from": "portals",  "to": "copper",   "ratePerMin": 60, "kind": "freight" },
+    { "item": "Sage Seeds",          "from": "portals",  "to": "fertline", "ratePerMin": 20, "kind": "freight" },
+    { "item": "Growth Potion",       "from": "fertline", "to": "tower2",   "ratePerMin": 6,  "kind": "stock" },
+    { "item": "Growth Potion",       "from": "fertline", "to": "tower3",   "ratePerMin": 6,  "kind": "stock" },
+    { "item": "Growth Potion",       "from": "fertline", "to": "soap",     "ratePerMin": 3,  "kind": "stock" },
+    { "item": "Copper Ingot",        "from": "copper",   "to": "potions",  "ratePerMin": 10, "kind": "freight" },
+    { "item": "Healing Potion",      "from": "potions",  "to": "shop",     "ratePerMin": 10, "kind": "stock" },
+    { "item": "Soap",                "from": "soap",     "to": "shop",     "ratePerMin": 15, "kind": "stock" },
+    { "item": "Black Powder",        "from": "fertline", "to": "shop",     "ratePerMin": 5,  "kind": "stock" }
+  ]
+}

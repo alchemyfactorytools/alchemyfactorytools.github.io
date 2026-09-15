@@ -34,6 +34,7 @@ const DEFAULT_PARAMS = {
   transferPacks: 4,     // assumed: same buffer as a loader
   tagMatch: 'exact',    // 'exact' | 'prefix' — unverified in-game, test once
   tick: 0.25,           // seconds per simulation step
+  warmupMin: 10,        // starvation/blocked stats ignore this priming period (first laps, empty chests)
 };
 
 function matchFilter(filter, wagon, params) {
@@ -168,7 +169,7 @@ function simulate(scenario, opts = {}) {
     for (const st of stations) {
       if (st.type === 'loader') {
         const full = st.packs.length >= P.loaderPacks;
-        if (full) st.stats.blockedSec += dt;
+        if (full) { if (t >= P.warmupMin * 60) st.stats.blockedSec += dt; }
         else {
           st.partial += (st.ratePerMin / 60) * dt; st.stats.itemsIn += (st.ratePerMin / 60) * dt;
           while (st.partial >= P.packSize && st.packs.length < P.loaderPacks) { st.packs.push({ item: st.item, qty: P.packSize }); st.partial -= P.packSize; }
@@ -176,7 +177,7 @@ function simulate(scenario, opts = {}) {
       }
       if (st.type === 'unloader') {
         const want = (st.consumePerMin / 60) * dt;
-        if (st.chest >= want) st.chest -= want; else { st.chest = 0; st.stats.starvedSec += dt; }
+        if (st.chest >= want) st.chest -= want; else { st.chest = 0; if (t >= P.warmupMin * 60) st.stats.starvedSec += dt; }
       }
       if (st.type === 'launch') {
         st.sinceLaunch += dt;
@@ -211,8 +212,9 @@ function simulate(scenario, opts = {}) {
   const rep = { minutes, params: P, stations: {}, wagons: {}, loops: {} };
   for (const st of stations) {
     const s = { type: st.type, ...st.stats };
-    if (st.type === 'loader') { s.shippedPerMin = +(st.stats.loaded / minutes).toFixed(2); s.inputPerMin = st.ratePerMin; s.bufferedNow = st.packs.length * P.packSize + Math.floor(st.partial); s.blockedPct = +((st.stats.blockedSec / (minutes * 60)) * 100).toFixed(1); }
-    if (st.type === 'unloader') { s.deliveredPerMin = +(st.stats.delivered / minutes).toFixed(2); s.demandPerMin = st.consumePerMin; s.starvedPct = +((st.stats.starvedSec / (minutes * 60)) * 100).toFixed(1); s.chestNow = Math.round(st.chest); }
+    const measured = Math.max(1, minutes - Math.min(P.warmupMin, minutes)) * 60; // seconds after warm-up
+    if (st.type === 'loader') { s.shippedPerMin = +(st.stats.loaded / minutes).toFixed(2); s.inputPerMin = st.ratePerMin; s.bufferedNow = st.packs.length * P.packSize + Math.floor(st.partial); s.blockedPct = +((st.stats.blockedSec / measured) * 100).toFixed(1); }
+    if (st.type === 'unloader') { s.deliveredPerMin = +(st.stats.delivered / minutes).toFixed(2); s.demandPerMin = st.consumePerMin; s.starvedPct = +((st.stats.starvedSec / measured) * 100).toFixed(1); s.chestNow = Math.round(st.chest); }
     if (st.type === 'launch') { s.docked = st.docked.length; s.wagons = st.wagons; }
     rep.stations[st.id] = s;
   }
@@ -224,7 +226,7 @@ function simulate(scenario, opts = {}) {
 }
 
 function formatReport(rep) {
-  const out = [`rail sim: ${rep.minutes} min, wagon speed ${rep.params.wagonSpeed} u/s (placeholder), tick ${rep.params.tick}s`];
+  const out = [`rail sim: ${rep.minutes} min (stats after ${rep.params.warmupMin} min warm-up), wagon speed ${rep.params.wagonSpeed} u/s (placeholder), tick ${rep.params.tick}s`];
   out.push('stations:');
   for (const [id, s] of Object.entries(rep.stations)) {
     if (s.type === 'loader') out.push(`  ${id.padEnd(14)} loader    in ${String(s.inputPerMin).padStart(6)}/min  shipped ${String(s.shippedPerMin).padStart(7)}/min  packs ${String(s.packs).padStart(4)}  blocked ${s.blockedPct}%  buffered ${s.bufferedNow}`);

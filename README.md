@@ -164,10 +164,26 @@ node scripts/rail-sim.js scenarios/rail/trunk-tower.json --minutes 60 [--speed 4
 ```
 
 The report gives per-loader shipped rate and belt-blocked time, per-unloader delivered rate and
-starvation, sorter waits, transfer buffers, and per-wagon trips, loaded time and lap time. First
-finding: with no top-up, a partial-load loader upstream takes every empty wagon of its tag and
-starves the next loader on the same tag, so shop routes get one Launch Station per loader and
-share the unloader by color.
+starvation (after a 10-minute warm-up), sorter waits, transfer buffers, and per-wagon trips,
+loaded time and lap time.
+
+**Design explorer.** `src/rail-plan.js` turns a factory *plan* (modules with floors, flows in
+items/min tagged stock or freight) into candidate topologies, sizes each fleet until every
+consumer is fed, and scores them side by side:
+
+```bash
+node scripts/rail-explore.js scenarios/rail/plan-tier6.json            # comparison table
+node scripts/rail-explore.js scenarios/rail/plan-tier6.json --detail trunk-zones:shared
+node scripts/rail-explore.js scenarios/rail/plan-tier6.json --emit trunk-zones:shared my.json  # then hand-edit + rail-sim
+```
+
+Templates: `single-loop` (one loop through every floor), `trunk-zones` (ground trunk + a loop
+per floor joined by Transfer Stations), `shuttles` (a dedicated loop per flow). Fleets:
+`shared` (one Launch Station per loop, packs addressed by cargo) or `perFlow` (a Launch
+Station per flow, addressed by tag). Findings so far: loaders never top up, so a shared fleet
+with partial-load loaders starves whoever sits downstream on the loop (single-loop/shared fails
+outright); trunk-zones/shared feeds the tier-6 plan with one wagon per loop, and shuttles cost
+the most track.
 
 ## Optimizer assumptions & open items (DESIGN.md §6)
 
