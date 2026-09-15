@@ -149,7 +149,27 @@ scripts/
   validate.js                    # integrity + freshness checks (node scripts/validate.js)
 ```
 
-### Optimizer assumptions & open items (DESIGN.md §6)
+### Rail simulator (Wagon System)
+
+`src/rail.js` is a fixed-tick simulation of the 1.0 Wagon System: tracks as a graph, wagons
+with tag/color/one 100-item pack, and the five station kinds with the in-game filter panels
+(cargo AND/OR/NOT, wagon color, wagon tag). Launch Stations own their wagons and release one
+per 10 s; Loaders pack a belt into ≤4 packs and load EMPTY matching wagons (no top-up), with
+"full loads only"; Unloaders drop a pack into a chest drained at a consumer rate and skip when
+full; Transfer Stations bridge loops; Sorters branch by filter and wait when blocked. Wagon
+speed is a placeholder until measured. Scenarios are JSON (`scenarios/rail/`):
+
+```bash
+node scripts/rail-sim.js scenarios/rail/trunk-tower.json --minutes 60 [--speed 4] [--json]
+```
+
+The report gives per-loader shipped rate and belt-blocked time, per-unloader delivered rate and
+starvation, sorter waits, transfer buffers, and per-wagon trips, loaded time and lap time. First
+finding: with no top-up, a partial-load loader upstream takes every empty wagon of its tag and
+starves the next loader on the same tag, so shop routes get one Launch Station per loader and
+share the unloader by color.
+
+## Optimizer assumptions & open items (DESIGN.md §6)
 
 - **Bank Portal coins are priced at face value** (sellPrice/coin) — an assumption until verified
   in-game; flagged `[ASSUMPTION]` in every plan that mints. Disable with

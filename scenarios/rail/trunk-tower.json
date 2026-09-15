@@ -1,0 +1,32 @@
+{
+  "_comment": "Ground trunk loop with four routes (fuel, fertilizer via ramp to floor 2, shop goods, herbs) and a separate tower loop fed by a transfer station. Rates from the tier-6 plan. Track units are arbitrary until wagon speed is measured. Shop goods: one launch station PER LOADER (loaders never top up, so a partial-load loader upstream would take every empty wagon and starve the next loader); the shop unloader accepts by COLOR so all shop routes share it.",
+  "minutes": 60,
+  "params": { "wagonSpeed": 4 },
+  "edges": [
+    { "from": "A", "to": "B", "length": 12 }, { "from": "B", "to": "C", "length": 20 }, { "from": "C", "to": "D", "length": 12 },
+    { "from": "D", "to": "R1", "length": 24, "ramp": true }, { "from": "R1", "to": "F", "length": 8 }, { "from": "F", "to": "R2", "length": 8 }, { "from": "R2", "to": "E", "length": 24, "ramp": true },
+    { "from": "D", "to": "E", "length": 16 },
+    { "from": "E", "to": "G", "length": 8 }, { "from": "G", "to": "H", "length": 8 }, { "from": "H", "to": "I", "length": 12 }, { "from": "I", "to": "J", "length": 8 }, { "from": "J", "to": "J2", "length": 6 }, { "from": "J2", "to": "K", "length": 8 }, { "from": "K", "to": "L", "length": 20 },
+    { "from": "L", "to": "M", "length": 12 }, { "from": "M", "to": "N", "length": 8 }, { "from": "N", "to": "O", "length": 16 }, { "from": "O", "to": "A", "length": 20 },
+    { "from": "P", "to": "Q", "length": 10 }, { "from": "Q", "to": "R", "length": 30 }, { "from": "R", "to": "P", "length": 30 }
+  ],
+  "stations": [
+    { "id": "launch.fuel",  "type": "launch",   "node": "A", "wagons": 2, "tag": "boiler",  "color": "magenta" },
+    { "id": "load.bp",      "type": "loader",   "node": "B", "item": "Black Powder", "ratePerMin": 30, "fullLoadsOnly": true, "filter": { "tag": { "value": "boiler" } } },
+    { "id": "unload.boiler","type": "unloader", "node": "C", "consumePerMin": 30, "chestCap": 400, "filter": { "tag": { "value": "boiler" } } },
+    { "id": "sort.ramp2",   "type": "sorter",   "node": "D", "branch": "R1", "filter": { "tag": { "value": "farm.f2" } } },
+    { "id": "unload.farm2", "type": "unloader", "node": "F", "consumePerMin": 20, "chestCap": 300, "filter": { "tag": { "value": "farm.f2" } } },
+    { "id": "launch.fert",  "type": "launch",   "node": "G", "wagons": 2, "tag": "farm.f2", "color": "cyan" },
+    { "id": "load.gp",      "type": "loader",   "node": "H", "item": "Growth Potion", "ratePerMin": 20, "fullLoadsOnly": false, "filter": { "tag": { "value": "farm.f2" } } },
+    { "id": "launch.shop.potions", "type": "launch", "node": "I", "wagons": 2, "tag": "shop.potions", "color": "red" },
+    { "id": "load.potions", "type": "loader",   "node": "J", "item": "Healing Potion", "ratePerMin": 10, "fullLoadsOnly": false, "filter": { "tag": { "value": "shop.potions" } } },
+    { "id": "launch.shop.soap", "type": "launch", "node": "J2", "wagons": 2, "tag": "shop.soap", "color": "red" },
+    { "id": "load.soap",    "type": "loader",   "node": "K", "item": "Soap", "ratePerMin": 20, "fullLoadsOnly": false, "filter": { "tag": { "value": "shop.soap" } } },
+    { "id": "unload.shop",  "type": "unloader", "node": "L", "consumePerMin": 30, "chestCap": 600, "filter": { "color": { "colors": ["red"] } } },
+    { "id": "launch.herb",  "type": "launch",   "node": "M", "wagons": 3, "tag": "tower", "color": "green" },
+    { "id": "load.flax",    "type": "loader",   "node": "N", "item": "Flax", "ratePerMin": 120, "fullLoadsOnly": true, "filter": { "tag": { "value": "tower" } } },
+    { "id": "xfer.tower",   "type": "transfer", "inNode": "O", "outNode": "Q", "inFilter": { "tag": { "value": "tower" } }, "outFilter": { "tag": { "value": "tower.flax" } } },
+    { "id": "launch.tower", "type": "launch",   "node": "P", "wagons": 2, "tag": "tower.flax", "color": "green" },
+    { "id": "unload.extr",  "type": "unloader", "node": "R", "consumePerMin": 120, "chestCap": 600, "filter": { "tag": { "value": "tower.flax" } } }
+  ]
+}
