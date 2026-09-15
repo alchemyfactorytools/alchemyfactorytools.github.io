@@ -38,6 +38,11 @@ const DEFAULT_CONFIG = {
     perItem: {}, // e.g. { "Crude Silver Powder": "trash" }
   },
 
+  // Seed Plots need manual replanting AND manual harvesting (verified in-game, 1.0), so they
+  // are not automation. 'auto' allows them only while the unlock tier is below the Nursery's
+  // (they are the only herb source there); true always allows, false never.
+  manualPlots: 'auto',
+
   // Anchoring modes: false restricts burn/fertilize columns to BUYABLE items only,
   // so fuel/nutrients cannot be supplied by crafted loops.
   selfFuel: true,
@@ -165,6 +170,14 @@ const fertMult = (lvl) => 1 + 0.1 * lvl;
 // mode charges per-heat fuel value ÷ STEAM_EFFICIENCY. See data/mechanics.json "steam".
 const STEAM_EFFICIENCY = 0.6;
 
+// Whether Seed Plot recipes are usable under this config (see DEFAULT_CONFIG.manualPlots).
+function seedPlotsAllowed(db, cfg) {
+  if (cfg.manualPlots === true) return true;
+  if (cfg.manualPlots === false || cfg.manualPlots == null) return false;
+  const nurseryTier = (db.machines.Nursery && db.machines.Nursery.tier) || 4;
+  return cfg.maxTier != null && cfg.maxTier < nurseryTier;
+}
+
 // The generator heated machines are packed onto. Central steam implies the pad.
 function heatingDeviceFor(cfg) {
   return cfg.steam && cfg.steam.enabled ? 'Steam Heating Pad' : (cfg.heatingDevice || 'Stone Furnace');
@@ -180,4 +193,4 @@ function skillParams(skills) {
   };
 }
 
-module.exports = { DEFAULT_CONFIG, resolveConfig, skillParams, heatingDeviceFor, beltSpeed, speedMult, alchemyMult, fuelMult, fertMult, STEAM_EFFICIENCY };
+module.exports = { DEFAULT_CONFIG, resolveConfig, skillParams, heatingDeviceFor, seedPlotsAllowed, beltSpeed, speedMult, alchemyMult, fuelMult, fertMult, STEAM_EFFICIENCY };

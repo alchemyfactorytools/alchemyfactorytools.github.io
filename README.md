@@ -257,7 +257,10 @@ Key mechanics for the optimizer (full detail in `data/mechanics.json`):
   Heating devices draw no base heat since 1.0; they only set slot packing (Stone Furnace 9, Blast
   Furnace 42, Steam Heating Pad 9) via `heatingDevice` in the config. Central steam (composer)
   forces the pad.
-- **Seed Plot** cycles ignore the speed multiplier (1 seed → 120..200 herbs, no nutrients).
+- **Seed Plots are manual** (replant and harvest by hand), so both solvers exclude them unless
+  `manualPlots` allows them: `'auto'` (default) only below the Nursery tier where they are the
+  only herb source, `true` always, `false` never ("Seed Plots" select in the UI). Their cycles ignore the speed multiplier
+  (1 seed → 120..200 herbs, no nutrients) and the yield arrives as one batch per cycle.
 
 ## Sources and currency
 

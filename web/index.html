@@ -173,6 +173,13 @@
           <h2>Craft fuel / fertilizer</h2>
           <label class="check"><input type="checkbox" id="selfFuel" checked> Allow crafting fuel (self-fuel loops)</label>
           <label class="check"><input type="checkbox" id="selfFert" checked> Allow crafting fertilizer (self-fert loops)</label>
+          <label>Seed Plots <span class="info" data-tip="Seed Plots must be replanted and harvested by hand, so they are not automation. Auto allows them only while the unlock tier is below the Nursery (tier 4), where they are the only herb source.">i</span>
+            <select id="manualPlots">
+              <option value="auto" selected>Auto — only below the Nursery tier</option>
+              <option value="never">Never</option>
+              <option value="always">Always (manual bootstrap plan)</option>
+            </select>
+          </label>
         </section>
 
         <section>

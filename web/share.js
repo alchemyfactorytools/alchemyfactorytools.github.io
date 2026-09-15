@@ -40,6 +40,7 @@
     steamMode: ['sm', 'free'],
     selfFuel: ['ff', true],
     selfFert: ['fe', true],
+    manualPlots: ['mp', 'auto'],
     allowMint: ['mint', true],
     fullBeltTiles: ['fb', true],
     buildability: ['bd', '0'],

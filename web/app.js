@@ -395,6 +395,7 @@ function buildConfig() {
   cfg.selfFuel = $('selfFuel').checked;
   cfg.quarantine = { bankPortal: $('allowMint').checked }; // false: coins are never minted as recipe inputs
   cfg.selfFert = $('selfFert').checked;
+  cfg.manualPlots = { auto: 'auto', never: false, always: true }[$('manualPlots').value] ?? 'auto'; // Seed Plots are manual
   cfg.steam = { enabled: $('useSteam').checked, mode: $('steamMode').value }; // composer: central steam for heat
   // A null/blank belt rate means "one full belt at the current Logistics level", so resolve it to
   // that concrete /min here instead of emitting an uncapped supply.

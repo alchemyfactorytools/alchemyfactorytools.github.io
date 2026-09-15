@@ -12,7 +12,7 @@
 const { tiers } = require('./tiers');
 const { makeItemCopperFloor } = require('./cost-floor');
 const { cauldronEligibility } = require('./cauldron');
-const { skillParams, STEAM_EFFICIENCY } = require('./config');
+const { skillParams, STEAM_EFFICIENCY, seedPlotsAllowed } = require('./config');
 const { machineHeatPerRun, speedMultFor } = require('./normalize');
 const { heatingDevice, isHeated } = require('./heating');
 const { productionRecipes } = require('./recipes');
@@ -115,6 +115,7 @@ function makeComposer(db, cfg) {
   // recipes producing each item (tier-gated), with their primary/co outputs
   const producersOf = new Map();
   for (const [id, r] of Object.entries(productionRecipes(db))) {
+    if (r.machine === 'Seed Plot' && !seedPlotsAllowed(db, cfg)) continue; // manual replant/harvest: auto below Nursery tier, else opt-in
     if (!tierOk(r.id != null ? (db.items[r.id] ? r.id : id) : id)) { /* gate by outputs below */ }
     const { inputs, outputs, recirc } = netRecipe(r);
     // skip currency mints (Bank Portal: copper → coin, zero inputs) — currency is valued at its

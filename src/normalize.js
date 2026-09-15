@@ -16,7 +16,7 @@
 'use strict';
 
 const { cauldronEligibility } = require('./cauldron');
-const { skillParams } = require('./config');
+const { skillParams, seedPlotsAllowed } = require('./config');
 const { tiers } = require('./tiers');
 const { productionRecipes } = require('./recipes');
 
@@ -147,8 +147,10 @@ function buildProcessTable(db, cfg) {
 
   // --- machine recipe columns (incl. curated cauldron rows + catalyst variants) ---
   const curatedMode = cfg.quarantine.curatedCauldronRows;
+  const plotsOk = seedPlotsAllowed(db, cfg);
   const formulaActive = cfg.cauldron.enabled;
   for (const recipe of productionRecipes(db)) {
+    if (recipe.machine === 'Seed Plot' && !plotsOk) continue; // manual replant/harvest: auto below Nursery tier, else opt-in
     const machine = machines[recipe.machine];
     const isCurated = (recipe.machine === 'Cauldron' || recipe.machine === 'Advanced Cauldron');
 

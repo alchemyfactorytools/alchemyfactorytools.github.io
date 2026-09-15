@@ -25,20 +25,28 @@ const MARS = { demand: { Mars: 0.1 } };
 // Mars scenarios. Seed Plots grow herbs from bought seeds with no fertilizer, so "no farming"
 // no longer removes Soap; and the Advanced Athanor "Copper Powder Advanced Athanor" recipe
 // (unstable → ICP only, fertile → doubled CP+ICP) beats the GG×3 cauldron shortcut on price.
-// The original claims are kept as regressions with Seed Plots locked (counts: 0).
+// Seed Plots are manual (replant + harvest by hand) and excluded unless cfg.manualPlots; the
+// original claims hold by default and the plot route is asserted with manualPlots: true.
 const NO_SEED_PLOT = { defaultCount: 1000, counts: { 'Seed Plot': 0 } };
 
-test('Scenario A: buyables-only, no farming — feasible only through Seed Plot herbs; INFEASIBLE with plots locked', async () => {
-  const r = await solve({ cauldron: { enabled: false }, selfFert: false }, MARS);
+test('Scenario A: buyables-only, no farming — feasible only through (manual) Seed Plot herbs; INFEASIBLE without them', async () => {
+  const r = await solve({ cauldron: { enabled: false }, selfFert: false, manualPlots: true }, MARS);
   assert.equal(r.status, 'Optimal');
+  const def = await solve({ cauldron: { enabled: false }, selfFert: false }, MARS);
+  assert.equal(def.status, 'Infeasible', 'Seed Plots are excluded by default at an unlimited tier');
+  // 'auto' allows plots below the Nursery tier, where they are the only herb source
+  const { seedPlotsAllowed } = require('../src/config');
+  assert.equal(seedPlotsAllowed(db, resolveConfig({ maxTier: 3 })), true);
+  assert.equal(seedPlotsAllowed(db, resolveConfig({ maxTier: 4 })), false);
+  assert.equal(seedPlotsAllowed(db, resolveConfig({})), false);
   const locked = await solve({ cauldron: { enabled: false }, selfFert: false, machines: NO_SEED_PLOT }, MARS);
   assert.equal(locked.status, 'Infeasible');
 });
 
 test('Scenario A: Advanced Athanor Copper Powder beats the cauldron (~74.8k/Mars); GG×3 cauldron unlocks Mars with plots locked (~158k)', async () => {
-  // capital off isolates the material cost
+  // capital off isolates the material cost (manual Seed Plots allowed: this pin is the plot route)
   const rMat = await solve(
-    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: { defaultCount: 1000 }, capital: { enabled: false } },
+    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, manualPlots: true, machines: { defaultCount: 1000 }, capital: { enabled: false } },
     MARS,
   );
   assert.ok(Math.abs(rMat.objective / 0.1 - 74772) < 100, `material per-Mars ${rMat.objective / 0.1}`);
@@ -46,7 +54,7 @@ test('Scenario A: Advanced Athanor Copper Powder beats the cauldron (~74.8k/Mars
   assert.ok(rMat.flows.find((f) => f.process.id === 'recipe:Copper Powder Advanced Athanor@fertile'), 'fertile Advanced Athanor CP+ICP run active');
   // with capital on (default) the same route wins; cost is modestly higher
   const r = await solve(
-    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, machines: { defaultCount: 1000 } },
+    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, manualPlots: true, machines: { defaultCount: 1000 } },
     MARS,
   );
   assert.equal(r.status, 'Optimal');
@@ -68,7 +76,7 @@ test('Scenario B: farming available — MIXED basis (fertile CP+ICP run AND unst
   // Mars needs 200 ICP : 150 CP. The fertile variant yields the pair, the unstable variant
   // ICP alone, so the joint-product ratio mismatch is fixed by mixing catalyst variants —
   // the same mechanism the June trace showed with the GG cauldron at the margin.
-  const r = await solve({ cauldron: { enabled: true, inputPool: 'buyables' } }, MARS);
+  const r = await solve({ cauldron: { enabled: true, inputPool: 'buyables' }, manualPlots: true }, MARS);
   assert.equal(r.status, 'Optimal');
   const fertile = r.flows.find((f) => f.process.id === 'recipe:Copper Powder Advanced Athanor@fertile');
   const unstable = r.flows.find((f) => f.process.id === 'recipe:Copper Powder Advanced Athanor@unstable');
@@ -76,7 +84,7 @@ test('Scenario B: farming available — MIXED basis (fertile CP+ICP run AND unst
   assert.ok(unstable && unstable.rate > 1, 'unstable ICP-only run active at the margin');
   // the joint-product credit makes B strictly cheaper than A
   const a = await solve(
-    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false },
+    { cauldron: { enabled: true, inputPool: 'buyables' }, selfFert: false, manualPlots: true },
     MARS,
   );
   assert.ok(r.objective < a.objective, `B (${r.objective}) should beat A (${a.objective})`);
