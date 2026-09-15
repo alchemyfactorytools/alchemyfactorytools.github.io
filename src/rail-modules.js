@@ -123,6 +123,8 @@ function formatModules(res) {
   const out = [];
   out.push('modules (belt-connected tiles):');
   for (const m of res.modules) out.push(`  ${m.id.padEnd(24)} floor ${m.floor}  ${Object.entries(m.machines).sort((a, b) => b[1] - a[1]).map(([k, v]) => v + '× ' + k).join(', ')}${m.members.length > 1 ? `  [${m.members.join(', ')}]` : ''}`);
+  const total = res.modules.reduce((a, m) => a + Object.values(m.machines).reduce((x, y) => x + y, 0), 0);
+  out.push(`  total production machines: ${total}`);
   out.push('wagon flows (module boundaries):');
   for (const f of res.flows) out.push(`  ${f.from.padEnd(22)} → ${f.to.padEnd(14)} ${f.item.padEnd(22)} ${String(f.ratePerMin).padStart(7)}/min  ${f.kind.padEnd(7)} (${f.reasons.join('; ')})`);
   if (res.trickles.length) out.push('trickles (hand-stock a chest, below 1/min): ' + res.trickles.map((f) => `${f.item} → ${f.to} ${f.ratePerMin}/min`).join('; '));

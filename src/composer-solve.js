@@ -47,7 +47,12 @@ function itemCatalog(db, contracts = {}) {
 // returns the same response envelope the LP path does. Multiple targets share the fuel/fert/money
 // trunks + co-product surplus, but each gets its own replicated tile tree (no merged intermediates).
 function composerSolve(targets, cfg, db) {
-  const { fuelItem, fertItem } = canonicalCarriers(db, cfg);
+  // Carriers: best-for-tier by default; cfg.carriers.{fuel,fert} pins a specific item (e.g. Black
+  // Powder for steam boilers: 9× the heat per belt slot of Coke Powder).
+  const auto = canonicalCarriers(db, cfg);
+  const pin = (name, ok, role) => { if (!name) return null; const it = db.items[name]; if (!it || !ok(it)) throw new Error(`carriers.${role}: "${name}" is not a usable ${role} item`); return name; };
+  const fuelItem = pin(cfg.carriers && cfg.carriers.fuel, (it) => it.heat > 0, 'fuel') || auto.fuelItem;
+  const fertItem = pin(cfg.carriers && cfg.carriers.fert, (it) => it.nutrientValue > 0 && it.maxFertility > 0, 'fert') || auto.fertItem;
   cfg.canonical = { fuelItem, fertItem };
   // Central steam (cfg.steam.enabled) is handled inside the composer: it forces the FUEL trunk's
   // belt cap to Infinity so the fuel production trunk/furnaces/self-fuel loops collapse and heat is

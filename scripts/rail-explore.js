@@ -12,7 +12,7 @@ if (!file) { console.error('usage: node scripts/rail-explore.js <plan.json> [--m
 const opt = (k) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : undefined; };
 const plan = JSON.parse(fs.readFileSync(file, 'utf8'));
 const results = explore(plan, { minutes: opt('minutes') ? Number(opt('minutes')) : 90, params: opt('speed') ? { wagonSpeed: Number(opt('speed')) } : {} });
-const cols = ['template', 'fleet', 'wagons', 'track', 'stations', 'launches', 'transfers', 'fedPct', 'worstStarvedPct', 'blockedLoaders', 'avgLoadedPct', 'maxLapSec'];
+const cols = ['template', 'fleet', 'loops', 'launchesPerLoop', 'wagons', 'track', 'stations', 'transfers', 'fedPct', 'worstStarvedPct', 'blockedLoaders', 'avgLoadedPct', 'maxLapSec'];
 console.log(cols.map((c) => c.padEnd(c === 'template' ? 13 : c === 'fleet' ? 8 : 15)).join(''));
 for (const r of results) console.log(cols.map((c) => String(r[c]).padEnd(c === 'template' ? 13 : c === 'fleet' ? 8 : 15)).join(''));
 const pick = (key) => { const [t, f] = key.split(':'); return results.find((r) => r.template === t && r.fleet === f); };

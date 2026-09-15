@@ -79,54 +79,59 @@ function singleLoop(plan, fleet, wagons) {
   return { edges, stations, template: 'single-loop', fleet };
 }
 
-// ---- template: ground trunk + one loop per upper floor, transfer stations between ----
+// ---- template: trunk loop + zone loops, transfer stations between ----
+// Every module lives in a zone loop; a floor is split round-robin into plan.loopsPerFloor zones
+// (default 1). The trunk carries only inter-zone traffic. A shared fleet can have several Launch
+// Stations per loop (plan.launchesPerLoop), which lifts the 6-wagons-per-minute release cap.
 function trunkZones(plan, fleet, wagons) {
   const geo = { ...DEFAULT_GEOMETRY, ...(plan.geometry || {}) };
+  const K = Math.max(1, plan.loopsPerFloor || 1);
+  const L = Math.max(1, plan.launchesPerLoop || 1);
   const flows = flowsOf(plan);
-  const floors = [...new Set(plan.modules.map((m) => m.floor || 0))].sort((a, b) => a - b);
+  const zoneOf = new Map(); // module id → zone key
+  const byFloor = new Map();
+  for (const m of plan.modules) { const fl = m.floor || 0; if (!byFloor.has(fl)) byFloor.set(fl, []); byFloor.get(fl).push(m.id); }
+  for (const [fl, ids] of byFloor) ids.sort().forEach((id, i) => zoneOf.set(id, `z${fl}.${i % K}`));
   const edges = [];
   const stations = [];
-  // per loop: pieces then nodes
-  const loops = new Map(); // floor → { tag, pieces }
-  const pushPiece = (fl, key) => { if (!loops.has(fl)) loops.set(fl, { tag: fl === 0 ? 'trunk' : `f${fl}`, pieces: [] }); loops.get(fl).pieces.push({ key }); };
-  for (const fl of floors) if (fleet === 'shared') pushPiece(fl, 'launch');
+  const loops = new Map(); // zone key → { tag, pieces }
+  const loop = (z) => { if (!loops.has(z)) loops.set(z, { tag: z, pieces: [] }); return loops.get(z); };
+  const pushPiece = (z, key) => loop(z).pieces.push({ key });
+  loop('trunk');
   for (const f of flows) {
-    const a = modFloor(plan, f.from), b = modFloor(plan, f.to);
-    if (a === b) { // local: same loop
-      if (fleet === 'perFlow') pushPiece(a, `launch.${f.id}`);
-      pushPiece(a, `load.${f.id}`); pushPiece(a, `unload.${f.id}`);
-    } else {
-      // origin loop: launch? + load + transfer-in (to trunk) ; trunk: transfer-out (from origin) … transfer-in (to dest); dest loop: transfer-out + unload
-      const hops = [];
-      if (a !== 0) hops.push([a, 0]);
-      if (b !== 0) hops.push([0, b]);
-      if (a === 0 && b === 0) hops.length = 0;
-      if (fleet === 'perFlow') { pushPiece(a, `launch.${f.id}`); if (a !== 0 && b !== 0) pushPiece(0, `launch.${f.id}`); if (b !== a) pushPiece(b, `launch.${f.id}`); }
-      pushPiece(a, `load.${f.id}`);
-      for (const [x, y] of hops) { pushPiece(x, `xin.${f.id}.${x}>${y}`); pushPiece(y, `xout.${f.id}.${x}>${y}`); }
-      pushPiece(b, `unload.${f.id}`);
-    }
+    const a = zoneOf.get(f.from), b = zoneOf.get(f.to);
+    if (!a || !b) throw new Error(`plan: flow ${f.id} references an unknown module`);
+    const path = a === b ? [a] : [a, 'trunk', b];
+    if (fleet === 'perFlow') for (const z of path) pushPiece(z, `launch.${f.id}`);
+    pushPiece(a, `load.${f.id}`);
+    for (let i = 0; i + 1 < path.length; i++) { pushPiece(path[i], `xin.${f.id}.${i}`); pushPiece(path[i + 1], `xout.${f.id}.${i}`); }
+    pushPiece(b, `unload.${f.id}`);
+  }
+  // shared fleets: L launch stations spread evenly around each loop
+  if (fleet === 'shared') for (const [, Lp] of loops) {
+    const n = Lp.pieces.length || 1;
+    for (let i = 0; i < L; i++) Lp.pieces.splice(Math.min(Lp.pieces.length, Math.floor((i * n) / L) + i), 0, { key: `launch#${i}` });
   }
   const nodeOf = new Map();
-  for (const [fl, L] of loops) {
-    const nodes = ring(`F${fl}`, L.pieces, geo, edges);
-    L.pieces.forEach((p, i) => nodeOf.set(`${fl}|${p.key}`, nodes[i]));
-    if (fleet === 'shared') stations.push({ id: `launch.${L.tag}`, type: 'launch', node: nodeOf.get(`${fl}|launch`), wagons: wagons[`launch.${L.tag}`] || 1, tag: L.tag });
+  for (const [z, Lp] of loops) {
+    if (!Lp.pieces.length) continue;
+    const nodes = ring(z, Lp.pieces, geo, edges);
+    Lp.pieces.forEach((p, i) => nodeOf.set(`${z}|${p.key}`, nodes[i]));
+    if (fleet === 'shared') for (let i = 0; i < L; i++) stations.push({ id: `launch.${z}#${i}`, type: 'launch', node: nodeOf.get(`${z}|launch#${i}`), wagons: wagons[`launch.${z}#${i}`] || 1, tag: z });
   }
-  const tagOn = (fl, f) => (fleet === 'perFlow' ? f.id : loops.get(fl).tag);
+  const tagOn = (z, f) => (fleet === 'perFlow' ? f.id : z);
   for (const f of flows) {
-    const a = modFloor(plan, f.from), b = modFloor(plan, f.to);
-    const path = a === b ? [a] : [a, ...(a !== 0 && b !== 0 ? [0] : []), b];
-    if (fleet === 'perFlow') for (const fl of path) stations.push({ id: `launch.${f.id}@${loops.get(fl).tag}`, type: 'launch', node: nodeOf.get(`${fl}|launch.${f.id}`), wagons: wagons[`launch.${f.id}@${loops.get(fl).tag}`] || 1, tag: f.id });
-    const filt = (fl) => (fleet === 'perFlow' ? { tag: { value: f.id } } : { tag: { value: tagOn(fl, f) }, cargo: { items: [f.item], mode: 'or' } });
+    const a = zoneOf.get(f.from), b = zoneOf.get(f.to);
+    const path = a === b ? [a] : [a, 'trunk', b];
+    if (fleet === 'perFlow') for (const z of path) stations.push({ id: `launch.${f.id}@${z}`, type: 'launch', node: nodeOf.get(`${z}|launch.${f.id}`), wagons: wagons[`launch.${f.id}@${z}`] || 1, tag: f.id });
+    const filt = (z) => (fleet === 'perFlow' ? { tag: { value: f.id } } : { tag: { value: z }, cargo: { items: [f.item], mode: 'or' } });
     stations.push({ id: `load.${f.id}`, type: 'loader', node: nodeOf.get(`${a}|load.${f.id}`), item: f.item, ratePerMin: f.ratePerMin, fullLoadsOnly: f.kind !== 'stock', filter: { tag: { value: tagOn(a, f) } } });
     for (let i = 0; i + 1 < path.length; i++) {
-      const x = path[i], y = path[i + 1];
-      stations.push({ id: `xfer.${f.id}.${x}>${y}`, type: 'transfer', inNode: nodeOf.get(`${x}|xin.${f.id}.${x}>${y}`), outNode: nodeOf.get(`${y}|xout.${f.id}.${x}>${y}`), inFilter: filt(x), outFilter: { tag: { value: tagOn(y, f) } } });
+      stations.push({ id: `xfer.${f.id}.${i}`, type: 'transfer', inNode: nodeOf.get(`${path[i]}|xin.${f.id}.${i}`), outNode: nodeOf.get(`${path[i + 1]}|xout.${f.id}.${i}`), inFilter: filt(path[i]), outFilter: { tag: { value: tagOn(path[i + 1], f) } } });
     }
     stations.push({ id: `unload.${f.id}`, type: 'unloader', node: nodeOf.get(`${b}|unload.${f.id}`), consumePerMin: f.ratePerMin, chestCap: f.chestCap || 600, filter: filt(b) });
   }
-  return { edges, stations, template: 'trunk-zones', fleet };
+  return { edges, stations, template: 'trunk-zones', fleet, loopsPerFloor: K, launchesPerLoop: L, zones: loops.size };
 }
 
 // ---- template: one dedicated loop per flow ----
@@ -152,6 +157,7 @@ const TEMPLATES = { 'single-loop': singleLoop, 'trunk-zones': trunkZones, shuttl
 // Grow fleets until no unloader starves more than `maxStarvedPct`, or a launch hits `maxWagons`.
 function sizeFleets(plan, template, fleet, opts = {}) {
   const { minutes = 90, maxStarvedPct = 8, maxWagons = 12, params = {} } = opts;
+  const maxRounds = opts.maxRounds || 40 + 8 * flowsOf(plan).length; // enough to size every fleet in a big plan
   const wagons = {};
   const partialFlips = new Set(); // freight flows switched to partial loads because full packs arrived too late
   let scenario, rep, rounds = 0;
@@ -160,7 +166,7 @@ function sizeFleets(plan, template, fleet, opts = {}) {
     scenario = TEMPLATES[template](p2, fleet, wagons);
     rep = simulate({ ...scenario, params: { ...(plan.params || {}), ...params } }, { minutes });
     const starved = Object.entries(rep.stations).filter(([, s]) => s.type === 'unloader' && s.starvedPct > maxStarvedPct).sort((x, y) => y[1].starvedPct - x[1].starvedPct);
-    if (!starved.length || rounds++ > 60) break;
+    if (!starved.length || rounds++ > maxRounds) break;
     // grow a fleet on the starved flow's path: the loops of its loader, its transfer hops and its
     // unloader (shared fleets carry loop tags; perFlow fleets carry the flow id on every loop)
     const [uid] = starved[0];
@@ -186,7 +192,7 @@ function score(scenario, rep) {
   const lds = Object.values(rep.stations).filter((s) => s.type === 'loader');
   const wag = Object.values(rep.wagons);
   return {
-    template: scenario.template, fleet: scenario.fleet,
+    template: scenario.template, fleet: scenario.fleet, loops: scenario.zones || 1, launchesPerLoop: scenario.launchesPerLoop || 1,
     wagons: wag.length,
     track: scenario.edges.reduce((a, e) => a + e.length, 0),
     stations: scenario.stations.length,
@@ -201,10 +207,10 @@ function score(scenario, rep) {
 }
 
 function explore(plan, opts = {}) {
-  const combos = opts.combos || [['single-loop', 'shared'], ['single-loop', 'perFlow'], ['trunk-zones', 'shared'], ['trunk-zones', 'perFlow'], ['shuttles', 'perFlow']];
+  const combos = opts.combos || [['single-loop', 'perFlow'], ['trunk-zones', 'shared', { loopsPerFloor: 1 }], ['trunk-zones', 'shared', { loopsPerFloor: 2 }], ['trunk-zones', 'shared', { loopsPerFloor: 3 }], ['trunk-zones', 'shared', { loopsPerFloor: 2, launchesPerLoop: 2 }], ['trunk-zones', 'perFlow', { loopsPerFloor: 2 }], ['shuttles', 'perFlow']];
   const out = [];
-  for (const [template, fleet] of combos) {
-    const sized = sizeFleets(plan, template, fleet, opts);
+  for (const [template, fleet, variant] of combos) {
+    const sized = sizeFleets({ ...plan, ...(variant || {}) }, template, fleet, opts);
     out.push({ ...score(sized.scenario, sized.report), wagonsByLaunch: sized.wagons, partialFlips: sized.partialFlips, scenario: sized.scenario, report: sized.report });
   }
   return out;

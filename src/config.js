@@ -67,6 +67,10 @@ const DEFAULT_CONFIG = {
   //            (per-heat cost ÷ STEAM_EFFICIENCY); see data/mechanics.json "steam".
   steam: { enabled: false, mode: 'free' },
 
+  // Composer utility carriers. null = best-for-tier (heat per copper; max fertility). Pin an item
+  // to plan around a chosen fuel or fertilizer, e.g. { fuel: 'Black Powder' }.
+  carriers: { fuel: null, fert: null },
+
   // Machine capacity (DESIGN: capacity rows from day one; bounds amplifying loops).
   // counts: per-machine override; defaultCount applies to the rest.
   machines: { defaultCount: 50, counts: {} },
