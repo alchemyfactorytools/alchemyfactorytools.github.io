@@ -23,9 +23,10 @@ test('module extraction: belts stay inside modules, low-rate / shop / fuel / fer
   // liquids are piped, never wagon flows
   assert.ok(res.pipes.length > 0 && res.pipes.every((p) => db.items[p.item].liquid), 'pipes are exactly the liquid flows');
   assert.ok(!res.flows.some((f) => db.items[f.item] && db.items[f.item].liquid));
-  // bought inputs below 1/min are trickles (hand-stocked), never wagon flows; slower-than-a-pack-
-  // per-10-min freight ships partial loads
-  assert.ok(res.trickles.length > 0 && res.trickles.every((f) => f.ratePerMin < 1));
+  // bought inputs are served by local portals by default (no wagon flow); 'hub' rails them
+  assert.ok(res.localPortals.length > 0 && !res.flows.some((f) => f.from === 'portals'));
+  const hub = extractModules(body([{ item: 'Healing Potion', rate: 60, rateMode: 'rate' }, { item: 'Vitality Potion', rate: 30, rateMode: 'rate' }]), db, { portals: 'hub' });
+  assert.ok([...hub.flows, ...hub.trickles].some((f) => f.from === 'portals'));
   assert.ok(res.flows.every((f) => f.ratePerMin >= 1));
   for (const f of res.flows) if (f.ratePerMin * 10 < 100) assert.equal(f.kind, 'stock', JSON.stringify(f));
   // every flow endpoint is a plan module

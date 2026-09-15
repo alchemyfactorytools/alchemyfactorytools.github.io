@@ -18,6 +18,10 @@ function extractModules(body, db, opts = {}) {
   const railMax = opts.railMaxPerMin ?? 40;       // flows at or below this rate are wagon-worthy
   const maxFullLoadWaitMin = opts.maxFullLoadWaitMin ?? 10; // slower than a pack per this many minutes → ship partial loads
   const minRailRate = opts.minRailRatePerMin ?? 1;           // slower than this is a trickle: hand-stock a chest, no wagon flow
+  // Purchasing Portals can be placed anywhere, so bought inputs are LOCAL by default: a portal at
+  // the consuming module with a coin chest, no wagon flow. 'hub' rails the goods from one portal
+  // bank instead (one flow per bought item per module).
+  const portals = opts.portals || 'local';
   const packSize = (opts.params && opts.params.packSize) || 100;
   const floorOf = opts.floorOf || {};             // item → floor override
   const out = solveComposerBody(body, db);
@@ -58,6 +62,7 @@ function extractModules(body, db, opts = {}) {
   const cut = [];
   const belt = [];
   const pipes = [];
+  const localPortals = []; // bought inputs served by a portal AT the module
   for (const f of agg.values()) {
     if (isLiquid(f.item)) { pipes.push(f); continue; }
     const fanOut = (producersOfConsumer.get(f.from) || new Set()).size > 1;
@@ -65,7 +70,7 @@ function extractModules(body, db, opts = {}) {
     if (f.to === 'shop') reason = 'to shop';
     else if (f.to === 'boilers') reason = 'fuel to boilers';
     else if (f.kind === 'fert') reason = 'fertilizer to farms';
-    else if (f.from === 'portals' && f.ratePerMin <= railMax) reason = 'bought, low rate';
+    else if (f.from === 'portals') { if (portals === 'hub' && f.ratePerMin <= railMax) reason = 'bought, low rate'; else { localPortals.push(f); continue; } }
     else if (f.from.startsWith('belt:')) reason = 'main-belt supply';
     else if (f.ratePerMin <= railMax && fanOut) reason = 'shared producer, low rate';
     // a low-rate flow between two otherwise private modules stays a belt: rail is for distance
@@ -120,7 +125,17 @@ function extractModules(body, db, opts = {}) {
   const used = new Set(flows.flatMap((f) => [f.from, f.to]));
   const planModules = [...modules.map((m) => ({ id: m.id, floor: m.floor })), ...extra].filter((m, i, arr) => arr.findIndex((x) => x.id === m.id) === i && (used.has(m.id) || modules.some((x) => x.id === m.id)));
   const plan = { params: opts.params || {}, geometry: opts.geometry, modules: planModules, flows: flows.map(({ reasons, ...f }) => f) };
-  return { status: 'Optimal', modules, flows, trickles, pipes, beltFlows: belt, plan, summary: g.summary };
+  // local portal placements per module with the copper they draw
+  const portalsAt = new Map();
+  for (const f of localPortals) {
+    const mod = modOf.get(f.to) || f.to;
+    if (!portalsAt.has(mod)) portalsAt.set(mod, { module: mod, items: [], copperPerMin: 0 });
+    const p = portalsAt.get(mod);
+    p.items.push({ item: f.item, ratePerMin: +f.ratePerMin.toFixed(2) });
+    p.copperPerMin += f.ratePerMin * ((db.items[f.item] && db.items[f.item].buyPrice) || 0);
+  }
+  const localPortalList = [...portalsAt.values()].map((p) => ({ ...p, copperPerMin: Math.round(p.copperPerMin) }));
+  return { status: 'Optimal', modules, flows, trickles, pipes, localPortals: localPortalList, beltFlows: belt, plan, summary: g.summary };
 }
 
 function formatModules(res) {
@@ -131,6 +146,10 @@ function formatModules(res) {
   out.push(`  total production machines: ${total}`);
   out.push('wagon flows (module boundaries):');
   for (const f of res.flows) out.push(`  ${f.from.padEnd(22)} → ${f.to.padEnd(14)} ${f.item.padEnd(22)} ${String(f.ratePerMin).padStart(7)}/min  ${f.kind.padEnd(7)} (${f.reasons.join('; ')})`);
+  if (res.localPortals && res.localPortals.length) {
+    out.push('local purchasing portals (coin chest at the module; silver/min to keep it fed):');
+    for (const p of res.localPortals) out.push(`  ${p.module.padEnd(28)} ${p.items.map((i) => `${i.item} ${i.ratePerMin}/min`).join(', ').padEnd(70)} ${(p.copperPerMin / 1000).toFixed(2)} s/min`);
+  }
   if (res.trickles.length) out.push('trickles (hand-stock a chest, below 1/min): ' + res.trickles.map((f) => `${f.item} → ${f.to} ${f.ratePerMin}/min`).join('; '));
   if (res.pipes.length) out.push('pipes: ' + [...new Set(res.pipes.map((p) => p.item))].join(', '));
   return out.join('\n');

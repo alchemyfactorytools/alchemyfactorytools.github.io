@@ -2,6 +2,7 @@
 // Derive rail modules + flows from a production target set, then (optionally) explore topologies.
 //   node scripts/rail-modules.js --targets "Healing Potion:60,Soap:60,Vitality Potion:30" --tier 6 [--rail-max 40] [--out plan.json] [--explore] [--priority balanced] [--no-steam]
 //   node scripts/rail-modules.js --sellables --tier 6 [--rate 10] [--relic-rate 1] [--jewelry-rate 2]   # every sellable item at the tier
+//   --portals local (default: a Purchasing Portal + coin chest at each consuming module) | hub (rail bought goods from one portal bank)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -20,7 +21,7 @@ if (args.includes('--sellables')) {
   console.log('targets:', targets.map((t) => `${t.item} ${t.rate}/min`).join(', '), '\n');
 } else targets = String(opt('targets', 'Healing Potion:60')).split(',').map((s) => { const [item, r] = s.split(':'); return { item: item.trim(), rate: Number(r || 60), rateMode: 'rate' }; });
 const config = { solver: 'composer', maxTier: tier, cauldron: { enabled: true, inputPool: opt('pool', 'easy') }, composer: { priority: opt('priority', 'balanced') }, steam: { enabled: !args.includes('--no-steam'), mode: 'cost' }, quarantine: { bankPortal: !args.includes('--no-mint') }, carriers: { fuel: opt('fuel', null), fert: opt('fert', null) } };
-const res = extractModules({ item: targets[0].item, rate: targets[0].rate, rateMode: 'rate', targets, config }, db, { railMaxPerMin: Number(opt('rail-max', 40)) });
+const res = extractModules({ item: targets[0].item, rate: targets[0].rate, rateMode: 'rate', targets, config }, db, { railMaxPerMin: Number(opt('rail-max', 40)), portals: opt('portals', 'local') });
 if (res.status !== 'Optimal') { console.error('composer:', res.status, res.error || ''); process.exit(1); }
 console.log(formatModules(res));
 if (opt('out')) { fs.writeFileSync(opt('out'), JSON.stringify(res.plan, null, 2) + '\n'); console.log('wrote', opt('out')); }
