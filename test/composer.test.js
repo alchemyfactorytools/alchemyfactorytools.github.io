@@ -34,7 +34,8 @@ const desc = (pick) => {
 
 test('canonical picks: clean material routes, cauldron only where it wins', () => {
   const comp = composer();
-  assert.equal(desc(comp.canonicalPick('Sand')), 'Grinder{Stone:1}');
+  // machine time is priced, so the tier-5 Enhanced Grinder (half the cycle) beats the plain one
+  assert.equal(desc(comp.canonicalPick('Sand')), 'Enhanced Grinder{Stone:1}');
   assert.equal(desc(comp.canonicalPick('Salt')), 'Stone Crusher{Rock Salt:1}');
   assert.equal(desc(comp.canonicalPick('Glass')), 'Kiln{Sand:6}');
   assert.equal(desc(comp.canonicalPick('Brick')), 'Kiln{Clay:1}');
@@ -149,7 +150,7 @@ test('build vs op are separate axes: op (copper/unit) is qty-scaled, build (layo
 test('co-product waste (CO_W) deters dumping value; drop it and the wasteful route wins', () => {
   // Sand's clean Grinder{Stone} beats Stone Crusher{Rock Salt} (which dumps 100 Salt/100 Sand)
   // only because CO_W prices the dumped Salt. Zero it out and the shallow wasteful route wins.
-  assert.equal(desc(composer().canonicalPick('Sand')), 'Grinder{Stone:1}');
+  assert.equal(desc(composer().canonicalPick('Sand')), 'Enhanced Grinder{Stone:1}');
   const noWaste = composer({ composer: { coW: 0 } });
   assert.equal(desc(noWaste.canonicalPick('Sand')), 'Stone Crusher{Rock Salt:1}');
 });
@@ -170,7 +171,7 @@ test('Phase 3: compose sizes the tile tree by rate (Glass @60/min)', () => {
   assert.equal(r.tree.machineCount, 6);
   const sand = kid(r.tree, 'Sand');
   assert.equal(sand.ratePerMin, 360);          // 6 Sand × 60 Glass/min
-  assert.equal(sand.machine, 'Grinder');
+  assert.equal(sand.machine, 'Enhanced Grinder'); // machine time priced → the faster tier-5 grinder
   const stone = kid(sand, 'Stone');
   assert.equal(stone.ratePerMin, 360);
   const lime = kid(stone, 'Limestone');

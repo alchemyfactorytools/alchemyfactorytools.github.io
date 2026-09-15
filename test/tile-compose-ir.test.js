@@ -78,7 +78,10 @@ test('proven regime — every item covered and machine total matches the compose
     for (const it in gross) assert.ok((outByItem[it] || 0) >= gross[it] - 1e-3, `shortfall on ${it}: ${outByItem[it]} < ${gross[it]}`);
     const compMach = Object.values(r.graph.nodes.filter((n) => n.machine && n.machineCount)).reduce((s, n) => s + n.machineCount, 0);
     const tileMach = r.ir.tiles.reduce((s, t) => s + t.count, 0);
-    assert.equal(tileMach, compMach, `machine total ${tileMach} != composer ${compMach} (skills ${JSON.stringify(skills)})`);
+    // belt-sized tiles round each item's machines up to fill a belt, so the IR may over-build by
+    // at most one machine per item (e.g. a 4.5 s Enhanced Grinder does not divide a 60/min belt)
+    const items = Object.keys(gross).length;
+    assert.ok(tileMach >= compMach && tileMach <= compMach + items, `machine total ${tileMach} vs composer ${compMach} (skills ${JSON.stringify(skills)})`);
   }
 });
 

@@ -49,6 +49,11 @@ const PROFIT_OP_W = 1000;
 //   simplest 2 → ≥ 750 c/item, balanced 15 → ≥ 100 c/item, cheapest 1000 → ≥ 1.5 c/item.
 // Dispatch (profit mode) always runs at cheapest. Unset = simplest (library default).
 const PRIORITY_OP_W = { simplest: OP_W_DEFAULT, balanced: 15, cheapest: PROFIT_OP_W };
+// Machine time is priced on the operating axis: a machine dedicated to ONE unit per minute costs
+// MACHINE_VALUE copper per unit (cfg.composer.machineValue; 0 disables). Without it the metric
+// is blind to machine count and picks 36 Seed Plots over 2 fertilized Nurseries whenever seeds
+// are cheaper per herb than fertilizer, or a plain Grinder over an Enhanced one at equal copper.
+const MACHINE_VALUE_DEFAULT = 500;
 
 // Build the canonical-recipe picker for a given db + config.
 function makeComposer(db, cfg) {
@@ -167,6 +172,17 @@ function makeComposer(db, cfg) {
   const OP_W = profitMode ? PROFIT_OP_W : (cc.opW != null ? cc.opW : (PRIORITY_OP_W[cc.priority] ?? OP_W_DEFAULT));
   const coW = cc.coW != null ? cc.coW : CO_W;
   const cParams = skillParams(cfg.skills); // heat/speed multipliers, for the profit-mode fuel charge
+  const machineValue = cc.machineValue != null ? cc.machineValue : MACHINE_VALUE_DEFAULT;
+  // strongest fertilizer available at this tier sets a Nursery plot's rate (capped by the belt)
+  const bestMF = Math.max(0, ...Object.entries(db.items).filter(([n, it]) => it.nutrientValue > 0 && it.maxFertility > 0 && tierOk(n)).map(([, it]) => it.maxFertility));
+  // machine-minutes per unit of primary output for a recipe (plot-minutes for growers)
+  const machineMinPerUnit = (r, prim) => {
+    if (r.nutrientCost > 0 && !r.baseTime) {
+      const perPlot = Math.min(bestMF > 0 ? (60 * bestMF * cParams.speedMult) / r.nutrientCost : Infinity, cParams.beltSpeed);
+      return isFinite(perPlot) && perPlot > 0 ? 1 / perPlot : 0;
+    }
+    return ((r.baseTime || 0) / 60) / (prim || 1) / speedMultFor(r.machine, cParams);
+  };
   const fuelItemC = (cfg.canonical && cfg.canonical.fuelItem) || null;
   // The metric tracks TWO independent quantities per item, each PER UNIT OF OUTPUT:
   //  • build — structural "how hard to lay out": DEPTH_W per stage + WIDTH_W per extra distinct
@@ -283,17 +299,19 @@ function makeComposer(db, cfg) {
   function relax(items, fertOpPerNutrient, fuelOpPerHeat = 0, opW = OP_W) {
     const build = new Map();
     const op = new Map();
+    const mt = new Map(); // machine-minutes per unit, propagated like op (qty-scaled)
     const score = new Map();
     const pick = new Map();
     const gB = (n) => (build.has(n) ? build.get(n) : Infinity);
     const gO = (n) => (op.has(n) ? op.get(n) : Infinity);
+    const gM = (n) => (mt.has(n) ? mt.get(n) : 0);
     const gS = (n) => (score.has(n) ? score.get(n) : Infinity);
 
     // seed leaves: belt arrivals (free material), buyables, minted currency
     for (const it of items) {
-      if (beltItems.has(it)) { build.set(it, 0); op.set(it, 0); score.set(it, 0); pick.set(it, { source: 'belt' }); continue; }
+      if (beltItems.has(it)) { build.set(it, 0); op.set(it, 0); mt.set(it, 0); score.set(it, 0); pick.set(it, { source: 'belt' }); continue; }
       const lf = leaf(it);
-      if (lf) { build.set(it, lf.build); op.set(it, lf.op); score.set(it, lf.build + opW * lf.op); pick.set(it, { source: lf.source }); }
+      if (lf) { build.set(it, lf.build); op.set(it, lf.op); mt.set(it, 0); score.set(it, lf.build + opW * lf.op); pick.set(it, { source: lf.source }); }
     }
 
     // cauldron input scratch (refreshed each pass): flat build/op arrays so the hot triple loop
@@ -301,29 +319,32 @@ function makeComposer(db, cfg) {
     const cIn = cauldron ? cauldron.compiled.inputs : null;
     const inB = cIn ? new Float64Array(cIn.length) : null;
     const inO = cIn ? new Float64Array(cIn.length) : null;
+    const inM = cIn ? new Float64Array(cIn.length) : null;
 
     let changed = true;
     let guard = 0;
     while (changed && guard++ <= items.length) {
       changed = false;
-      if (cIn) for (let i = 0; i < cIn.length; i++) { inB[i] = gB(cIn[i].name); inO[i] = gO(cIn[i].name); }
+      if (cIn) for (let i = 0; i < cIn.length; i++) { inB[i] = gB(cIn[i].name); inO[i] = gO(cIn[i].name); inM[i] = gM(cIn[i].name); }
       for (const it of items) {
         if (beltItems.has(it)) continue; // fixed free leaf
         const lf = leaf(it);
         let bestS = lf ? lf.build + opW * lf.op : Infinity;
         let bestB = lf ? lf.build : Infinity;
         let bestO = lf ? lf.op : Infinity;
+        let bestM = 0;
         let bestPick = lf ? { source: lf.source } : null;
 
         for (const r of producersOf.get(it) || []) {
           const inputs = Object.keys(r.inputs || {});
           const prim = r.outputs[it] || 1;
-          let bSum = 0, oSum = 0, ok = true;
+          let bSum = 0, oSum = 0, mSum = machineMinPerUnit(r, prim), ok = true;
           for (const inp of inputs) {
             const bb = gB(inp), oo = gO(inp);
             if (!isFinite(bb) || !isFinite(oo)) { ok = false; break; }
             bSum += bb;                          // build: qty-INDEPENDENT (one sub-tile each, fan-out free)
             oSum += (r.inputs[inp] / prim) * oo;  // op: qty-scaled copper per unit of output
+            mSum += (r.inputs[inp] / prim) * gM(inp); // machine time embedded in the inputs
           }
           if (!ok) continue;
           if (r.nutrientCost) oSum += (r.nutrientCost / prim) * (typeof fertOpPerNutrient === 'function' ? fertOpPerNutrient(r.nutrientCost) : fertOpPerNutrient); // fertilizer drain (per-crop rate)
@@ -342,8 +363,8 @@ function makeComposer(db, cfg) {
           // ← Crucible{Copper Powder ← Athanor} inherits the Athanor's op and build but not its
           // dumped-ICP penalty, scores below the Athanor itself, and the pick becomes a 2-cycle.
           const b = depthW + widthW * Math.max(0, inputs.length - 1) + bSum + coW * coWaste;
-          const s = b + opW * oSum;
-          if (s < bestS) { bestS = s; bestB = b; bestO = oSum; bestPick = { source: 'recipe', recipe: r }; }
+          const s = b + opW * (oSum + machineValue * mSum);
+          if (s < bestS) { bestS = s; bestB = b; bestO = oSum; bestM = mSum; bestPick = { source: 'recipe', recipe: r }; }
         }
 
         // Cauldron triples producing `it` (3 inputs → 1 output, qty 1, no co-product). Triples are
@@ -368,8 +389,9 @@ function makeComposer(db, cfg) {
               else if (b2 === k) { distinct = 2; bSum = ba + bb; oSum = oa + 2 * ob; }
               else { distinct = 3; bSum = ba + bb + bk; oSum = oa + ob + okk; }
               if (fuelOpPerHeat) oSum += cauldron.compiled.targets[cauldron.compiled.outIdx[t]].heat * fuelOpPerHeat; // cauldron craft heat
+              const mSum = inM[a] + inM[b2] + inM[k] + cauldron.compiled.targets[cauldron.compiled.outIdx[t]].time / 60 / cParams.speedMult;
               const b = depthW + widthW * (distinct - 1) + bSum;
-              const s = b + opW * oSum;
+              const s = b + opW * (oSum + machineValue * mSum);
               const costSum = cIn[a].cost + cIn[b2].cost + cIn[k].cost;
               const isBest = s < bestS
                 || (s === bestS && bestPick && bestPick.source === 'cauldron'
@@ -377,7 +399,7 @@ function makeComposer(db, cfg) {
                     || (distinct === bestKey[0] && costSum < bestKey[1])
                     || (distinct === bestKey[0] && costSum === bestKey[1] && t < bestKey[2])));
               if (isBest) {
-                bestS = s; bestB = b; bestO = oSum;
+                bestS = s; bestB = b; bestO = oSum; bestM = mSum;
                 bestKey = [distinct, costSum, t];
                 const consumes = {};
                 for (const idx of [a, b2, k]) consumes[cIn[idx].name] = (consumes[cIn[idx].name] || 0) + 1;
@@ -397,10 +419,10 @@ function makeComposer(db, cfg) {
           }
         }
 
-        if (bestS < gS(it)) { score.set(it, bestS); build.set(it, bestB); op.set(it, bestO); pick.set(it, bestPick); changed = true; }
+        if (bestS < gS(it)) { score.set(it, bestS); build.set(it, bestB); op.set(it, bestO); mt.set(it, bestM); pick.set(it, bestPick); changed = true; }
       }
     }
-    return { build, op, score, pick };
+    return { build, op, mt, score, pick };
   }
 
   // ===== Phase 3: composition — expand a canonical pick into a sized tile tree =====

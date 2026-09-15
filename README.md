@@ -195,6 +195,11 @@ row prints a **build sheet**: one loop per hub module (shop, portals, boilers, a
 producer) listing its stops in floor order and, per flow, the rate, full or partial loads, and
 the wagon count.
 
+Composer scoring has a machine-time axis: a machine dedicated to one item per minute costs
+`composer.machineValue` copper per item (default 500; 0 disables). This is what makes the
+composer prefer two fertilized Nurseries over 36 Seed Plots when seeds are cheaper per herb
+than fertilizer, and an Enhanced Grinder over a plain one at equal copper.
+
 Templates: `single-loop` (one loop through every floor), `hub-loops` (a loop per busy module,
 per-flow fleets), `trunk-zones` (trunk + zone loops joined by Transfer Stations, `loopsPerFloor`
 and `launchesPerLoop` variants), `shuttles` (a dedicated loop per flow). Fleets:
