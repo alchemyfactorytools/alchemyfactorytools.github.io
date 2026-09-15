@@ -122,5 +122,9 @@
   "throughputModel": {
     "machineOutputRate": "outputsPerMin = (60 / (recipe.baseTime / speedMult)) * batchYield, where batchYield = recipe output count * alchemyMult (yield-multiplier machines only; Thermal Extractor x3 extra at full height). Seed Plot ignores speedMult.",
     "machinesNeeded": "targetRate / machineOutputRate, fractional machines rounded up per line segment"
+  },
+  "unlocks": {
+    "description": "Where machines unlock in 1.0 when it is not the tier research tree. The dataset only carries a tier.",
+    "Thermal Extractor": "Workbench, not research. Appears at the Workbench only AFTER the Alembic is researched at tier 7 (verified in-game 2026-09-15). Tier-7 research itself lists only Advanced Shaper, Alembic, Paradox Crucible."
   }
 }
