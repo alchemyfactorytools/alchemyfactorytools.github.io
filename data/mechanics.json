@@ -88,7 +88,8 @@
       "tier": 6,
       "role": "burns fuel to produce Steam; machines.heatCost -1 with the draw on the recipe",
       "upstreamRecipe": "Steam Boiler (High): 3000 heat/s for 2 s -> 300 Steam (6000 heat per 300 Steam, i.e. 20 heat per Steam unit at the boiler)",
-      "outputSettings": "the game offers Low/Mid/High boiler settings; only High is in DB v55"
+      "outputSettings": "the game offers Low/Mid/High boiler settings; only High is in DB v55",
+      "idleBurn": "NONE (verified in-game 2026-09-14): with the steam line full and no pads drawing, fuel consumption settles at exactly 0. Boilers burn only against demand, so extra boilers cost nothing to keep and the filled pipe network acts as a buffer."
     },
     "heatingPad": {
       "footprint": "3x3, 9 slots, isGenerator; heatSelf 0 since 1.0",
@@ -96,7 +97,7 @@
     },
     "steamPipes": "transport and store steam across floors with effectively unlimited throughput",
     "efficiencyVsDirect": "STEAM_EFFICIENCY = 0.6 in src/config.js is the pre-1.0 community measurement (597 vs 360 product from identical charcoal). Unverified on 1.0; re-measure.",
-    "modelingDecision": "Modeled in the tile composer as a central utility (config.steam: enabled, mode free|cost). Central steam sets the heating device to the Steam Heating Pad and removes the fuel production trunk from the build; \"cost\" charges the fuel value / STEAM_EFFICIENCY. Kept because steam is the long-term heating layout; the pad consumption rate above is the open number.",
+    "modelingDecision": "Modeled in the tile composer as a central utility (config.steam: enabled, mode free|cost). Central steam sets the heating device to the Steam Heating Pad and removes the fuel production trunk from the build; \"cost\" charges the fuel value / STEAM_EFFICIENCY. Kept because steam is the long-term heating layout; the pad consumption rate above is the open number. Boilers have no idle burn, so boiler count is sized to peak draw only.",
     "sources": [
       "starfi5h DB v49 (2026-07-29): \"Add Steam and Steam Boiler\"",
       "https://steamcommunity.com/app/3669570/discussions/0/798967892166053054/ (pre-1.0 efficiency test)",
