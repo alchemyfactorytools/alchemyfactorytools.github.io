@@ -126,5 +126,11 @@
   "unlocks": {
     "description": "Where machines unlock in 1.0 when it is not the tier research tree. The dataset only carries a tier.",
     "Thermal Extractor": "Workbench, not research. Appears at the Workbench only AFTER the Alembic is researched at tier 7 (verified in-game 2026-09-15). Tier-7 research itself lists only Advanced Shaper, Alembic, Paradox Crucible."
+  },
+  "thermalExtractor": {
+    "yield": "multiplier = 1 + 2 × min(height, 255) / 255 (upstream engine, Sept 2026); Alchemy skill multiplies on top",
+    "heightCalibration": "In-game 2026-09-15: 16 floors showed +186% (≈ height 237), so one floor ≈ 15 units and 17 floors ≈ the 255 cap (+200%). Build the extractor deck on floor 17 or higher.",
+    "unlock": "Workbench, after Alembic research at tier 7",
+    "pipeCap": "Pre-1.0 reports of a 6000/min per-machine pipe output cap; unverified on 1.0"
   }
 }
