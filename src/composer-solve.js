@@ -51,14 +51,21 @@ function composerSolve(targets, cfg, db) {
   // Powder for steam boilers: 9× the heat per belt slot of Coke Powder).
   const auto = canonicalCarriers(db, cfg);
   const pin = (name, ok, role) => { if (!name) return null; const it = db.items[name]; if (!it || !ok(it)) throw new Error(`carriers.${role}: "${name}" is not a usable ${role} item`); return name; };
-  const fuelItem = pin(cfg.carriers && cfg.carriers.fuel, (it) => it.heat > 0, 'fuel') || auto.fuelItem;
-  const fertItem = pin(cfg.carriers && cfg.carriers.fert, (it) => it.nutrientValue > 0 && it.maxFertility > 0, 'fert') || auto.fertItem;
+  // A belted fertilizer/fuel becomes the carrier (strongest belted one wins) unless pinned: the
+  // belt then supplies the trunk up to its rate and the build produces the rest. Without this a
+  // belted Growth Potion was ignored as fertilizer AND treated as free unlimited material.
+  const beltedNames = (cfg.belt || []).map((b) => (typeof b === 'string' ? b : b.item));
+  const beltedFert = beltedNames.filter((n) => db.items[n] && db.items[n].nutrientValue > 0 && db.items[n].maxFertility > 0).sort((a, b) => db.items[b].maxFertility - db.items[a].maxFertility)[0] || null;
+  const beltedFuel = beltedNames.filter((n) => db.items[n] && db.items[n].heat > 0).sort((a, b) => db.items[b].heat - db.items[a].heat)[0] || null;
+  const fuelItem = pin(cfg.carriers && cfg.carriers.fuel, (it) => it.heat > 0, 'fuel') || beltedFuel || auto.fuelItem;
+  const fertItem = pin(cfg.carriers && cfg.carriers.fert, (it) => it.nutrientValue > 0 && it.maxFertility > 0, 'fert') || beltedFert || auto.fertItem;
   cfg.canonical = { fuelItem, fertItem };
   // Central steam (cfg.steam.enabled) is handled inside the composer: it forces the FUEL trunk's
   // belt cap to Infinity so the fuel production trunk/furnaces/self-fuel loops collapse and heat is
   // drawn from a central steam source, WITHOUT touching the fert trunk — important because the
   // canonical fuel and fert carrier can be the same item (e.g. Panacea Potion is both).
-  const comp = makeComposer(db, cfg);
+  let comp = makeComposer(db, cfg);
+  const beltWarnings = [];
   for (const t of targets) {
     if (!Number.isFinite(comp.tileCost(t.item))) {
       return {
@@ -88,6 +95,24 @@ function composerSolve(targets, cfg, db) {
     else byItem.set(r.item, { ...r });
   }
   const merged = [...byItem.values()];
+  // Belt caps for MATERIAL belts (non-carriers): the composer models a belt item as a free leaf, so
+  // a capped belt the build over-draws is dropped and the item produced/bought instead, with a
+  // warning. Iterates until no capped belt is over-drawn.
+  for (let iter = 0; iter < 6; iter++) {
+    const capped = (cfg.belt || []).filter((b) => typeof b === 'object' && b.rate != null && b.rate !== '' && Number.isFinite(Number(b.rate)) && b.item !== fuelItem && b.item !== fertItem);
+    if (!capped.length) break;
+    const ok = targets.every((t) => Number.isFinite(comp.tileCost(t.item)));
+    if (!ok) break;
+    const probe = comp.compose(merged.map((t) => ({ item: t.item, rate: t.rate })));
+    const draw = new Map();
+    const walk = (tile) => { if (tile.source === 'belt' && tile.item) draw.set(tile.item, (draw.get(tile.item) || 0) + tile.ratePerMin); for (const c of tile.inputs || []) walk(c); };
+    for (const root of (probe.trees ? probe.trees.map((t) => t.tree) : [probe.tree])) if (root) walk(root);
+    const over = capped.filter((b) => (draw.get(b.item) || 0) > Number(b.rate) * (1 + 1e-6));
+    if (!over.length) break;
+    for (const b of over) beltWarnings.push(`main belt ${b.item}: the build draws ${Math.round(draw.get(b.item))}/min but the belt supplies ${b.rate}/min — planned as produced/bought instead`);
+    cfg.belt = (cfg.belt || []).filter((b) => !over.some((o) => o.item === (typeof b === 'string' ? b : b.item)));
+    comp = makeComposer(db, cfg);
+  }
 
   const composed = comp.compose(merged.map((t) => ({ item: t.item, rate: t.rate })));
   const graph = composeGraph(composed, db, cfg);
@@ -103,7 +128,7 @@ function composerSolve(targets, cfg, db) {
     cgRounds: 0,                                    // not an LP — no column-generation rounds
     graph,
     explainText: composerExplain(composed, fuelItem, fertItem),
-    warnings: graph.summary.warnings || [],         // belt rate-cap shortfalls (fuel/fert/coins)
+    warnings: [...(graph.summary.warnings || []), ...beltWarnings], // belt rate-cap shortfalls (fuel/fert/coins/material)
   };
 }
 

@@ -80,6 +80,11 @@ function makeComposer(db, cfg) {
     if (cfg.canonical.fertItem) utilityCarriers.add(cfg.canonical.fertItem);
   }
   const beltItems = new Set([...beltRate.keys()].filter((n) => !utilityCarriers.has(n)));
+  // Belt COINS are money, not free material: a Silver Coin on the belt is worth its face value
+  // wherever it is consumed (Kiln Copper Ingot, Paradox Crucible, cauldrons), exactly as the LP
+  // prices belt coins. Other belt items stay free supply. Without this a belted coin made every
+  // coin-eating route cost 0 (Diamonds "for free" through a Paradox Crucible at 768 silver/min).
+  const beltOp = (item) => (db.items[item] && db.items[item].category === 'Currency' ? (db.items[item].sellPrice || 0) : 0);
   // Belt rate cap for a carrier: Infinity if belted with no rate, the rate if belted-with-rate, or 0
   // if not belted at all (→ the whole trunk is produced). null rate ⇒ unlimited belt.
   const beltCapFor = (item) => (beltRate.has(item) ? (beltRate.get(item) == null ? Infinity : beltRate.get(item)) : 0);
@@ -320,7 +325,7 @@ function makeComposer(db, cfg) {
 
     // seed leaves: belt arrivals (free material), buyables, minted currency
     for (const it of items) {
-      if (beltItems.has(it)) { build.set(it, 0); op.set(it, 0); mt.set(it, 0); score.set(it, 0); pick.set(it, { source: 'belt' }); continue; }
+      if (beltItems.has(it)) { const bo = beltOp(it); build.set(it, 0); op.set(it, bo); mt.set(it, 0); score.set(it, opW * bo); pick.set(it, { source: 'belt' }); continue; }
       const lf = leaf(it);
       if (lf) { build.set(it, lf.build); op.set(it, lf.op); mt.set(it, 0); score.set(it, lf.build + opW * lf.op); pick.set(it, { source: lf.source }); }
     }
@@ -537,6 +542,7 @@ function makeComposer(db, cfg) {
       let copperPerMin = 0, coinItem = null;
       if (pick.source === 'buy') copperPerMin = (it.buyPrice || 0) * rate;
       else if (pick.source === 'mint') { copperPerMin = (it.sellPrice || 0) * rate; coinItem = COINS.has(item) ? item : null; }
+      else if (pick.source === 'belt' && COINS.has(item)) { copperPerMin = (it.sellPrice || 0) * rate; coinItem = item; } // belt coins are spent money
       if (copperPerMin > 0) {
         acc.copperPerMin += copperPerMin;
         if (coinItem) acc.mintedCoins[coinItem] = (acc.mintedCoins[coinItem] || 0) + rate; // coins/min minted → belt money line
@@ -872,7 +878,7 @@ function makeComposer(db, cfg) {
     // opCost expose the two axes separately (opCost is copper per unit of output → ×rate = per-min).
     tileCost: (item) => { if (beltItems.has(item)) return 0; const s = solve(); return s.score.has(item) ? s.score.get(item) : Infinity; },
     buildCost: (item) => { if (beltItems.has(item)) return 0; const s = solve(); return s.build.has(item) ? s.build.get(item) : Infinity; },
-    opCost: (item) => { if (beltItems.has(item)) return 0; const s = solve(); return s.op.has(item) ? s.op.get(item) : Infinity; },
+    opCost: (item) => { if (beltItems.has(item)) return beltOp(item); const s = solve(); return s.op.has(item) ? s.op.get(item) : Infinity; },
     canonicalPick: (item) => {
       if (beltItems.has(item)) return { source: 'belt' };
       return solve().pick.get(item) || null;

@@ -358,3 +358,28 @@ test('multi-target: the fuel carrier as one of several targets folds into the sh
   // own self-heat), so it exceeds Glass-alone fuel + 60 — not two separate Coke lines.
   assert.ok(both.fuel.prodRate >= glass.totals.fuelPerMin + 60 - 1e-6, 'one trunk covers heat + net carrier output');
 });
+
+// ---- belt supply semantics (found via the tier-8 Diamond link) ----
+const { solveComposerBody } = require('../src/composer-solve');
+const t8 = (belt) => ({ solver: 'composer', maxTier: 8, cauldron: { enabled: true, inputPool: 'easy' }, composer: { priority: 'balanced' }, steam: { enabled: true, mode: 'free' }, belt, skills: { factory: 6, logistics: 6, fuel: 2, fertilizer: 8 } });
+const solveD = (belt) => solveComposerBody({ item: 'Diamond', rate: 1, rateMode: 'rate', targets: [{ item: 'Diamond', rate: 1, rateMode: 'rate' }], config: t8(belt) }, db);
+
+test('belt coins are money: a belted Silver Coin costs face value, so coin-eating routes are not free', () => {
+  const comp = composer({ maxTier: 8, belt: [{ item: 'Silver Coin', rate: 150 }] });
+  assert.equal(comp.opCost('Silver Coin'), 1000);
+  const out = solveD([{ item: 'Silver Coin', rate: 150 }]);
+  assert.equal(out.status, 'Optimal');
+  assert.ok(out.graph.summary.operatingCopperPerMin > 50000, `Diamonds are not free (${out.graph.summary.operatingCopperPerMin})`);
+  assert.ok(out.graph.summary.machineTotals.Refiner >= 6 && out.graph.summary.machineTotals['Stone Crusher'] >= 1, 'Quartz ladder chosen');
+});
+
+test('a belted fertilizer becomes the fert carrier, and a capped material belt the build over-draws is dropped with a warning', () => {
+  const out = solveD([{ item: 'Silver Coin', rate: 150 }, { item: 'Growth Potion', rate: 20 }]);
+  assert.match(out.explainText, /fert carrier Growth Potion/);
+  const tot = Object.values(out.graph.summary.machineTotals).reduce((a, b) => a + b, 0);
+  assert.ok(tot <= 16, `Quartz ladder, not a free herb loop (${tot} machines)`);
+  // a 1/min Sand belt cannot feed a Glass line: it is dropped and reported
+  const glass = solveComposerBody({ item: 'Glass', rate: 20, rateMode: 'rate', targets: [{ item: 'Glass', rate: 20, rateMode: 'rate' }], config: t8([{ item: 'Sand', rate: 1 }]) }, db);
+  assert.ok(glass.warnings.some((w) => /main belt Sand/.test(w)), JSON.stringify(glass.warnings));
+  assert.ok(!glass.graph.nodes.some((n) => n.kind === 'belt' && n.item === 'Sand'), 'no Sand belt node once dropped');
+});
