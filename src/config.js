@@ -26,6 +26,9 @@ const DEFAULT_CONFIG = {
     // exclude triples whose winning margin is below this (0 = keep everything,
     // including exact ties — the game resolves them deterministically by item id)
     minMargin: 0,
+    // Advanced Cauldron (tier 8, two inputs): same item → next target up, different items →
+    // nearest target below the higher input at |cA − cB|. Used whenever the tier allows.
+    advanced: true,
   },
 
   // Byproduct handling. A recipe's "primary" output is the one matching its id

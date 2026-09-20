@@ -10,10 +10,14 @@ const { productionRecipes } = require('./recipes');
 // build costs AND to value belt supply (what it'd cost you to obtain the item).
 function makeItemCopperFloor(db) {
   const cost = new Map();
-  for (const [name, item] of Object.entries(db.items)) cost.set(name, item.buyPrice ?? Infinity);
+  // Coins are seeded at face value (their sellPrice): the Bank Portal mint row has no inputs and
+  // would otherwise make every coin, and everything built from coins (Silver Ingot → Advanced
+  // Cauldron), cost 0.
+  for (const [name, item] of Object.entries(db.items)) cost.set(name, item.buyPrice ?? (item.category === 'Currency' ? item.sellPrice : undefined) ?? Infinity);
   for (let iter = 0; iter < 200; iter++) {
     let changed = false;
     for (const r of productionRecipes(db)) {
+      if (r.machine === 'Bank Portal') continue;
       let c = 0;
       let ok = true;
       for (const [inp, q] of Object.entries(r.inputs)) {

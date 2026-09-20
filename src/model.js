@@ -73,7 +73,7 @@ class Model {
     // makes those farm routes pay for the sprawl they create, so bought-raw refine chains win
     // for materials while the cauldron stays available where it's genuinely needed (fert).
     this.farmWeight = processTable.config.farmWeight != null ? processTable.config.farmWeight : 0;
-    this.farmMachines = new Set(['Nursery', 'Cauldron']);
+    this.farmMachines = new Set(['Nursery', 'Cauldron', 'Advanced Cauldron']);
     this._itemFloor = null;
     this.buildCopper = {};
     if (this.capitalWeight > 0) {

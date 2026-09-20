@@ -244,6 +244,12 @@ the most track.
 
 Key mechanics for the optimizer (full detail in `data/mechanics.json`):
 
+- **Advanced Cauldron** (tier 8, two inputs; `cauldron.advanced`, on by default): same item → the
+  next cauldron target above its cost (Gentian×2 → Malachite, Silver Ingot×2 → Obsidian, World Tree
+  Core×2 → Sapphire); different items → nearest target below the higher input at |cA − cB| (World
+  Tree Core + Flax → Ruby). All 9,591 pairs are explicit LP columns and composer candidates under
+  the same pool, tier, and forbid rules as the triples. Rule from the upstream calculator's July
+  2026 fix, confirmed by player examples.
 - **Cauldron** (deterministic post-patch): `T = (c1+c2+c3) × ratio` where ratio = 0.5 (3 identical)
   / 0.65 (2 identical) / 1.0 (all different); output = item minimizing `|T − cauldronTarget| ×
   cauldronMulti`, ties to lower item id. Time/heat interpolate piecewise-linearly on the output's

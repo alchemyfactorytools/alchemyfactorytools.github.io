@@ -15,7 +15,7 @@
 
 'use strict';
 
-const { cauldronEligibility } = require('./cauldron');
+const { cauldronEligibility, advancedCauldronEligibility } = require('./cauldron');
 const { skillParams, seedPlotsAllowed } = require('./config');
 const { tiers } = require('./tiers');
 const { productionRecipes } = require('./recipes');
@@ -494,6 +494,43 @@ function buildProcessTable(db, cfg) {
     throw new Error('cauldron.forceFor set but cauldron.enabled is false');
   }
 
+  // --- Advanced Cauldron pairs: explicit columns (9.6k max, no column generation needed) ---
+  // Same rules as the triples (pool, tier locks, forbidFor, self-consuming, minMargin); the
+  // machine is tier 8 so it is locked out below that. kind 'cauldron' keeps explain/graph
+  // badges; machine 'Advanced Cauldron' gives it its own capacity row and capital.
+  let advancedCount = 0;
+  if (cfg.cauldron.enabled && cfg.cauldron.advanced !== false && !machineLocked('Advanced Cauldron')) {
+    const adv = advancedCauldronEligibility(db, cfg, { locked });
+    const { inputs, targets, pairA, pairB, outIdx, margin, flags, mode } = adv.compiled;
+    for (let p = 0; p < adv.compiled.count; p++) {
+      if (!adv.mask[p]) continue;
+      const out = targets[outIdx[p]];
+      const consumes = {};
+      let chainInputs = 0;
+      for (const idx of [pairA[p], pairB[p]]) {
+        const nm = inputs[idx].name;
+        consumes[nm] = (consumes[nm] ?? 0) + 1;
+        if (items[nm] && items[nm].cauldronTarget != null) chainInputs++;
+      }
+      if (forceCauldron.has(out.name)) { /* forced items may still come from either pot */ }
+      processes.push({
+        id: `advcauldron:${p}`, kind: 'cauldron', machine: 'Advanced Cauldron', pairIndex: p,
+        timeSec: out.time, chainInputs,
+        consumes, produces: { [out.name]: 1 },
+        heat: -out.heat, nutrient: 0,
+        copperCost: 0, copperRevenue: 0,
+        primary: out.name,
+        flags: {
+          advanced: true, pairMode: mode[p] ? 'same' : 'diff',
+          fragileMargin: margin[p] < 1 ? margin[p] : undefined,
+          exactTie: !!(flags[p] & 1) || undefined,
+          selfConsuming: !!(flags[p] & 2) || undefined,
+        },
+      });
+      advancedCount++;
+    }
+  }
+
   // forceFor sanity: the item must actually be cauldron-producible
   if (cauldron) {
     for (const name of forceCauldron) {
@@ -503,7 +540,7 @@ function buildProcessTable(db, cfg) {
     }
   }
 
-  return { processes, cauldron, params, warnings, config: cfg, virtualItems: [...virtualItems] };
+  return { processes, cauldron, advancedCount, params, warnings, config: cfg, virtualItems: [...virtualItems] };
 }
 
 module.exports = { buildProcessTable, primaryOutput, netSameItems, machineHeatPerRun, speedMultFor, SPEED_EXEMPT_MACHINES };

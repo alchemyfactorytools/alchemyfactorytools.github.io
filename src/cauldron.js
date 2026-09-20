@@ -233,11 +233,8 @@ function compileCauldron(db) {
 //   locked(name) → true if the item is above the active tier (caller supplies the rule).
 //   buildOutputIndex → also return `byOutput`: Map<targetName, tripleIdx[]> over eligible
 //     triples (the LP doesn't need it — it materializes columns lazily — so it's opt-in).
-function cauldronEligibility(db, cfg, { locked, compiled, buildOutputIndex = false } = {}) {
-  const c = compiled || compileCauldron(db);
-  const { inputs, targets, count, triA, triB, triC, outIdx, margin, flags } = c;
-
-  // input-pool allow mask
+// Input-pool allow mask over a compiled input list (shared by both cauldron kinds).
+function poolMask(db, cfg, inputs) {
   const poolAllowed = new Uint8Array(inputs.length).fill(1);
   const pool = cfg.cauldron.inputPool;
   // "growable" = an item you produce in a Nursery (the 9 Herbs: Flax, Sage,
@@ -275,7 +272,13 @@ function cauldronEligibility(db, cfg, { locked, compiled, buildOutputIndex = fal
   } else if (pool !== 'unrestricted') {
     throw new Error(`unknown cauldron input pool: ${JSON.stringify(pool)}`);
   }
+  return poolAllowed;
+}
 
+function cauldronEligibility(db, cfg, { locked, compiled, buildOutputIndex = false } = {}) {
+  const c = compiled || compileCauldron(db);
+  const { inputs, targets, count, triA, triB, triC, outIdx, margin, flags } = c;
+  const poolAllowed = poolMask(db, cfg, inputs);
   const isLocked = locked || (() => false);
   const forbidCauldron = new Set(cfg.cauldron.forbidFor);
   const outputForbidden = targets.map((t) => forbidCauldron.has(t.name));
@@ -298,6 +301,97 @@ function cauldronEligibility(db, cfg, { locked, compiled, buildOutputIndex = fal
       if (!arr) byOutput.set(nm, (arr = []));
       arr.push(t);
     }
+  }
+  return { compiled: c, poolAllowed, mask, eligibleCount, byOutput };
+}
+
+// ---------------------------------------------------------------------------------
+// Advanced Cauldron (tier 8): TWO inputs. Rule from the upstream calculator's July 2026 fix
+// (raw/starfi5h/js/alchemy_cauldron.js resolveCauldronOutput2), confirmed by player reports:
+//   same item  → the lowest target STRICTLY ABOVE cost(item), never the item itself; if none,
+//                the highest target ("one rung up the ladder": Gentian×2 → Malachite).
+//   different  → T = |cA − cB|; nearest target BELOW the higher item's cost, never the higher
+//                item; if none, the lowest target (World Tree Core + Flax → Ruby).
+// Ties in the different-item case go to the lower item id (ASSUMED; upstream iterates its
+// target list and keeps the first). Time/heat: the output target's interpolation, as for triples.
+function resolvePairIdx(i, j, inputs, targets, targetScaled) {
+  const ci = inputs[i].costScaled, cj = inputs[j].costScaled;
+  if (i === j) {
+    let best = null;
+    for (let k = 0; k < targets.length; k++) { // targets sorted ascending
+      if (targetScaled[k] > ci && targets[k].name !== inputs[i].name) { best = k; break; }
+    }
+    if (best === null) best = targets.length - 1;
+    const next = targets.findIndex((t, k) => k > best && targetScaled[k] > targetScaled[best]);
+    return { out: best, T: ci, margin: next >= 0 ? scaledToNumber(targetScaled[next] - targetScaled[best]) : Infinity, tie: false, mode: 'same' };
+  }
+  const hiIdx = ci > cj ? i : j; // equal costs: upstream picks nB (j)
+  const hiCost = ci > cj ? ci : cj;
+  const T = ci > cj ? ci - cj : cj - ci;
+  let best = null, bestD = null, second = null, tie = false;
+  for (let k = 0; k < targets.length; k++) {
+    if (!(targetScaled[k] < hiCost) || targets[k].name === inputs[hiIdx].name) continue;
+    const d = T > targetScaled[k] ? T - targetScaled[k] : targetScaled[k] - T;
+    if (best === null || d < bestD) { second = bestD; best = k; bestD = d; tie = false; }
+    else if (d === bestD) { if (targets[k].id < targets[best].id) best = k; tie = true; second = d; }
+    else if (second === null || d < second) second = d;
+  }
+  if (best === null) return { out: 0, T, margin: Infinity, tie: false, mode: 'diff' };
+  return { out: best, T, margin: second === null ? Infinity : scaledToNumber(second - bestD), tie, mode: 'diff' };
+}
+const scaledToNumber = (v) => Number(v) / Number(SCALE);
+
+function compileAdvancedCauldron(db) {
+  const inputs = eligibleInputs(db);
+  const targets = outputTargets(db);
+  const targetScaled = targets.map((t) => t.targetScaled20 / 20n);
+  const n = inputs.length;
+  const count = (n * (n + 1)) / 2;
+  const pairA = new Uint16Array(count), pairB = new Uint16Array(count), outIdx = new Uint16Array(count);
+  const margin = new Float64Array(count), flags = new Uint8Array(count), mode = new Uint8Array(count); // mode 1 = same-item
+  const names = inputs.map((it) => it.name);
+  let w = 0;
+  for (let i = 0; i < n; i++) for (let j = i; j < n; j++) {
+    const r = resolvePairIdx(i, j, inputs, targets, targetScaled);
+    pairA[w] = i; pairB[w] = j; outIdx[w] = r.out; margin[w] = r.margin; mode[w] = i === j ? 1 : 0;
+    let f = 0; if (r.tie) f |= 1; if (targets[r.out].name === names[i] || targets[r.out].name === names[j]) f |= 2; flags[w] = f;
+    w++;
+  }
+  return { inputs, inputIndex: new Map(inputs.map((it, i) => [it.name, i])), targets, targetIndex: new Map(targets.map((t, i) => [t.name, i])), targetScaled, count, pairA, pairB, outIdx, margin, flags, mode };
+}
+
+// Resolve one pair of item names. Exposed for tests/CLI.
+function resolvePair(db, names, compiled2) {
+  const c = compiled2 || compileAdvancedCauldron(db);
+  const idx = names.map((nm) => { const i = c.inputIndex.get(nm); if (i === undefined) throw new Error(`"${nm}" is not a cauldron-eligible input`); return i; });
+  const [a, b] = idx[0] <= idx[1] ? idx : [idx[1], idx[0]];
+  const r = resolvePairIdx(a, b, c.inputs, c.targets, c.targetScaled);
+  const out = c.targets[r.out];
+  return { inputs: names, mode: r.mode, T: scaledToNumber(r.T), output: out.name, margin: r.margin, exactTie: r.tie, time: out.time, heat: out.heat };
+}
+
+// Eligibility mask over pairs, same rules as the triples (pool, tier locks, forbidFor,
+// self-consuming, minMargin). Returns { compiled, mask, eligibleCount, byOutput? }.
+function advancedCauldronEligibility(db, cfg, { locked, compiled, buildOutputIndex = false } = {}) {
+  const c = compiled || compileAdvancedCauldron(db);
+  const { inputs, targets, count, pairA, pairB, outIdx, margin, flags } = c;
+  const poolAllowed = poolMask(db, cfg, inputs);
+  const isLocked = locked || (() => false);
+  const forbid = new Set(cfg.cauldron.forbidFor);
+  const outputForbidden = targets.map((t) => forbid.has(t.name));
+  const inputLocked = inputs.map((it) => isLocked(it.name));
+  const outputLocked = targets.map((t) => isLocked(t.name));
+  const mask = new Uint8Array(count);
+  const byOutput = buildOutputIndex ? new Map() : null;
+  let eligibleCount = 0;
+  for (let p = 0; p < count; p++) {
+    if (!poolAllowed[pairA[p]] || !poolAllowed[pairB[p]]) continue;
+    if (inputLocked[pairA[p]] || inputLocked[pairB[p]] || outputLocked[outIdx[p]]) continue;
+    if (outputForbidden[outIdx[p]]) continue;
+    if (!cfg.cauldron.allowSelfConsuming && (flags[p] & 2)) continue;
+    if (cfg.cauldron.minMargin > 0 && margin[p] < cfg.cauldron.minMargin) continue;
+    mask[p] = 1; eligibleCount++;
+    if (byOutput) { const nm = targets[outIdx[p]].name; let arr = byOutput.get(nm); if (!arr) byOutput.set(nm, (arr = [])); arr.push(p); }
   }
   return { compiled: c, poolAllowed, mask, eligibleCount, byOutput };
 }
@@ -335,4 +429,4 @@ function validateCuratedRows(db, compiled) {
   return results;
 }
 
-module.exports = { compileCauldron, cauldronEligibility, resolveTriple, cauldronStats, validateCuratedRows, toScaled, scaled20ToNumber };
+module.exports = { compileCauldron, cauldronEligibility, resolveTriple, cauldronStats, validateCuratedRows, toScaled, scaled20ToNumber, compileAdvancedCauldron, advancedCauldronEligibility, resolvePair };

@@ -11,7 +11,7 @@
 
 const { tiers } = require('./tiers');
 const { makeItemCopperFloor } = require('./cost-floor');
-const { cauldronEligibility } = require('./cauldron');
+const { cauldronEligibility, advancedCauldronEligibility } = require('./cauldron');
 const { skillParams, STEAM_EFFICIENCY, seedPlotsAllowed } = require('./config');
 const { machineHeatPerRun, speedMultFor } = require('./normalize');
 const { heatingDevice, isHeated } = require('./heating');
@@ -114,8 +114,15 @@ function makeComposer(db, cfg) {
 
   // recipes producing each item (tier-gated), with their primary/co outputs
   const producersOf = new Map();
+  // Curated cauldron rows follow the LP's quarantine policy: excluded while the formula is active
+  // ('auto'), and the Ruby row always (it contradicts the formula). Without this the composer
+  // "found" Ruby from Diamond + Gold Dust + Resonant Catalyst even under a pool that forbids them.
+  const curatedMode = (cfg.quarantine && cfg.quarantine.curatedCauldronRows) ?? 'auto';
+  const formulaActive = !!(cfg.cauldron && cfg.cauldron.enabled);
+  const curatedAllowed = (r) => r.id !== 'Ruby' && (curatedMode === 'auto' ? !formulaActive : curatedMode === true);
   for (const [id, r] of Object.entries(productionRecipes(db))) {
     if (r.machine === 'Seed Plot' && !seedPlotsAllowed(db, cfg)) continue; // manual replant/harvest: auto below Nursery tier, else opt-in
+    if ((r.machine === 'Cauldron' || r.machine === 'Advanced Cauldron') && !curatedAllowed(r)) continue;
     if (!tierOk(r.id != null ? (db.items[r.id] ? r.id : id) : id)) { /* gate by outputs below */ }
     const { inputs, outputs, recirc } = netRecipe(r);
     // skip currency mints (Bank Portal: copper → coin, zero inputs) — currency is valued at its
@@ -143,11 +150,14 @@ function makeComposer(db, cfg) {
   // up to 3 distinct inputs (WIDTH_W), plus Σ tileCost(inputs). "Input generation complexity"
   // therefore falls straight out of the existing recursion — no separate ranking pass.
   const cauldronOn = !!(cfg.cauldron && cfg.cauldron.enabled) && (maxTier == null || T.cauldronTier <= maxTier);
-  let cauldron = null; // { compiled, byOutput } — built lazily on first cauldron-target lookup
+  // Advanced Cauldron (two inputs, tier 8) rides the same switch and pool, gated on its own tier.
+  const advancedOn = !!(cfg.cauldron && cfg.cauldron.enabled && cfg.cauldron.advanced !== false) && (maxTier == null || T.machineTier('Advanced Cauldron') <= maxTier);
+  let cauldron = null; // { compiled, byOutput, adv? } — built lazily on first cauldron-target lookup
   function ensureCauldron() {
-    if (cauldron || !cauldronOn) return cauldron;
-    const elig = cauldronEligibility(db, cfg, { locked: (n) => !tierOk(n), buildOutputIndex: true });
-    cauldron = { compiled: elig.compiled, byOutput: elig.byOutput };
+    if (cauldron || (!cauldronOn && !advancedOn)) return cauldron;
+    cauldron = {};
+    if (cauldronOn) { const elig = cauldronEligibility(db, cfg, { locked: (n) => !tierOk(n), buildOutputIndex: true }); cauldron.compiled = elig.compiled; cauldron.byOutput = elig.byOutput; }
+    if (advancedOn) { const e2 = advancedCauldronEligibility(db, cfg, { locked: (n) => !tierOk(n), buildOutputIndex: true }); cauldron.adv = { compiled: e2.compiled, byOutput: e2.byOutput }; }
     return cauldron;
   }
 
@@ -317,7 +327,8 @@ function makeComposer(db, cfg) {
 
     // cauldron input scratch (refreshed each pass): flat build/op arrays so the hot triple loop
     // avoids re-hashing input names — keeps the ~eligibleCount·passes scan cheap.
-    const cIn = cauldron ? cauldron.compiled.inputs : null;
+    // both pots share the same eligible-input list (eligibleInputs, sorted by id)
+    const cIn = cauldron ? (cauldron.compiled ? cauldron.compiled.inputs : cauldron.adv.compiled.inputs) : null;
     const inB = cIn ? new Float64Array(cIn.length) : null;
     const inO = cIn ? new Float64Array(cIn.length) : null;
     const inM = cIn ? new Float64Array(cIn.length) : null;
@@ -372,7 +383,7 @@ function makeComposer(db, cfg) {
         // i≤j≤k sorted, so equal indices are adjacent. build sums DISTINCT inputs (fan-out free);
         // op sums by multiplicity (qty-scaled, prim=1). Equal-score ties break by the static key
         // (fewer distinct inputs, then cheaper raw cauldronCost, then lower index) for stability.
-        if (cauldronOn && cauldron) {
+        if (cauldronOn && cauldron && cauldron.byOutput) {
           const tris = cauldron.byOutput.get(it);
           if (tris) {
             const { triA, triB, triC } = cauldron.compiled;
@@ -415,6 +426,41 @@ function makeComposer(db, cfg) {
                     baseHeat: cauldron.compiled.targets[cauldron.compiled.outIdx[t]].heat, // per-craft heat draw (Phase 3 sizing)
                   },
                 };
+              }
+            }
+          }
+        }
+
+        // Advanced Cauldron pairs producing `it` (2 inputs → 1 output). Scored like a 1- or
+        // 2-input recipe stage; ties prefer fewer distinct inputs, then cheaper raw cost.
+        if (advancedOn && cauldron && cauldron.adv) {
+          const prs = cauldron.adv.byOutput.get(it);
+          if (prs) {
+            const { pairA, pairB, outIdx, targets } = cauldron.adv.compiled;
+            let bestKey = null;
+            for (let n = 0; n < prs.length; n++) {
+              const p = prs[n];
+              const a = pairA[p], b2 = pairB[p];
+              const ba = inB[a], bb = inB[b2], oa = inO[a], ob = inO[b2];
+              if (!isFinite(ba) || !isFinite(bb)) continue;
+              const same = a === b2;
+              const distinct = same ? 1 : 2;
+              const bSum = same ? ba : ba + bb;
+              let oSum = same ? 2 * oa : oa + ob;
+              const tgt = targets[outIdx[p]];
+              if (fuelOpPerHeat) oSum += tgt.heat * fuelOpPerHeat;
+              const mSum = inM[a] + inM[b2] + tgt.time / 60 / cParams.speedMult;
+              const b = depthW + widthW * (distinct - 1) + bSum;
+              const s = b + opW * (oSum + machineValue * mSum);
+              const costSum = cIn[a].cost + cIn[b2].cost;
+              const isBest = s < bestS
+                || (s === bestS && bestPick && bestPick.source === 'cauldron' && bestPick.pairIndex != null
+                  && (distinct < bestKey[0] || (distinct === bestKey[0] && costSum < bestKey[1]) || (distinct === bestKey[0] && costSum === bestKey[1] && p < bestKey[2])));
+              if (isBest) {
+                bestS = s; bestB = b; bestO = oSum; bestM = mSum; bestKey = [distinct, costSum, p];
+                const consumes = {};
+                for (const idx of [a, b2]) consumes[cIn[idx].name] = (consumes[cIn[idx].name] || 0) + 1;
+                bestPick = { source: 'cauldron', pairIndex: p, recipe: { machine: 'Advanced Cauldron', inputs: consumes, outputs: { [it]: 1 }, baseTime: tgt.time, baseHeat: tgt.heat } };
               }
             }
           }
