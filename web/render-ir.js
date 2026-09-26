@@ -189,14 +189,23 @@
       if (beltBox) beltBox.w = Math.max(beltBox.w, minX);
     }
 
-    // demand sinks under their line
+    // demand sinks under their line. A sink whose target has no line of its own (served entirely by
+    // another line's co-product) is placed after the line-anchored sinks, never on top of one.
     const demandY = lineBottom + GAP;
-    demand.forEach((id, i) => {
+    const placed = [];
+    const anchored = demand.filter((id) => lineCenterX.has(nodeById.get(id).line));
+    const floating = demand.filter((id) => !lineCenterX.has(nodeById.get(id).line));
+    for (const id of anchored) {
       const s = sizeFn(id);
-      const ln = nodeById.get(id).line;
-      const cx = lineCenterX.has(ln) ? lineCenterX.get(ln) : i * (s.w + U) + s.w / 2;
-      pos.set(id, { x: Math.max(0, Math.round(cx - s.w / 2)), y: demandY, w: s.w, h: s.h });
-    });
+      let x = Math.max(0, Math.round(lineCenterX.get(nodeById.get(id).line) - s.w / 2));
+      for (const p of placed) if (x < p.x + p.w + U && x + s.w + U > p.x) x = p.x + p.w + U; // nudge right off any overlap
+      const box = { x, y: demandY, w: s.w, h: s.h }; pos.set(id, box); placed.push(box);
+    }
+    for (const id of floating) {
+      const s = sizeFn(id);
+      const x = placed.length ? Math.max(...placed.map((p) => p.x + p.w)) + U : 0;
+      const box = { x, y: demandY, w: s.w, h: s.h }; pos.set(id, box); placed.push(box);
+    }
 
     let mx = 0;
     for (const id of ids) if (!pos.has(id)) { const s = sizeFn(id); pos.set(id, { x: mx, y: demandY + 4 * U, w: s.w, h: s.h }); mx += s.w + U; }
