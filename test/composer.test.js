@@ -383,3 +383,17 @@ test('a belted fertilizer becomes the fert carrier, and a capped material belt t
   assert.ok(glass.warnings.some((w) => /main belt Sand/.test(w)), JSON.stringify(glass.warnings));
   assert.ok(!glass.graph.nodes.some((n) => n.kind === 'belt' && n.item === 'Sand'), 'no Sand belt node once dropped');
 });
+
+test('multi-target: a target that is another target\'s co-product is served from it, not built twice', () => {
+  const targets = [{ item: 'Marble', rate: 1, rateMode: 'machines' }, { item: 'Obsidian', rate: 1, rateMode: 'machines' }];
+  const out = solveComposerBody({ item: 'Marble', rate: 1, rateMode: 'machines', targets, config: t8([{ item: 'Silver Coin', rate: 750 }, { item: 'Growth Potion', rate: 20 }]) }, db);
+  assert.equal(out.status, 'Optimal');
+  // one Advanced Athanor makes Obsidian + Marble; no Obsidian cauldron or World Tree line appears
+  assert.equal(out.graph.summary.machineTotals['Advanced Athanor'], 1);
+  assert.equal(out.graph.summary.machineTotals.Cauldron, undefined);
+  assert.equal(out.graph.summary.machineTotals['Miniature World Tree'], undefined);
+  assert.ok(out.graph.summary.coproductFeeds.some((f) => f.item === 'Obsidian' && f.rate > 7), JSON.stringify(out.graph.summary.coproductFeeds));
+  // the Obsidian demand is fed by the Marble line's co-product edge
+  assert.ok(out.graph.edges.some((e) => e.to === 'demand:Obsidian' && e.coproduct), 'co-product edge into the Obsidian demand');
+  assert.deepEqual(out.graph.summary.validation, []);
+});

@@ -135,10 +135,11 @@ function composeGraph(composed, db, cfg) {
   // instead of re-walking — which would duplicate every node/edge.
   const treeRoot = new Map();
   for (const t of composed.trees) {
+    addNode({ id: `demand:${t.item}`, type: 'demand', label: `${t.item} (target)`, ratePerMin: t.rate, badges: [] });
+    if (!t.tree) continue; // fully served by another line's co-product; wired by the Phase 7 feeds below
     const rootId = walk(t.tree);
     treeRoot.set(t.tree, rootId);
-    addNode({ id: `demand:${t.item}`, type: 'demand', label: `${t.item} (target)`, ratePerMin: t.rate, badges: [] });
-    edges.push({ from: rootId, to: `demand:${t.item}`, item: t.item, ratePerMin: t.rate });
+    edges.push({ from: rootId, to: `demand:${t.item}`, item: t.item, ratePerMin: t.rate - (t.claimed || 0) });
   }
 
   // Each carrier trunk is now { item, rate, beltRate, prodRate, prodTile }: belt supplies up to its

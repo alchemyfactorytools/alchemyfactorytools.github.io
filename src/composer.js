@@ -759,7 +759,20 @@ function makeComposer(db, cfg) {
       // carrier-material draws sum across the whole build) and ONE drained coBudget / coFeeds pool — so a
       // co-product thrown off by ANY line (a target tree, or via coSupply a fuel/fert trunk) offsets any
       // other line's demand. The shared fuel/fert/money trunks below are sized from the combined acc.
-      trees = buildTargets.map((t) => ({ item: t.item, rate: t.rate, tree: buildTree(t.item, rateOf(t), t.item, new Set(), acc, coBudget, coFeeds) }));
+      // A TARGET can be served by another line's co-product too (Marble's Advanced Athanor run also
+      // makes Obsidian): claim from the shared pool first, build a dedicated tree only for the rest.
+      // A fully co-served target has tree = null; the graph wires its demand from the producers.
+      trees = buildTargets.map((t) => {
+        const want = rateOf(t);
+        let claimed = 0;
+        if (!beltItems.has(t.item)) {
+          const avail = coBudget.get(t.item) || 0;
+          claimed = Math.min(avail, want);
+          if (claimed > 1e-9) { coBudget.set(t.item, avail - claimed); coFeeds.push({ item: t.item, rate: claimed, consumerId: `demand:${t.item}` }); } else claimed = 0;
+        }
+        const need = want - claimed;
+        return { item: t.item, rate: want, claimed, tree: need > 1e-9 ? buildTree(t.item, need, t.item, new Set(), acc, coBudget, coFeeds) : null };
+      });
       tree = trees.length ? trees[0].tree : null; // back-compat alias (single-target == the one root)
       heatMain = acc.heatPerMin; nutrientMain = acc.nutrientPerMin;
       // Carrier-as-material demand merged out of the inline tree (Mf/Mg). It's PRODUCED (the merge only
@@ -821,18 +834,18 @@ function makeComposer(db, cfg) {
       // Re-measure the gross co-supply built this round (forest trees + the non-self trunk prodTiles)
       // and feed it back. A trunk prodTile that IS a target root (self-fuel/fert line) is already
       // counted in the forest walk, so skip it. Converged once the supply map stops changing.
-      const builtRoots = new Set(trees.map((t) => t.tree));
+      const builtRoots = new Set(trees.map((t) => t.tree).filter(Boolean));
       const measured = new Map();
-      for (const t of trees) measureCoSupply(t.tree, measured);
+      for (const t of trees) if (t.tree) measureCoSupply(t.tree, measured);
       if (fuel && fuel.prodTile && !builtRoots.has(fuel.prodTile)) measureCoSupply(fuel.prodTile, measured);
       if (fert && fert.prodTile && !builtRoots.has(fert.prodTile)) measureCoSupply(fert.prodTile, measured);
       if (prevSupply && mapsClose(measured, prevSupply)) break;
       prevSupply = measured; coSupply = measured;
     }
 
-    const treeSet = new Set(trees.map((t) => t.tree)); // roots already tallied (a self-fuel trunk reuses one)
+    const treeSet = new Set(trees.map((t) => t.tree).filter(Boolean)); // roots already tallied (a self-fuel trunk reuses one)
     const machineTotals = {};
-    for (const t of trees) tallyMachines(t.tree, machineTotals);
+    for (const t of trees) if (t.tree) tallyMachines(t.tree, machineTotals);
     // Skip a trunk's prodTile when it IS a target root (self-fueling line) — else we'd double-count
     // the single line's machines.
     if (fuel && fuel.prodTile && !treeSet.has(fuel.prodTile)) tallyMachines(fuel.prodTile, machineTotals);
@@ -843,7 +856,7 @@ function makeComposer(db, cfg) {
     // Furnaces are infrastructure, NOT production machines, so they stay in their own `furnaces`
     // tally and are deliberately kept OUT of machineTotals (the production-machine summary).
     const furnaceSlots = {};
-    for (const t of trees) tallyFurnaceSlots(t.tree, furnaceSlots);
+    for (const t of trees) if (t.tree) tallyFurnaceSlots(t.tree, furnaceSlots);
     if (fuel && fuel.prodTile && !treeSet.has(fuel.prodTile)) tallyFurnaceSlots(fuel.prodTile, furnaceSlots);
     if (fert && fert.prodTile && !treeSet.has(fert.prodTile)) tallyFurnaceSlots(fert.prodTile, furnaceSlots);
     const furnaces = {};
